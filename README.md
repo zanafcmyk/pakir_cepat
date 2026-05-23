@@ -1,17 +1,44 @@
-# parkir_cepat
+# Parkir Cepat
 
-A new Flutter project.
+Parkir Cepat adalah prototipe aplikasi mobile smart parking berbasis Flutter dengan dua mode:
 
-## Getting Started
+- `Pengguna / Customer`
+- `Penyedia Parkir / Admin`
 
-This project is a starting point for a Flutter application.
+Aplikasi ini memakai light mode premium dengan gaya visual modern yang terinspirasi dari Google Maps, Gojek, Grab, dan sistem smart city parking.
 
-A few resources to get you started if this is your first Flutter project:
+## Yang Sudah Dibangun
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Splash screen dan onboarding 3 halaman
+- Login, register, forgot password, delete account
+- Dashboard customer, map lokasi, detail parkir, tambah kendaraan, booking, tiket QR, pembayaran, riwayat, notifikasi, profil
+- Dashboard admin, map monitoring, tambah lahan, monitoring kendaraan, scan QR, detail transaksi, cetak nota, statistik, kelola slot, notifikasi, profil
+- Bottom navigation untuk customer dan admin
+- State aplikasi in-memory untuk demo interaksi fitur tanpa backend
+- UI premium light mode dengan rounded cards, soft shadows, dan komponen reusable
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Menjalankan Proyek
+
+```bash
+flutter pub get
+flutter run
+```
+
+## Verifikasi
+
+```bash
+flutter analyze
+flutter test
+```
+
+## Catatan Implementasi
+
+Versi saat ini adalah prototype fungsional lokal:
+
+- Booking, pembayaran, scan QR, tambah kendaraan, dan kelola slot sudah berjalan melalui state lokal
+- Peta dibuat sebagai UI map interaktif kustom, belum memakai SDK map asli
+- Scanner QR, login Google, OTP, pembayaran gateway, dan backend persistence belum terhubung ke layanan production
+
+## Dokumen Produk
+
+PRD tersedia di [docs/PRD.md](docs/PRD.md).
