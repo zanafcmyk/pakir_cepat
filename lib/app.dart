@@ -40,6 +40,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const DeleteAccountScreen(),
       ),
       GoRoute(
+        path: '/provider-verification',
+        builder: (context, state) => const ProviderVerificationScreen(),
+      ),
+      GoRoute(
         path: '/customer/home',
         builder: (context, state) => const CustomerHomeScreen(),
       ),
@@ -144,6 +148,8 @@ class ParkirCepatApp extends ConsumerWidget {
 
 enum AccountMode { customer, provider }
 
+enum AccountStatus { pending, verified, rejected }
+
 enum VehicleKind { motor, mobil, truk }
 
 enum PaymentMethod { qris, ewallet, cash, card }
@@ -220,6 +226,22 @@ class Vehicle {
   final VehicleKind kind;
   final int quantity;
   final int durationHours;
+
+  Vehicle copyWith({
+    String? id,
+    String? plateNumber,
+    VehicleKind? kind,
+    int? quantity,
+    int? durationHours,
+  }) {
+    return Vehicle(
+      id: id ?? this.id,
+      plateNumber: plateNumber ?? this.plateNumber,
+      kind: kind ?? this.kind,
+      quantity: quantity ?? this.quantity,
+      durationHours: durationHours ?? this.durationHours,
+    );
+  }
 
   String get label => switch (kind) {
         VehicleKind.motor => 'Motor',
@@ -334,12 +356,49 @@ class ParkingSlot {
   }
 }
 
+class ProviderApplication {
+  const ProviderApplication({
+    required this.parkingName,
+    required this.address,
+    required this.photoLabel,
+    required this.locationLabel,
+    required this.capacity,
+    required this.identityLabel,
+  });
+
+  final String parkingName;
+  final String address;
+  final String photoLabel;
+  final String locationLabel;
+  final int capacity;
+  final String identityLabel;
+
+  ProviderApplication copyWith({
+    String? parkingName,
+    String? address,
+    String? photoLabel,
+    String? locationLabel,
+    int? capacity,
+    String? identityLabel,
+  }) {
+    return ProviderApplication(
+      parkingName: parkingName ?? this.parkingName,
+      address: address ?? this.address,
+      photoLabel: photoLabel ?? this.photoLabel,
+      locationLabel: locationLabel ?? this.locationLabel,
+      capacity: capacity ?? this.capacity,
+      identityLabel: identityLabel ?? this.identityLabel,
+    );
+  }
+}
+
 class AppState {
   const AppState({
     required this.onboardingIndex,
     required this.onboardingDone,
     required this.isAuthenticated,
     required this.currentMode,
+    required this.accountStatus,
     required this.userName,
     required this.email,
     required this.phoneNumber,
@@ -351,6 +410,9 @@ class AppState {
     required this.selectedVehicle,
     required this.slots,
     required this.activeBooking,
+    required this.reservationLockedUntil,
+    required this.favoriteLotIds,
+    required this.providerApplication,
     required this.history,
     required this.customerNotifications,
     required this.adminNotifications,
@@ -360,6 +422,7 @@ class AppState {
   final bool onboardingDone;
   final bool isAuthenticated;
   final AccountMode currentMode;
+  final AccountStatus accountStatus;
   final String userName;
   final String email;
   final String phoneNumber;
@@ -371,6 +434,9 @@ class AppState {
   final Vehicle? selectedVehicle;
   final List<ParkingSlot> slots;
   final Booking? activeBooking;
+  final DateTime? reservationLockedUntil;
+  final List<String> favoriteLotIds;
+  final ProviderApplication? providerApplication;
   final List<TransactionRecord> history;
   final List<NoticeItem> customerNotifications;
   final List<NoticeItem> adminNotifications;
@@ -380,6 +446,7 @@ class AppState {
     bool? onboardingDone,
     bool? isAuthenticated,
     AccountMode? currentMode,
+    AccountStatus? accountStatus,
     String? userName,
     String? email,
     String? phoneNumber,
@@ -391,7 +458,11 @@ class AppState {
     Vehicle? selectedVehicle,
     List<ParkingSlot>? slots,
     Booking? activeBooking,
+    DateTime? reservationLockedUntil,
     bool clearBooking = false,
+    List<String>? favoriteLotIds,
+    ProviderApplication? providerApplication,
+    bool clearProviderApplication = false,
     List<TransactionRecord>? history,
     List<NoticeItem>? customerNotifications,
     List<NoticeItem>? adminNotifications,
@@ -401,6 +472,7 @@ class AppState {
       onboardingDone: onboardingDone ?? this.onboardingDone,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
       currentMode: currentMode ?? this.currentMode,
+      accountStatus: accountStatus ?? this.accountStatus,
       userName: userName ?? this.userName,
       email: email ?? this.email,
       phoneNumber: phoneNumber ?? this.phoneNumber,
@@ -413,6 +485,12 @@ class AppState {
       selectedVehicle: selectedVehicle ?? this.selectedVehicle,
       slots: slots ?? this.slots,
       activeBooking: clearBooking ? null : (activeBooking ?? this.activeBooking),
+      reservationLockedUntil:
+          reservationLockedUntil ?? this.reservationLockedUntil,
+      favoriteLotIds: favoriteLotIds ?? this.favoriteLotIds,
+      providerApplication: clearProviderApplication
+          ? null
+          : (providerApplication ?? this.providerApplication),
       history: history ?? this.history,
       customerNotifications:
           customerNotifications ?? this.customerNotifications,
@@ -554,6 +632,7 @@ class AppState {
       onboardingDone: false,
       isAuthenticated: false,
       currentMode: AccountMode.customer,
+      accountStatus: AccountStatus.verified,
       userName: 'Dio Pratama',
       email: 'dio@parkircepat.app',
       phoneNumber: '+62 812 7788 9911',
@@ -565,6 +644,9 @@ class AppState {
       selectedVehicle: vehicles.first,
       slots: slots,
       activeBooking: null,
+      reservationLockedUntil: null,
+      favoriteLotIds: ['lot-1'],
+      providerApplication: null,
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
@@ -574,6 +656,17 @@ class AppState {
 
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.seeded());
+
+  String landingRouteFor(AppState value) {
+    if (value.currentMode == AccountMode.provider &&
+        value.accountStatus == AccountStatus.pending) {
+      return '/provider-verification';
+    }
+    if (value.currentMode == AccountMode.provider) {
+      return '/admin/dashboard';
+    }
+    return '/customer/home';
+  }
 
   void setOnboardingPage(int index) {
     state = state.copyWith(onboardingIndex: index);
@@ -589,8 +682,14 @@ class AppController extends StateNotifier<AppState> {
     required String phoneNumber,
     required bool rememberMe,
   }) {
+    final accountStatus = mode == AccountMode.provider
+        ? (state.providerApplication == null
+            ? AccountStatus.verified
+            : state.accountStatus)
+        : AccountStatus.verified;
     state = state.copyWith(
       currentMode: mode,
+      accountStatus: accountStatus,
       email: email.isEmpty ? state.email : email,
       phoneNumber: phoneNumber.isEmpty ? state.phoneNumber : phoneNumber,
       isAuthenticated: true,
@@ -603,6 +702,7 @@ class AppController extends StateNotifier<AppState> {
     required String email,
     required String phoneNumber,
     required AccountMode mode,
+    ProviderApplication? providerApplication,
   }) {
     state = state.copyWith(
       userName: fullName,
@@ -611,6 +711,10 @@ class AppController extends StateNotifier<AppState> {
       currentMode: mode,
       isAuthenticated: true,
       onboardingDone: true,
+      accountStatus: mode == AccountMode.customer
+          ? AccountStatus.verified
+          : AccountStatus.pending,
+      providerApplication: providerApplication,
     );
   }
 
@@ -629,6 +733,10 @@ class AppController extends StateNotifier<AppState> {
 
   void switchMode(AccountMode mode) {
     state = state.copyWith(currentMode: mode);
+  }
+
+  void setProviderStatus(AccountStatus status) {
+    state = state.copyWith(accountStatus: status);
   }
 
   void selectLot(ParkingLot lot) {
@@ -658,6 +766,16 @@ class AppController extends StateNotifier<AppState> {
       lots: [lot, ...state.lots],
       selectedLot: lot,
     );
+  }
+
+  void toggleFavoriteLot(String lotId) {
+    final current = [...state.favoriteLotIds];
+    if (current.contains(lotId)) {
+      current.remove(lotId);
+    } else {
+      current.add(lotId);
+    }
+    state = state.copyWith(favoriteLotIds: current);
   }
 
   void saveVehicle({
@@ -708,6 +826,7 @@ class AppController extends StateNotifier<AppState> {
 
     state = state.copyWith(
       activeBooking: booking,
+      reservationLockedUntil: DateTime.now().add(const Duration(minutes: 15)),
       slots: updatedSlots,
       customerNotifications: [
         NoticeItem(
@@ -751,6 +870,7 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(
       activeBooking: updatedBooking,
+      reservationLockedUntil: null,
       history: [transaction, ...state.history],
       customerNotifications: [
         NoticeItem(
@@ -790,6 +910,7 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(
       slots: updatedSlots,
       clearBooking: true,
+      reservationLockedUntil: null,
       adminNotifications: [
         const NoticeItem(
           title: 'Kendaraan keluar',
@@ -812,6 +933,40 @@ class AppController extends StateNotifier<AppState> {
           slot,
     ];
     state = state.copyWith(slots: updated);
+  }
+
+  void extendParkingTime(int additionalHours) {
+    final vehicle = state.selectedVehicle;
+    final booking = state.activeBooking;
+    if (vehicle == null || booking == null) {
+      return;
+    }
+
+    final updatedVehicle = vehicle.copyWith(
+      durationHours: vehicle.durationHours + additionalHours,
+    );
+    final updatedVehicles = [
+      for (final item in state.vehicles)
+        if (item.id == vehicle.id) updatedVehicle else item,
+    ];
+    final lot = state.selectedLot ?? state.lots.first;
+    state = state.copyWith(
+      vehicles: updatedVehicles,
+      selectedVehicle: updatedVehicle,
+      activeBooking: booking.copyWith(
+        estimatedCost: booking.estimatedCost + (lot.pricePerHour * additionalHours),
+      ),
+      customerNotifications: [
+        NoticeItem(
+          title: 'Durasi parkir diperpanjang',
+          message: 'Tambahan $additionalHours jam berhasil diterapkan.',
+          timeLabel: 'Baru saja',
+          icon: Icons.more_time_rounded,
+          accent: AppTheme.emerald,
+        ),
+        ...state.customerNotifications,
+      ],
+    );
   }
 }
 
@@ -893,6 +1048,17 @@ String formatDateTime(DateTime value) {
   return '$day/$month/${value.year} $hour:$minute';
 }
 
+String formatDuration(Duration duration) {
+  final minutes = duration.inMinutes;
+  final safe = minutes < 0 ? 0 : minutes;
+  final hours = safe ~/ 60;
+  final remainMinutes = safe % 60;
+  if (hours > 0) {
+    return '${hours}j ${remainMinutes.toString().padLeft(2, '0')}m';
+  }
+  return '${remainMinutes}m';
+}
+
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -911,14 +1077,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         return;
       }
       final state = ref.read(appControllerProvider);
+      final controller = ref.read(appControllerProvider.notifier);
       if (!state.onboardingDone) {
         context.go('/onboarding');
       } else if (!state.isAuthenticated) {
         context.go('/login');
-      } else if (state.currentMode == AccountMode.customer) {
-        context.go('/customer/home');
       } else {
-        context.go('/admin/dashboard');
+        context.go(controller.landingRouteFor(state));
       }
     });
   }
@@ -1159,6 +1324,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _rememberMe = true;
   AccountMode _mode = AccountMode.customer;
 
+  void _submitLogin() {
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.login(
+      mode: _mode,
+      email: _emailController.text,
+      phoneNumber: _phoneController.text,
+      rememberMe: _rememberMe,
+    );
+    context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1181,19 +1357,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       subtitle: 'Akses parkir pintar dengan alur cepat, aman, dan premium.',
       child: Column(
         children: [
-          SegmentedChoice<AccountMode>(
-            items: const [
-              ChoiceItem(
-                value: AccountMode.customer,
-                label: 'Pengguna',
-                icon: Icons.person_rounded,
-              ),
-              ChoiceItem(
-                value: AccountMode.provider,
-                label: 'Penyedia',
-                icon: Icons.admin_panel_settings_rounded,
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Masuk sebagai',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          RoleSelectionCards(
             value: _mode,
             onChanged: (value) => setState(() => _mode = value),
           ),
@@ -1233,55 +1407,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           PrimaryButton(
             label: 'Masuk',
             icon: Icons.login_rounded,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).login(
-                    mode: _mode,
-                    email: _emailController.text,
-                    phoneNumber: _phoneController.text,
-                    rememberMe: _rememberMe,
-                  );
-              context.go(
-                _mode == AccountMode.customer
-                    ? '/customer/home'
-                    : '/admin/dashboard',
-              );
-            },
+            onPressed: _submitLogin,
           ),
           const SizedBox(height: 12),
           SecondaryButton(
             label: 'Masuk dengan Google',
             icon: Icons.g_mobiledata_rounded,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).login(
-                    mode: _mode,
-                    email: _emailController.text,
-                    phoneNumber: _phoneController.text,
-                    rememberMe: _rememberMe,
-                  );
-              context.go(
-                _mode == AccountMode.customer
-                    ? '/customer/home'
-                    : '/admin/dashboard',
-              );
-            },
+            onPressed: _submitLogin,
           ),
           const SizedBox(height: 12),
           SecondaryButton(
             label: 'Login nomor HP',
             icon: Icons.sms_rounded,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).login(
-                    mode: _mode,
-                    email: _emailController.text,
-                    phoneNumber: _phoneController.text,
-                    rememberMe: _rememberMe,
-                  );
-              context.go(
-                _mode == AccountMode.customer
-                    ? '/customer/home'
-                    : '/admin/dashboard',
-              );
-            },
+            onPressed: _submitLogin,
           ),
           const SizedBox(height: 18),
           Row(
@@ -1311,7 +1449,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _parkingNameController;
+  late final TextEditingController _parkingAddressController;
+  late final TextEditingController _parkingPhotoController;
+  late final TextEditingController _locationPointController;
+  late final TextEditingController _identityController;
   AccountMode _mode = AccountMode.customer;
+  double _providerCapacity = 80;
 
   @override
   void initState() {
@@ -1319,6 +1463,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _nameController = TextEditingController(text: 'Dio Pratama');
     _emailController = TextEditingController(text: 'dio@parkircepat.app');
     _phoneController = TextEditingController(text: '+62 812 7788 9911');
+    _parkingNameController = TextEditingController(text: 'Parkir Cepat Sudirman Hub');
+    _parkingAddressController =
+        TextEditingController(text: 'Jl. Sudirman Smart Gate Kav. 18');
+    _parkingPhotoController = TextEditingController(text: 'lahan_parkir_sudirman.jpg');
+    _locationPointController =
+        TextEditingController(text: 'Lat -6.2088, Lng 106.8456');
+    _identityController = TextEditingController(text: 'ktp_provider_dio.png');
   }
 
   @override
@@ -1326,6 +1477,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _parkingNameController.dispose();
+    _parkingAddressController.dispose();
+    _parkingPhotoController.dispose();
+    _locationPointController.dispose();
+    _identityController.dispose();
     super.dispose();
   }
 
@@ -1376,38 +1532,136 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          SegmentedChoice<AccountMode>(
-            items: const [
-              ChoiceItem(
-                value: AccountMode.customer,
-                label: 'Pengguna',
-                icon: Icons.person_rounded,
-              ),
-              ChoiceItem(
-                value: AccountMode.provider,
-                label: 'Penyedia parkir',
-                icon: Icons.storefront_rounded,
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Daftar sebagai',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          RoleSelectionCards(
             value: _mode,
             onChanged: (value) => setState(() => _mode = value),
           ),
+          if (_mode == AccountMode.provider) ...[
+            const SizedBox(height: 22),
+            PremiumCard(
+              accent: AppTheme.emeraldSoft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Data verifikasi penyedia',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Akun penyedia akan masuk status pending verification sampai admin meninjau data lahan dan identitas.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.slate,
+                          height: 1.45,
+                        ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _parkingNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama tempat parkir',
+                      prefixIcon: Icon(Icons.local_parking_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _parkingAddressController,
+                    decoration: const InputDecoration(
+                      labelText: 'Alamat lahan',
+                      prefixIcon: Icon(Icons.place_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _parkingPhotoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Upload foto lahan',
+                      prefixIcon: Icon(Icons.add_photo_alternate_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const ParkingMapPlaceholder(title: 'Pilih titik lokasi pada map'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _locationPointController,
+                    decoration: const InputDecoration(
+                      labelText: 'Titik lokasi',
+                      prefixIcon: Icon(Icons.pin_drop_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  LabeledSlider(
+                    label: 'Kapasitas kendaraan',
+                    value: _providerCapacity,
+                    min: 20,
+                    max: 300,
+                    divisions: 28,
+                    display: '${_providerCapacity.toInt()} slot',
+                    onChanged: (value) => setState(() => _providerCapacity = value),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _identityController,
+                    decoration: const InputDecoration(
+                      labelText: 'Upload KTP / verifikasi identitas',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  const InlineNotice(
+                    icon: Icons.hourglass_top_rounded,
+                    accent: Color(0xFFD97706),
+                    message: 'Akun penyedia sedang menunggu verifikasi admin.',
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           PrimaryButton(
             label: 'Daftar',
             icon: Icons.person_add_alt_1_rounded,
             onPressed: () {
+              final providerApplication = _mode == AccountMode.provider
+                  ? ProviderApplication(
+                      parkingName: _parkingNameController.text,
+                      address: _parkingAddressController.text,
+                      photoLabel: _parkingPhotoController.text,
+                      locationLabel: _locationPointController.text,
+                      capacity: _providerCapacity.toInt(),
+                      identityLabel: _identityController.text,
+                    )
+                  : null;
               ref.read(appControllerProvider.notifier).register(
                     fullName: _nameController.text,
                     email: _emailController.text,
                     phoneNumber: _phoneController.text,
                     mode: _mode,
+                    providerApplication: providerApplication,
                   );
-              context.go(
-                _mode == AccountMode.customer
-                    ? '/customer/home'
-                    : '/admin/dashboard',
-              );
+              if (_mode == AccountMode.provider) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Akun penyedia sedang menunggu verifikasi admin.',
+                    ),
+                  ),
+                );
+              }
+              final controller = ref.read(appControllerProvider.notifier);
+              context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
             },
           ),
         ],
@@ -1555,12 +1809,140 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   }
 }
 
+class ProviderVerificationScreen extends ConsumerWidget {
+  const ProviderVerificationScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final application = state.providerApplication;
+    final status = state.accountStatus;
+    final statusColor = switch (status) {
+      AccountStatus.pending => const Color(0xFFD97706),
+      AccountStatus.verified => AppTheme.emerald,
+      AccountStatus.rejected => const Color(0xFFDC2626),
+    };
+    final statusLabel = switch (status) {
+      AccountStatus.pending => 'Pending Verification',
+      AccountStatus.verified => 'Verified',
+      AccountStatus.rejected => 'Rejected',
+    };
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Status verifikasi provider')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                StatusBadge(label: statusLabel, color: statusColor),
+                const SizedBox(height: 16),
+                Text(
+                  'Akun penyedia ${state.userName}',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  status == AccountStatus.pending
+                      ? 'Akun penyedia sedang menunggu verifikasi admin.'
+                      : status == AccountStatus.verified
+                          ? 'Akun sudah diverifikasi dan siap mengelola dashboard admin.'
+                          : 'Pengajuan provider perlu diperbarui sebelum diverifikasi.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.slate,
+                        height: 1.5,
+                      ),
+                ),
+                if (application != null) ...[
+                  const SizedBox(height: 18),
+                  SummaryRow(label: 'Tempat parkir', value: application.parkingName),
+                  SummaryRow(label: 'Alamat lahan', value: application.address),
+                  SummaryRow(label: 'Titik lokasi', value: application.locationLabel),
+                  SummaryRow(
+                    label: 'Kapasitas kendaraan',
+                    value: '${application.capacity} slot',
+                  ),
+                  SummaryRow(label: 'Foto lahan', value: application.photoLabel),
+                  SummaryRow(label: 'Verifikasi identitas', value: application.identityLabel),
+                ],
+                const SizedBox(height: 22),
+                if (status == AccountStatus.pending)
+                  SecondaryButton(
+                    label: 'Masih menunggu verifikasi',
+                    icon: Icons.hourglass_top_rounded,
+                    onPressed: null,
+                  ),
+                if (status == AccountStatus.verified)
+                  PrimaryButton(
+                    label: 'Masuk ke dashboard admin',
+                    icon: Icons.arrow_forward_rounded,
+                    onPressed: () => context.go('/admin/dashboard'),
+                  ),
+                if (status == AccountStatus.rejected)
+                  PrimaryButton(
+                    label: 'Perbarui data pengajuan',
+                    icon: Icons.edit_rounded,
+                    onPressed: () => context.go('/register'),
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SecondaryButton(
+                        label: 'Simulasi verified',
+                        icon: Icons.verified_rounded,
+                        onPressed: () {
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .setProviderStatus(AccountStatus.verified);
+                          context.go('/admin/dashboard');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SecondaryButton(
+                        label: 'Simulasi rejected',
+                        icon: Icons.close_rounded,
+                        onPressed: () {
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .setProviderStatus(AccountStatus.rejected);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class CustomerHomeScreen extends ConsumerWidget {
   const CustomerHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    final cheapestLot = state.lots.reduce(
+      (a, b) => a.pricePerHour <= b.pricePerHour ? a : b,
+    );
+    final nearestLot = state.lots.reduce(
+      (a, b) => a.distanceKm <= b.distanceKm ? a : b,
+    );
+    final leastBusyLot = state.lots.reduce((a, b) {
+      final aRatio = a.availableSlots / a.totalSlots;
+      final bRatio = b.availableSlots / b.totalSlots;
+      return aRatio >= bRatio ? a : b;
+    });
     return CustomerShell(
       currentIndex: 0,
       floatingActionButton: FloatingActionButton.extended(
@@ -1593,6 +1975,37 @@ class CustomerHomeScreen extends ConsumerWidget {
             onPressed: () => context.go('/customer/map'),
           ),
           const SizedBox(height: 22),
+          SectionTitle(title: 'AI smart recommendation'),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              AiRecommendationCard(
+                title: 'Terdekat',
+                subtitle: nearestLot.name,
+                detail: '${nearestLot.distanceKm} km • ${nearestLot.etaMinutes} menit',
+                accent: AppTheme.blueSoft,
+                icon: Icons.near_me_rounded,
+              ),
+              AiRecommendationCard(
+                title: 'Termurah',
+                subtitle: cheapestLot.name,
+                detail: '${formatCurrency(cheapestLot.pricePerHour)}/jam',
+                accent: AppTheme.emeraldSoft,
+                icon: Icons.sell_rounded,
+              ),
+              AiRecommendationCard(
+                title: 'Tidak ramai',
+                subtitle: leastBusyLot.name,
+                detail:
+                    '${leastBusyLot.availableSlots}/${leastBusyLot.totalSlots} slot siap',
+                accent: AppTheme.blueSoft,
+                icon: Icons.psychology_alt_rounded,
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
           SectionTitle(
             title: 'Tempat parkir terdekat',
             action: 'Riwayat',
@@ -1604,6 +2017,10 @@ class CustomerHomeScreen extends ConsumerWidget {
               padding: const EdgeInsets.only(bottom: 14),
               child: ParkingLotCard(
                 lot: lot,
+                isFavorite: state.favoriteLotIds.contains(lot.id),
+                onToggleFavorite: () => ref
+                    .read(appControllerProvider.notifier)
+                    .toggleFavoriteLot(lot.id),
                 onDetail: () {
                   ref.read(appControllerProvider.notifier).selectLot(lot);
                   context.push('/customer/parking-detail');
@@ -1615,6 +2032,54 @@ class CustomerHomeScreen extends ConsumerWidget {
               ),
             ),
           ),
+          const SizedBox(height: 22),
+          SectionTitle(title: 'Live slot realtime'),
+          const SizedBox(height: 14),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Warna hijau = tersedia, merah = penuh',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.slate,
+                      ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: state.slots.map((slot) {
+                    final color = slot.isAvailable
+                        ? AppTheme.emerald
+                        : const Color(0xFFDC2626);
+                    return Container(
+                      width: 70,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            slot.label,
+                            style:
+                                Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                          ),
+                          const SizedBox(height: 4),
+                          Icon(Icons.circle, size: 12, color: color),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
           const SizedBox(height: 8),
           SectionTitle(title: 'Rekomendasi smart parking'),
           const SizedBox(height: 14),
@@ -1646,6 +2111,26 @@ class CustomerHomeScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SummaryRow(
+                  label: 'Multi kendaraan',
+                  value: '${state.vehicles.length} kendaraan tersimpan',
+                ),
+                SummaryRow(
+                  label: 'Favorite parking',
+                  value: '${state.favoriteLotIds.length} lokasi favorit',
+                ),
+                SummaryRow(
+                  label: 'Reminder notifikasi',
+                  value: 'Aktif 30 menit sebelum habis',
                 ),
               ],
             ),
@@ -1711,8 +2196,9 @@ class ParkingDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lot = ref.watch(appControllerProvider).selectedLot ??
-        ref.watch(appControllerProvider).lots.first;
+    final state = ref.watch(appControllerProvider);
+    final lot = state.selectedLot ?? state.lots.first;
+    final isFavorite = state.favoriteLotIds.contains(lot.id);
     return Scaffold(
       appBar: AppBar(title: const Text('Detail lokasi parkir')),
       body: ListView(
@@ -1749,6 +2235,25 @@ class ParkingDetailScreen extends ConsumerWidget {
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => ref
+                            .read(appControllerProvider.notifier)
+                            .toggleFavoriteLot(lot.id),
+                        icon: Icon(
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          color: isFavorite
+                              ? const Color(0xFFDC2626)
+                              : AppTheme.blue,
+                        ),
+                        label: Text(
+                          isFavorite
+                              ? 'Tersimpan di favorite'
+                              : 'Simpan ke favorite',
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -1956,6 +2461,13 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ),
                 ),
                 const SizedBox(height: 18),
+                const InlineNotice(
+                  icon: Icons.lock_clock_rounded,
+                  accent: AppTheme.blue,
+                  message:
+                      'Reservasi slot akan dikunci sementara selama 15 menit setelah booking dikonfirmasi.',
+                ),
+                const SizedBox(height: 18),
                 Text(
                   'Pilih slot parkir',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -2068,6 +2580,8 @@ class CustomerTicketScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
     final booking = state.activeBooking;
+    final reservationLeft =
+        state.reservationLockedUntil?.difference(DateTime.now());
     return CustomerShell(
       currentIndex: 2,
       child: ListView(
@@ -2117,12 +2631,40 @@ class CustomerTicketScreen extends ConsumerWidget {
                   SummaryRow(label: 'Jenis kendaraan', value: booking.vehicleLabel),
                   SummaryRow(label: 'Lokasi parkir', value: booking.locationName),
                   SummaryRow(label: 'Waktu masuk', value: formatDateTime(booking.entryTime)),
+                  if (reservationLeft != null)
+                    SummaryRow(
+                      label: 'Countdown reservasi',
+                      value: formatDuration(reservationLeft),
+                      valueColor: AppTheme.blue,
+                    ),
                   SummaryRow(
                     label: 'Status pembayaran',
                     value: booking.isPaid ? 'Lunas' : 'Menunggu',
                     valueColor: booking.isPaid ? AppTheme.emerald : AppTheme.blue,
                   ),
                   const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SecondaryButton(
+                          label: 'Extend 1 jam',
+                          icon: Icons.more_time_rounded,
+                          onPressed: () => ref
+                              .read(appControllerProvider.notifier)
+                              .extendParkingTime(1),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SecondaryButton(
+                          label: 'QR keluar',
+                          icon: Icons.logout_rounded,
+                          onPressed: booking.isPaid ? () {} : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   PrimaryButton(
                     label: booking.isPaid ? 'QR sudah aktif' : 'Scan pembayaran',
                     icon: booking.isPaid
@@ -2424,6 +2966,12 @@ class AdminDashboardScreen extends ConsumerWidget {
                 accent: AppTheme.blue,
                 icon: Icons.timelapse_rounded,
               ),
+              StatCard(
+                label: 'Multi cabang',
+                value: '${state.lots.length}',
+                accent: AppTheme.emerald,
+                icon: Icons.apartment_rounded,
+              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -2474,7 +3022,83 @@ class AdminDashboardScreen extends ConsumerWidget {
                 accent: AppTheme.emeraldSoft,
                 onTap: () => context.push('/admin/receipt'),
               ),
+              ActionCard(
+                label: 'Export PDF/Excel',
+                icon: Icons.file_download_rounded,
+                accent: AppTheme.blueSoft,
+                onTap: () => context.push('/admin/statistics'),
+              ),
             ],
+          ),
+          const SizedBox(height: 20),
+          SectionTitle(title: 'CCTV monitoring section'),
+          const SizedBox(height: 12),
+          PremiumCard(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: AppTheme.ink,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.videocam_rounded,
+                        color: Colors.white,
+                        size: 44,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Preview kamera area parkir',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Gerbang masuk, area A, dan lane keluar terpantau realtime.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppTheme.slate,
+                              height: 1.45,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          PremiumCard(
+            accent: AppTheme.emeraldSoft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AI parking density prediction',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Prediksi jam ramai berikutnya pukul 17:30 - 19:00 dengan okupansi hingga 92%.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.slate,
+                        height: 1.45,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -2640,6 +3264,13 @@ class VehicleMonitoringScreen extends ConsumerWidget {
           const HeaderSection(
             title: 'Monitoring kendaraan',
             subtitle: 'Daftar kendaraan masuk, keluar, pembayaran, dan filter realtime.',
+          ),
+          const SizedBox(height: 18),
+          const InlineNotice(
+            icon: Icons.bolt_rounded,
+            accent: AppTheme.emerald,
+            message:
+                'Monitoring kendaraan dan aktivitas parkir langsung update secara realtime.',
           ),
           const SizedBox(height: 18),
           const SearchField(label: 'Filter plat nomor atau lokasi'),
@@ -2872,6 +3503,34 @@ class StatisticsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Laporan PDF berhasil disiapkan')),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export Excel',
+                  icon: Icons.table_view_rounded,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Laporan Excel berhasil disiapkan')),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
           PremiumCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -3011,6 +3670,19 @@ class AdminProfileScreen extends ConsumerWidget {
                       ),
                 ),
                 const SizedBox(height: 6),
+                StatusBadge(
+                  label: switch (state.accountStatus) {
+                    AccountStatus.pending => 'Pending',
+                    AccountStatus.verified => 'Verified',
+                    AccountStatus.rejected => 'Rejected',
+                  },
+                  color: switch (state.accountStatus) {
+                    AccountStatus.pending => const Color(0xFFD97706),
+                    AccountStatus.verified => AppTheme.emerald,
+                    AccountStatus.rejected => const Color(0xFFDC2626),
+                  },
+                ),
+                const SizedBox(height: 10),
                 Text(
                   'Kelola ${state.lots.length} lahan parkir',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -3445,17 +4117,225 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
+class RoleSelectionCards extends StatelessWidget {
+  const RoleSelectionCards({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final AccountMode value;
+  final ValueChanged<AccountMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: RoleSelectionCard(
+            title: 'Pengguna Parkir',
+            subtitle: 'Cari parkir, booking slot, tiket QR, dan favorit.',
+            icon: Icons.map_rounded,
+            selected: value == AccountMode.customer,
+            accent: AppTheme.blue,
+            onTap: () => onChanged(AccountMode.customer),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: RoleSelectionCard(
+            title: 'Penyedia Parkir',
+            subtitle: 'Kelola lahan, dashboard, slot, dan transaksi.',
+            icon: Icons.apartment_rounded,
+            selected: value == AccountMode.provider,
+            accent: AppTheme.emerald,
+            onTap: () => onChanged(AccountMode.provider),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class RoleSelectionCard extends StatelessWidget {
+  const RoleSelectionCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.selected,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool selected;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected ? accent.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: selected ? accent : AppTheme.slate.withValues(alpha: 0.18),
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: accent),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.slate,
+                    height: 1.4,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class InlineNotice extends StatelessWidget {
+  const InlineNotice({
+    super.key,
+    required this.icon,
+    required this.accent,
+    required this.message,
+  });
+
+  final IconData icon;
+  final Color accent;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.ink,
+                    height: 1.4,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AiRecommendationCard extends StatelessWidget {
+  const AiRecommendationCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.detail,
+    required this.accent,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final String detail;
+  final Color accent;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = (MediaQuery.sizeOf(context).width - 52) / 2;
+    return Container(
+      width: math.max(150, width),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: accent,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppTheme.ink),
+          const SizedBox(height: 18),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppTheme.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            detail,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.slate,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ParkingLotCard extends StatelessWidget {
   const ParkingLotCard({
     super.key,
     required this.lot,
     required this.onDetail,
     required this.onBooking,
+    required this.isFavorite,
+    required this.onToggleFavorite,
   });
 
   final ParkingLot lot;
   final VoidCallback onDetail;
   final VoidCallback onBooking;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
@@ -3493,6 +4373,13 @@ class ParkingLotCard extends StatelessWidget {
                           ),
                     ),
                   ],
+                ),
+              ),
+              IconButton(
+                onPressed: onToggleFavorite,
+                icon: Icon(
+                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  color: isFavorite ? const Color(0xFFDC2626) : AppTheme.slate,
                 ),
               ),
               StatusBadge(
