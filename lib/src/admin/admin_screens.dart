@@ -1,1 +1,1 @@
-export "../screens/provider_screens.dart";
+export '../screens/provider_screens.dart';
