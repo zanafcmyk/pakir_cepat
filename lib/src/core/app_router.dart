@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../auth/auth_screens.dart';
+import '../../customer_screens.dart';
+import '../../provider_screens.dart';
 import '../data/models/app_models.dart';
-import '../screens/auth_screens.dart';
-import '../screens/customer_screens.dart';
-import '../screens/provider_screens.dart';
 import 'providers.dart';
 
 class RouterNotifier extends ChangeNotifier {
@@ -24,6 +24,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(sessionControllerProvider).valueOrNull;
       final location = state.matchedLocation;
+      if (location == '/') return null;
       final onAuth = location == '/login' || location.startsWith('/register');
       if (session == null || !session.isAuthenticated) return onAuth ? null : '/login';
       if (session.role == UserRole.customer) return location.startsWith('/customer') ? null : '/customer/dashboard';
@@ -32,6 +33,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return '/login';
     },
     routes: [
+      GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(path: '/register', builder: (context, state) => const RegisterChoiceScreen()),
       GoRoute(path: '/register/customer', builder: (context, state) => const CustomerRegisterScreen()),

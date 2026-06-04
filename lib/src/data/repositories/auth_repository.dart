@@ -37,17 +37,6 @@ class AuthRepository {
     if (userId == null) throw Exception('Auth user not created');
 
     await _upsertUser(userId, fullName, email, phone, UserRole.provider);
-    await _client.from('providers').upsert({
-      'user_id': userId,
-      'parking_name': parkingName,
-      'address': address,
-      'latitude': latitude,
-      'longitude': longitude,
-      'capacity': capacity,
-      'parking_photo': parkingPhotoUrl,
-      'ktp_photo': ktpPhotoUrl,
-      'verification_status': 'pending',
-    });
 
     await _client.from('parking_locations').upsert({
       'provider_id': userId,
