@@ -8,6 +8,8 @@ enum VehicleKind { motor, mobil, truk }
 
 enum PaymentMethod { qris, ewallet, cash, card }
 
+enum BookingStatus { pendingPayment, paid, active, completed, cancelled }
+
 class ParkingLot {
   const ParkingLot({
     required this.id,
@@ -22,6 +24,9 @@ class ParkingLot {
     required this.openHours,
     required this.rating,
     required this.accent,
+    required this.mapEmbedUrl,
+    required this.latitude,
+    required this.longitude,
   });
 
   final String id;
@@ -36,6 +41,9 @@ class ParkingLot {
   final String openHours;
   final double rating;
   final Color accent;
+  final String mapEmbedUrl;
+  final double latitude;
+  final double longitude;
 
   bool get isFull => availableSlots <= 0;
 
@@ -52,6 +60,9 @@ class ParkingLot {
     String? openHours,
     double? rating,
     Color? accent,
+    String? mapEmbedUrl,
+    double? latitude,
+    double? longitude,
   }) {
     return ParkingLot(
       id: id ?? this.id,
@@ -66,6 +77,9 @@ class ParkingLot {
       openHours: openHours ?? this.openHours,
       rating: rating ?? this.rating,
       accent: accent ?? this.accent,
+      mapEmbedUrl: mapEmbedUrl ?? this.mapEmbedUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
@@ -102,10 +116,10 @@ class Vehicle {
   }
 
   String get label => switch (kind) {
-        VehicleKind.motor => 'Motor',
-        VehicleKind.mobil => 'Mobil',
-        VehicleKind.truk => 'Truk',
-      };
+    VehicleKind.motor => 'Motor',
+    VehicleKind.mobil => 'Mobil',
+    VehicleKind.truk => 'Truk',
+  };
 }
 
 class Booking {
@@ -118,7 +132,7 @@ class Booking {
     required this.entryTime,
     required this.estimatedCost,
     required this.paymentMethod,
-    required this.isPaid,
+    required this.status,
   });
 
   final String ticketNumber;
@@ -129,7 +143,15 @@ class Booking {
   final DateTime entryTime;
   final int estimatedCost;
   final PaymentMethod paymentMethod;
-  final bool isPaid;
+  final BookingStatus status;
+
+  bool get isPaid =>
+      status == BookingStatus.paid ||
+      status == BookingStatus.active ||
+      status == BookingStatus.completed;
+
+  bool get canShowTicket =>
+      status == BookingStatus.paid || status == BookingStatus.active;
 
   Booking copyWith({
     String? ticketNumber,
@@ -140,7 +162,7 @@ class Booking {
     DateTime? entryTime,
     int? estimatedCost,
     PaymentMethod? paymentMethod,
-    bool? isPaid,
+    BookingStatus? status,
   }) {
     return Booking(
       ticketNumber: ticketNumber ?? this.ticketNumber,
@@ -151,7 +173,7 @@ class Booking {
       entryTime: entryTime ?? this.entryTime,
       estimatedCost: estimatedCost ?? this.estimatedCost,
       paymentMethod: paymentMethod ?? this.paymentMethod,
-      isPaid: isPaid ?? this.isPaid,
+      status: status ?? this.status,
     );
   }
 }
@@ -201,11 +223,7 @@ class ParkingSlot {
   final String label;
   final bool isAvailable;
 
-  ParkingSlot copyWith({
-    String? id,
-    String? label,
-    bool? isAvailable,
-  }) {
+  ParkingSlot copyWith({String? id, String? label, bool? isAvailable}) {
     return ParkingSlot(
       id: id ?? this.id,
       label: label ?? this.label,

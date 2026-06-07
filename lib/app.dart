@@ -1,34 +1,34 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'models/app_models.dart';
+import 'widgets/map_embed_view.dart';
 
-final appControllerProvider =
-    StateNotifierProvider<AppController, AppState>((ref) => AppController());
+final appControllerProvider = StateNotifierProvider<AppController, AppState>(
+  (ref) => AppController(),
+);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const SplashScreen(),
-      ),
+      GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingScreen(),
       ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -80,6 +80,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/customer/profile',
         builder: (context, state) => const CustomerProfileScreen(),
+      ),
+      GoRoute(
+        path: '/customer/edit-profile',
+        builder: (context, state) => const CustomerEditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/customer/account-settings',
+        builder: (context, state) => const CustomerAccountSettingsScreen(),
       ),
       GoRoute(
         path: '/customer/parking-detail',
@@ -242,6 +250,15 @@ class AppState {
     required this.userName,
     required this.email,
     required this.phoneNumber,
+    required this.customerName,
+    required this.customerEmail,
+    required this.customerPhone,
+    this.customerAvatarBytes,
+    required this.bookingNotificationEnabled,
+    required this.paymentNotificationEnabled,
+    required this.promoNotificationEnabled,
+    required this.selectedLanguage,
+    required this.accountSecurityEnabled,
     required this.rememberMe,
     required this.passwordResetRequested,
     required this.lots,
@@ -268,6 +285,15 @@ class AppState {
   final String userName;
   final String email;
   final String phoneNumber;
+  final String customerName;
+  final String customerEmail;
+  final String customerPhone;
+  final Uint8List? customerAvatarBytes;
+  final bool bookingNotificationEnabled;
+  final bool paymentNotificationEnabled;
+  final bool promoNotificationEnabled;
+  final String selectedLanguage;
+  final bool accountSecurityEnabled;
   final bool rememberMe;
   final bool passwordResetRequested;
   final List<ParkingLot> lots;
@@ -294,6 +320,16 @@ class AppState {
     String? userName,
     String? email,
     String? phoneNumber,
+    String? customerName,
+    String? customerEmail,
+    String? customerPhone,
+    Uint8List? customerAvatarBytes,
+    bool removeCustomerAvatar = false,
+    bool? bookingNotificationEnabled,
+    bool? paymentNotificationEnabled,
+    bool? promoNotificationEnabled,
+    String? selectedLanguage,
+    bool? accountSecurityEnabled,
     bool? rememberMe,
     bool? passwordResetRequested,
     List<ParkingLot>? lots,
@@ -323,6 +359,21 @@ class AppState {
       userName: userName ?? this.userName,
       email: email ?? this.email,
       phoneNumber: phoneNumber ?? this.phoneNumber,
+      customerName: customerName ?? this.customerName,
+      customerEmail: customerEmail ?? this.customerEmail,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerAvatarBytes: removeCustomerAvatar
+          ? null
+          : (customerAvatarBytes ?? this.customerAvatarBytes),
+      bookingNotificationEnabled:
+          bookingNotificationEnabled ?? this.bookingNotificationEnabled,
+      paymentNotificationEnabled:
+          paymentNotificationEnabled ?? this.paymentNotificationEnabled,
+      promoNotificationEnabled:
+          promoNotificationEnabled ?? this.promoNotificationEnabled,
+      selectedLanguage: selectedLanguage ?? this.selectedLanguage,
+      accountSecurityEnabled:
+          accountSecurityEnabled ?? this.accountSecurityEnabled,
       rememberMe: rememberMe ?? this.rememberMe,
       passwordResetRequested:
           passwordResetRequested ?? this.passwordResetRequested,
@@ -331,7 +382,9 @@ class AppState {
       vehicles: vehicles ?? this.vehicles,
       selectedVehicle: selectedVehicle ?? this.selectedVehicle,
       slots: slots ?? this.slots,
-      activeBooking: clearBooking ? null : (activeBooking ?? this.activeBooking),
+      activeBooking: clearBooking
+          ? null
+          : (activeBooking ?? this.activeBooking),
       reservationLockedUntil:
           reservationLockedUntil ?? this.reservationLockedUntil,
       favoriteLotIds: favoriteLotIds ?? this.favoriteLotIds,
@@ -339,7 +392,9 @@ class AppState {
           ? null
           : (providerApplication ?? this.providerApplication),
       parkingGuards: parkingGuards ?? this.parkingGuards,
-      activeGuardId: clearActiveGuard ? null : (activeGuardId ?? this.activeGuardId),
+      activeGuardId: clearActiveGuard
+          ? null
+          : (activeGuardId ?? this.activeGuardId),
       history: history ?? this.history,
       customerNotifications:
           customerNotifications ?? this.customerNotifications,
@@ -361,11 +416,15 @@ class AppState {
         openHours: '24 Jam',
         rating: 4.9,
         accent: AppTheme.blue,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid',
+        latitude: -6.208714500000001,
+        longitude: 106.82248539999999,
       ),
       ParkingLot(
         id: 'lot-2',
-        name: 'Emerald Smart Parking',
-        address: 'Jl. Thamrin Smart City Blok A',
+        name: 'Mal Ciputra Tangerang',
+        address: 'Jl. Citra Raya Boulevard, Tangerang',
         pricePerHour: 15000,
         availableSlots: 12,
         totalSlots: 70,
@@ -374,11 +433,15 @@ class AppState {
         openHours: '05.00 - 23.30',
         rating: 4.8,
         accent: AppTheme.emerald,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.021363564612!2d106.5250774!3d-6.260916!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e42077a46320d39%3A0x426b60f7dfe14e13!2sMal%20Ciputra%20Tangerang!5e0!3m2!1sid!2sid!4v1780720738829!5m2!1sid!2sid',
+        latitude: -6.260916,
+        longitude: 106.5250774,
       ),
       ParkingLot(
         id: 'lot-3',
         name: 'Citra Mall Parking Hub',
-        address: 'Jl. Gatot Subroto Timur No. 22',
+        address: 'Pusat Bisnis Thamrin City, Jakarta',
         pricePerHour: 10000,
         availableSlots: 0,
         totalSlots: 96,
@@ -387,6 +450,10 @@ class AppState {
         openHours: '08.00 - 22.00',
         rating: 4.7,
         accent: AppTheme.slate,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15866.089919400229!2d106.8179532500215!3d-6.194579097638339!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f69e2ca1776f%3A0x729d6549e71fa7e7!2sPusat%20Bisnis%20Thamrin%20City!5e0!3m2!1sen!2sid!4v1780720526115!5m2!1sen!2sid',
+        latitude: -6.194579097638339,
+        longitude: 106.8179532500215,
       ),
     ];
 
@@ -499,6 +566,15 @@ class AppState {
       userName: 'Dio Pratama',
       email: 'dio@parkircepat.app',
       phoneNumber: '+62 812 7788 9911',
+      customerName: 'Dio Pratama',
+      customerEmail: 'dio@parkircepat.app',
+      customerPhone: '+62 812 7788 9911',
+      customerAvatarBytes: null,
+      bookingNotificationEnabled: true,
+      paymentNotificationEnabled: true,
+      promoNotificationEnabled: false,
+      selectedLanguage: 'Indonesia',
+      accountSecurityEnabled: true,
       rememberMe: true,
       passwordResetRequested: false,
       lots: lots,
@@ -520,18 +596,18 @@ class AppState {
 }
 
 String roleLabel(AccountMode mode) => switch (mode) {
-      AccountMode.superAdmin => 'Super Admin',
-      AccountMode.provider => 'Penyedia Parkir',
-      AccountMode.parkingGuard => 'Penjaga Parkir',
-      AccountMode.customer => 'Pelanggan',
-    };
+  AccountMode.superAdmin => 'Super Admin',
+  AccountMode.provider => 'Penyedia Parkir',
+  AccountMode.parkingGuard => 'Penjaga Parkir',
+  AccountMode.customer => 'Pelanggan',
+};
 
 IconData roleIcon(AccountMode mode) => switch (mode) {
-      AccountMode.superAdmin => Icons.admin_panel_settings_rounded,
-      AccountMode.provider => Icons.apartment_rounded,
-      AccountMode.parkingGuard => Icons.security_rounded,
-      AccountMode.customer => Icons.map_rounded,
-    };
+  AccountMode.superAdmin => Icons.admin_panel_settings_rounded,
+  AccountMode.provider => Icons.apartment_rounded,
+  AccountMode.parkingGuard => Icons.security_rounded,
+  AccountMode.customer => Icons.map_rounded,
+};
 
 ParkingGuardAccount? activeGuard(AppState state) {
   for (final guard in state.parkingGuards) {
@@ -545,12 +621,10 @@ ParkingGuardAccount? activeGuard(AppState state) {
 List<ParkingLot> visibleLotsFor(AppState state) {
   final guard = activeGuard(state);
   return switch (state.currentMode) {
-    AccountMode.parkingGuard when guard != null => state.lots
-        .where((lot) => guard.assignedLotIds.contains(lot.id))
-        .toList(),
-    AccountMode.provider => state.lots
-        .where((lot) => lot.providerId == 'provider-main')
-        .toList(),
+    AccountMode.parkingGuard when guard != null =>
+      state.lots.where((lot) => guard.assignedLotIds.contains(lot.id)).toList(),
+    AccountMode.provider =>
+      state.lots.where((lot) => lot.providerId == 'provider-main').toList(),
     _ => state.lots,
   };
 }
@@ -587,8 +661,8 @@ class AppController extends StateNotifier<AppState> {
   }) {
     final accountStatus = mode == AccountMode.provider
         ? (state.providerApplication == null
-            ? AccountStatus.verified
-            : state.accountStatus)
+              ? AccountStatus.verified
+              : state.accountStatus)
         : AccountStatus.verified;
     final guardId = mode == AccountMode.parkingGuard
         ? (state.activeGuardId ?? state.parkingGuards.first.id)
@@ -598,6 +672,12 @@ class AppController extends StateNotifier<AppState> {
       accountStatus: accountStatus,
       email: email.isEmpty ? state.email : email,
       phoneNumber: phoneNumber.isEmpty ? state.phoneNumber : phoneNumber,
+      customerEmail: mode == AccountMode.customer && email.isNotEmpty
+          ? email
+          : state.customerEmail,
+      customerPhone: mode == AccountMode.customer && phoneNumber.isNotEmpty
+          ? phoneNumber
+          : state.customerPhone,
       isAuthenticated: true,
       rememberMe: rememberMe,
       activeGuardId: guardId,
@@ -616,6 +696,13 @@ class AppController extends StateNotifier<AppState> {
       userName: fullName,
       email: email,
       phoneNumber: phoneNumber,
+      customerName: mode == AccountMode.customer
+          ? fullName
+          : state.customerName,
+      customerEmail: mode == AccountMode.customer ? email : state.customerEmail,
+      customerPhone: mode == AccountMode.customer
+          ? phoneNumber
+          : state.customerPhone,
       currentMode: mode,
       isAuthenticated: true,
       onboardingDone: true,
@@ -680,6 +767,49 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(accountStatus: status);
   }
 
+  void updateCustomerProfile({
+    required String name,
+    required String email,
+    required String phone,
+  }) {
+    state = state.copyWith(
+      userName: state.currentMode == AccountMode.customer
+          ? name
+          : state.userName,
+      email: state.currentMode == AccountMode.customer ? email : state.email,
+      phoneNumber: state.currentMode == AccountMode.customer
+          ? phone
+          : state.phoneNumber,
+      customerName: name,
+      customerEmail: email,
+      customerPhone: phone,
+    );
+  }
+
+  void updateCustomerSettings({
+    required bool bookingNotificationEnabled,
+    required bool paymentNotificationEnabled,
+    required bool promoNotificationEnabled,
+    required String selectedLanguage,
+    required bool accountSecurityEnabled,
+  }) {
+    state = state.copyWith(
+      bookingNotificationEnabled: bookingNotificationEnabled,
+      paymentNotificationEnabled: paymentNotificationEnabled,
+      promoNotificationEnabled: promoNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+  }
+
+  void updateCustomerAvatar(Uint8List bytes) {
+    state = state.copyWith(customerAvatarBytes: bytes);
+  }
+
+  void removeCustomerAvatar() {
+    state = state.copyWith(removeCustomerAvatar: true);
+  }
+
   void selectLot(ParkingLot lot) {
     state = state.copyWith(selectedLot: lot);
   }
@@ -702,11 +832,11 @@ class AppController extends StateNotifier<AppState> {
       openHours: '24 Jam',
       rating: 4.8,
       accent: AppTheme.emerald,
+      mapEmbedUrl: '',
+      latitude: -6.2,
+      longitude: 106.8,
     );
-    state = state.copyWith(
-      lots: [lot, ...state.lots],
-      selectedLot: lot,
-    );
+    state = state.copyWith(lots: [lot, ...state.lots], selectedLot: lot);
   }
 
   void toggleFavoriteLot(String lotId) {
@@ -738,10 +868,7 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void createBooking({
-    required String slotCode,
-    required DateTime entryTime,
-  }) {
+  void createBooking({required String slotCode, required DateTime entryTime}) {
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
     final total = lot.pricePerHour * vehicle.durationHours;
@@ -754,15 +881,12 @@ class AppController extends StateNotifier<AppState> {
       entryTime: entryTime,
       estimatedCost: total,
       paymentMethod: PaymentMethod.qris,
-      isPaid: false,
+      status: BookingStatus.pendingPayment,
     );
 
     final updatedSlots = [
       for (final slot in state.slots)
-        if (slot.label == slotCode)
-          slot.copyWith(isAvailable: false)
-        else
-          slot,
+        if (slot.label == slotCode) slot.copyWith(isAvailable: false) else slot,
     ];
 
     state = state.copyWith(
@@ -772,10 +896,11 @@ class AppController extends StateNotifier<AppState> {
       customerNotifications: [
         NoticeItem(
           title: 'Booking berhasil',
-          message: 'Slot $slotCode di ${lot.name} siap digunakan.',
+          message:
+              'Slot $slotCode di ${lot.name} menunggu pembayaran sebelum tiket aktif.',
           timeLabel: 'Baru saja',
           icon: Icons.local_parking_rounded,
-          accent: AppTheme.emerald,
+          accent: AppTheme.blue,
         ),
         ...state.customerNotifications,
       ],
@@ -799,7 +924,7 @@ class AppController extends StateNotifier<AppState> {
     }
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
-      isPaid: true,
+      status: BookingStatus.paid,
     );
     final transaction = TransactionRecord(
       id: booking.ticketNumber,
@@ -895,7 +1020,8 @@ class AppController extends StateNotifier<AppState> {
       vehicles: updatedVehicles,
       selectedVehicle: updatedVehicle,
       activeBooking: booking.copyWith(
-        estimatedCost: booking.estimatedCost + (lot.pricePerHour * additionalHours),
+        estimatedCost:
+            booking.estimatedCost + (lot.pricePerHour * additionalHours),
       ),
       customerNotifications: [
         NoticeItem(
@@ -933,10 +1059,9 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.poppinsTextTheme(base.textTheme).apply(
-        bodyColor: ink,
-        displayColor: ink,
-      ),
+      textTheme: GoogleFonts.poppinsTextTheme(
+        base.textTheme,
+      ).apply(bodyColor: ink, displayColor: ink),
       appBarTheme: AppBarTheme(
         backgroundColor: white,
         foregroundColor: ink,
@@ -971,9 +1096,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: white,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       ),
     );
   }
@@ -999,6 +1122,14 @@ String formatDuration(Duration duration) {
   }
   return '${remainMinutes}m';
 }
+
+String _bookingStatusLabel(BookingStatus status) => switch (status) {
+  BookingStatus.pendingPayment => 'Menunggu Pembayaran',
+  BookingStatus.paid => 'Lunas',
+  BookingStatus.active => 'Aktif',
+  BookingStatus.completed => 'Selesai',
+  BookingStatus.cancelled => 'Dibatalkan',
+};
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -1060,7 +1191,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                     gradient: const LinearGradient(
                       colors: [AppTheme.blue, AppTheme.emerald],
                     ),
-                    boxShadow: [softShadow(AppTheme.blue.withValues(alpha: 0.2))],
+                    boxShadow: [
+                      softShadow(AppTheme.blue.withValues(alpha: 0.2)),
+                    ],
                   ),
                   child: const Icon(
                     Icons.local_parking_rounded,
@@ -1072,16 +1205,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 Text(
                   'Parkir Cepat',
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   'Smart parking futuristik untuk kota modern.',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 30),
                 const SmartCityIllustration(height: 170),
@@ -1172,8 +1305,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: PageView.builder(
                   controller: _controller,
                   itemCount: _items.length,
-                  onPageChanged:
-                      ref.read(appControllerProvider.notifier).setOnboardingPage,
+                  onPageChanged: ref
+                      .read(appControllerProvider.notifier)
+                      .setOnboardingPage,
                   itemBuilder: (context, index) {
                     final item = _items[index];
                     return Column(
@@ -1188,20 +1322,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         Text(
                           item.title,
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 14),
                         Text(
                           item.body,
                           textAlign: TextAlign.center,
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: AppTheme.slate,
-                                    height: 1.5,
-                                  ),
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: AppTheme.slate, height: 1.5),
                         ),
                       ],
                     );
@@ -1302,9 +1431,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             alignment: Alignment.centerLeft,
             child: Text(
               'Masuk sebagai',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 14),
@@ -1404,12 +1533,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _nameController = TextEditingController(text: 'Dio Pratama');
     _emailController = TextEditingController(text: 'dio@parkircepat.app');
     _phoneController = TextEditingController(text: '+62 812 7788 9911');
-    _parkingNameController = TextEditingController(text: 'Parkir Cepat Sudirman Hub');
-    _parkingAddressController =
-        TextEditingController(text: 'Jl. Sudirman Smart Gate Kav. 18');
-    _parkingPhotoController = TextEditingController(text: 'lahan_parkir_sudirman.jpg');
-    _locationPointController =
-        TextEditingController(text: 'Lat -6.2088, Lng 106.8456');
+    _parkingNameController = TextEditingController(
+      text: 'Parkir Cepat Sudirman Hub',
+    );
+    _parkingAddressController = TextEditingController(
+      text: 'Jl. Sudirman Smart Gate Kav. 18',
+    );
+    _parkingPhotoController = TextEditingController(
+      text: 'lahan_parkir_sudirman.jpg',
+    );
+    _locationPointController = TextEditingController(
+      text: 'Lat -6.2088, Lng 106.8456',
+    );
     _identityController = TextEditingController(text: 'ktp_provider_dio.png');
   }
 
@@ -1477,9 +1612,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             alignment: Alignment.centerLeft,
             child: Text(
               'Daftar sebagai',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 14),
@@ -1497,16 +1632,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   Text(
                     'Data verifikasi penyedia',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Akun penyedia akan masuk status pending verification sampai admin meninjau data lahan dan identitas.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.slate,
-                          height: 1.45,
-                        ),
+                      color: AppTheme.slate,
+                      height: 1.45,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -1533,7 +1668,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const ParkingMapPlaceholder(title: 'Pilih titik lokasi pada map'),
+                  const ParkingMapPlaceholder(
+                    title: 'Pilih titik lokasi pada map',
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _locationPointController,
@@ -1550,7 +1687,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     max: 300,
                     divisions: 28,
                     display: '${_providerCapacity.toInt()} slot',
-                    onChanged: (value) => setState(() => _providerCapacity = value),
+                    onChanged: (value) =>
+                        setState(() => _providerCapacity = value),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -1603,7 +1741,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       identityLabel: _identityController.text,
                     )
                   : null;
-              ref.read(appControllerProvider.notifier).register(
+              ref
+                  .read(appControllerProvider.notifier)
+                  .register(
                     fullName: _nameController.text,
                     email: _emailController.text,
                     phoneNumber: _phoneController.text,
@@ -1620,7 +1760,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 );
               }
               final controller = ref.read(appControllerProvider.notifier);
-              context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+              context.go(
+                controller.landingRouteFor(ref.read(appControllerProvider)),
+              );
             },
           ),
         ],
@@ -1644,7 +1786,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Reset password',
-      subtitle: 'Verifikasi akun dengan email atau nomor HP lalu atur ulang password.',
+      subtitle:
+          'Verifikasi akun dengan email atau nomor HP lalu atur ulang password.',
       child: Column(
         children: [
           const TextField(
@@ -1719,17 +1862,17 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 const SizedBox(height: 18),
                 Text(
                   'Konfirmasi hapus akun permanen',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   'Tindakan ini akan menghapus data profil, kendaraan, tiket aktif, dan riwayat transaksi yang terhubung dengan akun Anda.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                        height: 1.5,
-                      ),
+                    color: AppTheme.slate,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 const TextField(
@@ -1754,7 +1897,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                   color: const Color(0xFFDC2626),
                   onPressed: _agree
                       ? () {
-                          ref.read(appControllerProvider.notifier).deleteAccount();
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .deleteAccount();
                           context.go('/login');
                         }
                       : null,
@@ -1800,33 +1945,45 @@ class ProviderVerificationScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Text(
                   'Akun penyedia ${state.userName}',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   status == AccountStatus.pending
                       ? 'Akun penyedia sedang menunggu verifikasi admin.'
                       : status == AccountStatus.verified
-                          ? 'Akun sudah diverifikasi dan siap mengelola dashboard admin.'
-                          : 'Pengajuan provider perlu diperbarui sebelum diverifikasi.',
+                      ? 'Akun sudah diverifikasi dan siap mengelola dashboard admin.'
+                      : 'Pengajuan provider perlu diperbarui sebelum diverifikasi.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                        height: 1.5,
-                      ),
+                    color: AppTheme.slate,
+                    height: 1.5,
+                  ),
                 ),
                 if (application != null) ...[
                   const SizedBox(height: 18),
-                  SummaryRow(label: 'Tempat parkir', value: application.parkingName),
+                  SummaryRow(
+                    label: 'Tempat parkir',
+                    value: application.parkingName,
+                  ),
                   SummaryRow(label: 'Alamat lahan', value: application.address),
-                  SummaryRow(label: 'Titik lokasi', value: application.locationLabel),
+                  SummaryRow(
+                    label: 'Titik lokasi',
+                    value: application.locationLabel,
+                  ),
                   SummaryRow(
                     label: 'Kapasitas kendaraan',
                     value: '${application.capacity} slot',
                   ),
-                  SummaryRow(label: 'Foto lahan', value: application.photoLabel),
-                  SummaryRow(label: 'Verifikasi identitas', value: application.identityLabel),
+                  SummaryRow(
+                    label: 'Foto lahan',
+                    value: application.photoLabel,
+                  ),
+                  SummaryRow(
+                    label: 'Verifikasi identitas',
+                    value: application.identityLabel,
+                  ),
                 ],
                 const SizedBox(height: 22),
                 if (status == AccountStatus.pending)
@@ -1891,8 +2048,11 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final pendingProviders =
-        state.providerApplication == null ? 0 : state.accountStatus == AccountStatus.pending ? 1 : 0;
+    final pendingProviders = state.providerApplication == null
+        ? 0
+        : state.accountStatus == AccountStatus.pending
+        ? 1
+        : 0;
     return SuperAdminShell(
       currentIndex: 0,
       child: ListView(
@@ -1916,7 +2076,8 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
               ),
               StatCard(
                 label: 'Penyedia',
-                value: '${state.lots.map((lot) => lot.providerId).toSet().length}',
+                value:
+                    '${state.lots.map((lot) => lot.providerId).toSet().length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
               ),
@@ -1944,8 +2105,14 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           PremiumCard(
             child: Column(
               children: [
-                SummaryRow(label: 'Total transaksi', value: '${state.history.length}'),
-                SummaryRow(label: 'Lokasi parkir aktif', value: '${state.lots.length}'),
+                SummaryRow(
+                  label: 'Total transaksi',
+                  value: '${state.history.length}',
+                ),
+                SummaryRow(
+                  label: 'Lokasi parkir aktif',
+                  value: '${state.lots.length}',
+                ),
                 SummaryRow(
                   label: 'Kendaraan aktif',
                   value: state.activeBooking == null ? '0' : '1',
@@ -1984,7 +2151,9 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                 accent: AppTheme.blueSoft,
                 onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Akun bermasalah ditandai untuk review.')),
+                    const SnackBar(
+                      content: Text('Akun bermasalah ditandai untuk review.'),
+                    ),
                   );
                 },
               ),
@@ -2009,28 +2178,32 @@ class SuperAdminUsersScreen extends ConsumerWidget {
         children: [
           const HeaderSection(
             title: 'Pengguna aplikasi',
-            subtitle: 'Verifikasi penyedia, pelanggan, penjaga, dan akun bermasalah.',
+            subtitle:
+                'Verifikasi penyedia, pelanggan, penjaga, dan akun bermasalah.',
           ),
           const SizedBox(height: 18),
           MiniInfoTile(
             icon: Icons.apartment_rounded,
             iconColor: AppTheme.emerald,
             title: 'Penyedia Parkir',
-            subtitle: '${state.lots.length} lokasi, status ${roleLabel(AccountMode.provider)} aktif',
+            subtitle:
+                '${state.lots.length} lokasi, status ${roleLabel(AccountMode.provider)} aktif',
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
             icon: Icons.security_rounded,
             iconColor: const Color(0xFFD97706),
             title: 'Penjaga Parkir',
-            subtitle: '${state.parkingGuards.length} akun terdaftar dari penyedia',
+            subtitle:
+                '${state.parkingGuards.length} akun terdaftar dari penyedia',
           ),
           const SizedBox(height: 12),
           const MiniInfoTile(
             icon: Icons.person_rounded,
             iconColor: AppTheme.blue,
             title: 'Pelanggan',
-            subtitle: 'Register, login, kendaraan, tiket, dan rating/review terpantau.',
+            subtitle:
+                'Register, login, kendaraan, tiket, dan rating/review terpantau.',
           ),
         ],
       ),
@@ -2054,9 +2227,7 @@ class SuperAdminReportsScreen extends ConsumerWidget {
             subtitle: 'Transaksi dan performa seluruh lokasi parkir.',
           ),
           const SizedBox(height: 18),
-          PremiumCard(
-            child: SizedBox(height: 220, child: RevenueChart()),
-          ),
+          PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
           const SizedBox(height: 18),
           ...state.history.map(
             (item) => Padding(
@@ -2065,7 +2236,8 @@ class SuperAdminReportsScreen extends ConsumerWidget {
                 icon: Icons.receipt_long_rounded,
                 iconColor: AppTheme.emerald,
                 title: item.id,
-                subtitle: '${item.locationName} - ${formatCurrency(item.total)}',
+                subtitle:
+                    '${item.locationName} - ${formatCurrency(item.total)}',
               ),
             ),
           ),
@@ -2084,11 +2256,13 @@ class SuperAdminComplaintsScreen extends StatelessWidget {
       currentIndex: 3,
       child: NotificationsList(
         title: 'Komplain pengguna',
-        subtitle: 'Antrian komplain pelanggan, penyedia, dan penjaga untuk ditangani.',
+        subtitle:
+            'Antrian komplain pelanggan, penyedia, dan penjaga untuk ditangani.',
         items: [
           NoticeItem(
             title: 'Pembayaran tunai belum dikonfirmasi',
-            message: 'Pelanggan meminta verifikasi manual dari lokasi Sudirman.',
+            message:
+                'Pelanggan meminta verifikasi manual dari lokasi Sudirman.',
             timeLabel: '8 menit lalu',
             icon: Icons.support_agent_rounded,
             accent: AppTheme.blue,
@@ -2112,6 +2286,16 @@ class CustomerHomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    void openLotDetail(ParkingLot lot) {
+      ref.read(appControllerProvider.notifier).selectLot(lot);
+      context.push('/customer/parking-detail');
+    }
+
+    void startBooking(ParkingLot lot) {
+      ref.read(appControllerProvider.notifier).selectLot(lot);
+      context.push('/customer/booking');
+    }
+
     final cheapestLot = state.lots.reduce(
       (a, b) => a.pricePerHour <= b.pricePerHour ? a : b,
     );
@@ -2128,7 +2312,7 @@ class CustomerHomeScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.blue,
         foregroundColor: Colors.white,
-        onPressed: () => context.push('/customer/booking'),
+        onPressed: () => startBooking(state.selectedLot ?? nearestLot),
         icon: const Icon(Icons.flash_on_rounded),
         label: const Text('Booking cepat'),
       ),
@@ -2149,7 +2333,8 @@ class CustomerHomeScreen extends ConsumerWidget {
           const SizedBox(height: 18),
           HeroBanner(
             title: 'Parkir premium lebih cepat',
-            body: 'Akses rekomendasi slot terbaik dengan status realtime dan navigasi instan.',
+            body:
+                'Akses rekomendasi slot terbaik dengan status realtime dan navigasi instan.',
             accent: AppTheme.blue,
             actionLabel: 'Lihat peta',
             onPressed: () => context.go('/customer/map'),
@@ -2164,9 +2349,11 @@ class CustomerHomeScreen extends ConsumerWidget {
               AiRecommendationCard(
                 title: 'Terdekat',
                 subtitle: nearestLot.name,
-                detail: '${nearestLot.distanceKm} km • ${nearestLot.etaMinutes} menit',
+                detail:
+                    '${nearestLot.distanceKm} km • ${nearestLot.etaMinutes} menit',
                 accent: AppTheme.blueSoft,
                 icon: Icons.near_me_rounded,
+                onTap: () => openLotDetail(nearestLot),
               ),
               AiRecommendationCard(
                 title: 'Termurah',
@@ -2174,6 +2361,7 @@ class CustomerHomeScreen extends ConsumerWidget {
                 detail: '${formatCurrency(cheapestLot.pricePerHour)}/jam',
                 accent: AppTheme.emeraldSoft,
                 icon: Icons.sell_rounded,
+                onTap: () => openLotDetail(cheapestLot),
               ),
               AiRecommendationCard(
                 title: 'Tidak ramai',
@@ -2182,6 +2370,7 @@ class CustomerHomeScreen extends ConsumerWidget {
                     '${leastBusyLot.availableSlots}/${leastBusyLot.totalSlots} slot siap',
                 accent: AppTheme.blueSoft,
                 icon: Icons.psychology_alt_rounded,
+                onTap: () => openLotDetail(leastBusyLot),
               ),
             ],
           ),
@@ -2201,14 +2390,8 @@ class CustomerHomeScreen extends ConsumerWidget {
                 onToggleFavorite: () => ref
                     .read(appControllerProvider.notifier)
                     .toggleFavoriteLot(lot.id),
-                onDetail: () {
-                  ref.read(appControllerProvider.notifier).selectLot(lot);
-                  context.push('/customer/parking-detail');
-                },
-                onBooking: () {
-                  ref.read(appControllerProvider.notifier).selectLot(lot);
-                  context.push('/customer/booking');
-                },
+                onDetail: () => openLotDetail(lot),
+                onBooking: () => startBooking(lot),
               ),
             ),
           ),
@@ -2221,9 +2404,9 @@ class CustomerHomeScreen extends ConsumerWidget {
               children: [
                 Text(
                   'Warna hijau = tersedia, merah = penuh',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -2244,10 +2427,8 @@ class CustomerHomeScreen extends ConsumerWidget {
                         children: [
                           Text(
                             slot.label,
-                            style:
-                                Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 4),
                           Icon(Icons.circle, size: 12, color: color),
@@ -2268,7 +2449,10 @@ class CustomerHomeScreen extends ConsumerWidget {
             child: Row(
               children: [
                 const Expanded(
-                  child: SmartCityIllustration(height: 130, accent: AppTheme.emerald),
+                  child: SmartCityIllustration(
+                    height: 130,
+                    accent: AppTheme.emerald,
+                  ),
                 ),
                 const SizedBox(width: 18),
                 Expanded(
@@ -2277,17 +2461,16 @@ class CustomerHomeScreen extends ConsumerWidget {
                     children: [
                       Text(
                         'Auto entry lane',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 10),
                       Text(
                         'Masuk parkir cukup scan QR digital tanpa antre panjang.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.slate,
-                              height: 1.5,
-                            ),
+                          color: AppTheme.slate,
+                          height: 1.5,
+                        ),
                       ),
                     ],
                   ),
@@ -2327,15 +2510,11 @@ class CustomerMapScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    final selectedLot = state.lots.any((lot) => lot.id == state.selectedLot?.id)
+        ? state.selectedLot!
+        : state.lots.first;
     return CustomerShell(
       currentIndex: 1,
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.emerald,
-        foregroundColor: Colors.white,
-        onPressed: () => context.push('/customer/booking'),
-        icon: const Icon(Icons.book_online_rounded),
-        label: const Text('Booking'),
-      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -2344,21 +2523,27 @@ class CustomerMapScreen extends ConsumerWidget {
             subtitle: 'Marker realtime, radius terdekat, dan ETA perjalanan.',
           ),
           const SizedBox(height: 18),
-          ParkingMapCard(
-            lots: state.lots,
-            selected: state.selectedLot,
-            onSelect: (lot) => ref.read(appControllerProvider.notifier).selectLot(lot),
+          MapEmbedView(
+            key: ValueKey(selectedLot.id),
+            title: selectedLot.name,
+            embedUrl: selectedLot.mapEmbedUrl,
+            latitude: selectedLot.latitude,
+            longitude: selectedLot.longitude,
+            height: 320,
           ),
           const SizedBox(height: 20),
+          SectionTitle(title: 'Daftar lokasi parkir'),
+          const SizedBox(height: 12),
           ...state.lots.map(
             (lot) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: MiniInfoTile(
-                icon: Icons.near_me_rounded,
-                iconColor: lot.accent,
-                title: '${lot.name} • ${lot.distanceKm} km',
-                subtitle: 'ETA ${lot.etaMinutes} menit • ${lot.availableSlots}/${lot.totalSlots} slot',
+              child: _CustomerMapLotCard(
+                lot: lot,
+                selected: lot.id == selectedLot.id,
                 onTap: () {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                },
+                onDetail: () {
                   ref.read(appControllerProvider.notifier).selectLot(lot);
                   context.push('/customer/parking-detail');
                 },
@@ -2366,6 +2551,69 @@ class CustomerMapScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CustomerMapLotCard extends StatelessWidget {
+  const _CustomerMapLotCard({
+    required this.lot,
+    required this.selected,
+    required this.onTap,
+    required this.onDetail,
+  });
+
+  final ParkingLot lot;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: PremiumCard(
+        accent: selected ? AppTheme.blueSoft : null,
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: lot.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Icon(Icons.near_me_rounded, color: lot.accent),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    lot.name,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: selected ? AppTheme.blue : AppTheme.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'ETA ${lot.etaMinutes} menit • ${lot.availableSlots}/${lot.totalSlots} slot • ${lot.distanceKm} km',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.slate,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            TextButton(onPressed: onDetail, child: const Text('Detail')),
+          ],
+        ),
       ),
     );
   }
@@ -2396,13 +2644,27 @@ class ParkingDetailScreen extends ConsumerWidget {
                       top: Radius.circular(28),
                     ),
                     gradient: LinearGradient(
-                      colors: [lot.accent.withValues(alpha: 0.9), AppTheme.white],
+                      colors: [
+                        lot.accent.withValues(alpha: 0.9),
+                        AppTheme.white,
+                      ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                   ),
                   child: const Center(
                     child: SmartCityIllustration(height: 160),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: MapEmbedView(
+                    key: ValueKey(lot.id),
+                    title: lot.name,
+                    embedUrl: lot.mapEmbedUrl,
+                    latitude: lot.latitude,
+                    longitude: lot.longitude,
+                    height: 230,
                   ),
                 ),
                 Padding(
@@ -2413,8 +2675,8 @@ class ParkingDetailScreen extends ConsumerWidget {
                       Text(
                         lot.name,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextButton.icon(
@@ -2438,9 +2700,44 @@ class ParkingDetailScreen extends ConsumerWidget {
                       const SizedBox(height: 8),
                       Text(
                         lot.address,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.slate,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                      ),
+                      const SizedBox(height: 18),
+                      PremiumCard(
+                        accent: AppTheme.slateSoft,
+                        child: Column(
+                          children: [
+                            SummaryRow(label: 'Nama lokasi', value: lot.name),
+                            SummaryRow(label: 'Alamat', value: lot.address),
+                            SummaryRow(
+                              label: 'Jarak',
+                              value: '${lot.distanceKm} km',
                             ),
+                            SummaryRow(
+                              label: 'Slot tersedia',
+                              value: '${lot.availableSlots} slot',
+                              valueColor: lot.isFull
+                                  ? AppTheme.slate
+                                  : AppTheme.emerald,
+                            ),
+                            SummaryRow(
+                              label: 'Total slot',
+                              value: '${lot.totalSlots} slot',
+                            ),
+                            SummaryRow(
+                              label: 'Tarif per jam',
+                              value: formatCurrency(lot.pricePerHour),
+                              valueColor: AppTheme.blue,
+                            ),
+                            SummaryRow(
+                              label: 'Rating',
+                              value: '${lot.rating} / 5',
+                            ),
+                            SummaryRow(label: 'Jam buka', value: lot.openHours),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 18),
                       Wrap(
@@ -2467,9 +2764,16 @@ class ParkingDetailScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 22),
                       PrimaryButton(
-                        label: 'Booking parkir',
+                        label: 'Booking Sekarang',
                         icon: Icons.book_online_rounded,
-                        onPressed: () => context.push('/customer/booking'),
+                        onPressed: lot.isFull
+                            ? null
+                            : () {
+                                ref
+                                    .read(appControllerProvider.notifier)
+                                    .selectLot(lot);
+                                context.push('/customer/booking');
+                              },
                       ),
                     ],
                   ),
@@ -2573,7 +2877,9 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   label: 'Simpan kendaraan',
                   icon: Icons.save_rounded,
                   onPressed: () {
-                    ref.read(appControllerProvider.notifier).saveVehicle(
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .saveVehicle(
                           plateNumber: _plateController.text,
                           kind: _kind,
                           quantity: _quantity.toInt(),
@@ -2629,16 +2935,16 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
               children: [
                 Text(
                   lot.name,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   '${vehicle.plateNumber} • ${vehicle.label} • ${vehicle.durationHours} jam',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 18),
                 const InlineNotice(
@@ -2651,8 +2957,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 Text(
                   'Pilih slot parkir',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -2672,24 +2978,22 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                           color: !slot.isAvailable
                               ? AppTheme.slate.withValues(alpha: 0.08)
                               : selected
-                                  ? AppTheme.blue
-                                  : AppTheme.white,
+                              ? AppTheme.blue
+                              : AppTheme.white,
                           borderRadius: BorderRadius.circular(22),
                           border: Border.all(
                             color: selected
                                 ? AppTheme.blue
                                 : slot.isAvailable
-                                    ? AppTheme.blue.withValues(alpha: 0.15)
-                                    : AppTheme.slate.withValues(alpha: 0.15),
+                                ? AppTheme.blue.withValues(alpha: 0.15)
+                                : AppTheme.slate.withValues(alpha: 0.15),
                           ),
                         ),
                         child: Column(
                           children: [
                             Text(
                               slot.label,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
+                              style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(
                                     color: selected
                                         ? Colors.white
@@ -2700,12 +3004,13 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                             const SizedBox(height: 6),
                             Text(
                               slot.isAvailable ? 'Ready' : 'Full',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
                                     color: selected
                                         ? Colors.white
                                         : slot.isAvailable
-                                            ? AppTheme.emerald
-                                            : AppTheme.slate,
+                                        ? AppTheme.emerald
+                                        : AppTheme.slate,
                                   ),
                             ),
                           ],
@@ -2721,15 +3026,26 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   title: 'Waktu masuk',
                   subtitle: formatDateTime(_entryTime),
                   onTap: () => setState(
-                    () => _entryTime = _entryTime.add(const Duration(minutes: 30)),
+                    () => _entryTime = _entryTime.add(
+                      const Duration(minutes: 30),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                SummaryRow(label: 'Estimasi biaya', value: formatCurrency(total)),
+                SummaryRow(
+                  label: 'Estimasi biaya',
+                  value: formatCurrency(total),
+                ),
                 const SizedBox(height: 8),
-                SummaryRow(label: 'Durasi', value: '${vehicle.durationHours} jam'),
+                SummaryRow(
+                  label: 'Durasi',
+                  value: '${vehicle.durationHours} jam',
+                ),
                 const SizedBox(height: 8),
-                SummaryRow(label: 'Ringkasan', value: '${vehicle.label} • ${vehicle.plateNumber}'),
+                SummaryRow(
+                  label: 'Ringkasan',
+                  value: '${vehicle.label} • ${vehicle.plateNumber}',
+                ),
                 const SizedBox(height: 22),
                 PrimaryButton(
                   label: 'Konfirmasi booking',
@@ -2737,11 +3053,13 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   onPressed: _selectedSlot == null
                       ? null
                       : () {
-                          ref.read(appControllerProvider.notifier).createBooking(
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .createBooking(
                                 slotCode: _selectedSlot!,
                                 entryTime: _entryTime,
                               );
-                          context.push('/customer/tickets');
+                          context.go('/customer/payment');
                         },
                 ),
               ],
@@ -2760,8 +3078,9 @@ class CustomerTicketScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
     final booking = state.activeBooking;
-    final reservationLeft =
-        state.reservationLockedUntil?.difference(DateTime.now());
+    final reservationLeft = state.reservationLockedUntil?.difference(
+      DateTime.now(),
+    );
     return CustomerShell(
       currentIndex: 2,
       child: ListView(
@@ -2769,15 +3088,22 @@ class CustomerTicketScreen extends ConsumerWidget {
         children: [
           const HeaderSection(
             title: 'Tiket digital',
-            subtitle: 'Gunakan QR ini untuk masuk, bayar, dan verifikasi cepat.',
+            subtitle:
+                'Gunakan QR ini untuk masuk, bayar, dan verifikasi cepat.',
           ),
           const SizedBox(height: 18),
-          if (booking == null)
+          if (booking == null || !booking.canShowTicket)
             EmptyStateCard(
               title: 'Belum ada tiket aktif',
-              body: 'Mulai booking dari dashboard atau peta untuk membuat karcis digital.',
-              actionLabel: 'Booking sekarang',
-              onPressed: () => context.push('/customer/booking'),
+              body: booking == null
+                  ? 'Mulai booking dari halaman Home untuk membuat tiket digital.'
+                  : 'Selesaikan pembayaran terlebih dahulu agar tiket QR aktif.',
+              actionLabel: booking == null
+                  ? 'Kembali ke Home'
+                  : 'Selesaikan pembayaran',
+              onPressed: () => booking == null
+                  ? context.go('/customer/home')
+                  : context.go('/customer/payment'),
             )
           else
             PremiumCard(
@@ -2803,14 +3129,26 @@ class CustomerTicketScreen extends ConsumerWidget {
                   Text(
                     booking.ticketNumber,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  SummaryRow(label: 'Plat kendaraan', value: booking.plateNumber),
-                  SummaryRow(label: 'Jenis kendaraan', value: booking.vehicleLabel),
-                  SummaryRow(label: 'Lokasi parkir', value: booking.locationName),
-                  SummaryRow(label: 'Waktu masuk', value: formatDateTime(booking.entryTime)),
+                  SummaryRow(
+                    label: 'Plat kendaraan',
+                    value: booking.plateNumber,
+                  ),
+                  SummaryRow(
+                    label: 'Jenis kendaraan',
+                    value: booking.vehicleLabel,
+                  ),
+                  SummaryRow(
+                    label: 'Lokasi parkir',
+                    value: booking.locationName,
+                  ),
+                  SummaryRow(
+                    label: 'Waktu masuk',
+                    value: formatDateTime(booking.entryTime),
+                  ),
                   if (reservationLeft != null)
                     SummaryRow(
                       label: 'Countdown reservasi',
@@ -2818,9 +3156,9 @@ class CustomerTicketScreen extends ConsumerWidget {
                       valueColor: AppTheme.blue,
                     ),
                   SummaryRow(
-                    label: 'Status pembayaran',
-                    value: booking.isPaid ? 'Lunas' : 'Menunggu',
-                    valueColor: booking.isPaid ? AppTheme.emerald : AppTheme.blue,
+                    label: 'Status booking',
+                    value: _bookingStatusLabel(booking.status),
+                    valueColor: AppTheme.emerald,
                   ),
                   const SizedBox(height: 22),
                   Row(
@@ -2846,12 +3184,15 @@ class CustomerTicketScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   PrimaryButton(
-                    label: booking.isPaid ? 'QR sudah aktif' : 'Scan pembayaran',
+                    label: booking.isPaid
+                        ? 'QR sudah aktif'
+                        : 'Scan pembayaran',
                     icon: booking.isPaid
                         ? Icons.verified_rounded
                         : Icons.qr_code_scanner_rounded,
-                    onPressed:
-                        booking.isPaid ? null : () => context.push('/customer/payment'),
+                    onPressed: booking.isPaid
+                        ? null
+                        : () => context.push('/customer/payment'),
                   ),
                 ],
               ),
@@ -2871,20 +3212,158 @@ class PaymentScreen extends ConsumerStatefulWidget {
 
 class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod _method = PaymentMethod.qris;
+  String _wallet = 'GoPay';
+  late final TextEditingController _walletPhoneController;
+  late final TextEditingController _cardNumberController;
+  late final TextEditingController _cardNameController;
+  late final TextEditingController _cardExpiryController;
+  late final TextEditingController _cardCvvController;
+  String? _paymentError;
+
+  @override
+  void initState() {
+    super.initState();
+    _walletPhoneController = TextEditingController();
+    _cardNumberController = TextEditingController();
+    _cardNameController = TextEditingController();
+    _cardExpiryController = TextEditingController();
+    _cardCvvController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _walletPhoneController.dispose();
+    _cardNumberController.dispose();
+    _cardNameController.dispose();
+    _cardExpiryController.dispose();
+    _cardCvvController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _completePayment(Booking booking) async {
+    ref.read(appControllerProvider.notifier).payBooking(_method);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _PaymentSuccessDialog(
+        ticketNumber: booking.ticketNumber,
+        total: booking.estimatedCost,
+        method: _method,
+      ),
+    );
+  }
+
+  Future<void> _payWithEWallet(Booking booking) async {
+    final phone = _walletPhoneController.text.trim();
+    if (phone.length < 9) {
+      setState(() => _paymentError = 'Nomor HP E-Wallet minimal 9 digit.');
+      return;
+    }
+    setState(() => _paymentError = null);
+    await _completePayment(booking);
+  }
+
+  Future<void> _payWithCard(Booking booking) async {
+    final cardNumber = _cardNumberController.text.replaceAll(' ', '');
+    final isValid =
+        cardNumber.length >= 12 &&
+        _cardNameController.text.trim().isNotEmpty &&
+        _cardExpiryController.text.trim().length >= 5 &&
+        _cardCvvController.text.trim().length >= 3;
+    if (!isValid) {
+      setState(() => _paymentError = 'Lengkapi data kartu dengan benar.');
+      return;
+    }
+    setState(() => _paymentError = null);
+    await _completePayment(booking);
+  }
+
+  void _useDemoCard() {
+    setState(() {
+      _paymentError = null;
+      _cardNumberController.text = '4111111111111111';
+      _cardNameController.text = 'Dio Pratama';
+      _cardExpiryController.text = '12/30';
+      _cardCvvController.text = '123';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final booking = ref.watch(appControllerProvider).activeBooking;
+    final state = ref.watch(appControllerProvider);
+    final booking = state.activeBooking;
     if (booking == null) {
       return const Scaffold(
         body: Center(child: Text('Tidak ada booking aktif.')),
       );
     }
+    final isPayable = booking.status == BookingStatus.pendingPayment;
     return Scaffold(
       appBar: AppBar(title: const Text('Pembayaran parkir')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          PremiumCard(
+            accent: AppTheme.blueSoft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Icon(
+                        Icons.receipt_long_rounded,
+                        color: AppTheme.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ringkasan Booking',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _bookingStatusLabel(booking.status),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.blue),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SummaryRow(label: 'Nama lokasi', value: booking.locationName),
+                SummaryRow(label: 'Slot', value: booking.slotCode),
+                SummaryRow(label: 'Plat kendaraan', value: booking.plateNumber),
+                SummaryRow(
+                  label: 'Jenis kendaraan',
+                  value: booking.vehicleLabel,
+                ),
+                SummaryRow(
+                  label: 'Durasi',
+                  value: '${_durationHoursFor(state, booking)} jam',
+                ),
+                SummaryRow(
+                  label: 'Total pembayaran',
+                  value: formatCurrency(booking.estimatedCost),
+                  valueColor: AppTheme.blue,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
           PremiumCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2892,36 +3371,50 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 Text(
                   'Metode pembayaran',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 SegmentedChoice<PaymentMethod>(
                   items: const [
-                    ChoiceItem(value: PaymentMethod.qris, label: 'QRIS', icon: Icons.qr_code_rounded),
-                    ChoiceItem(value: PaymentMethod.ewallet, label: 'E-wallet', icon: Icons.account_balance_wallet_rounded),
-                    ChoiceItem(value: PaymentMethod.cash, label: 'Tunai', icon: Icons.payments_rounded),
-                    ChoiceItem(value: PaymentMethod.card, label: 'Debit/Kredit', icon: Icons.credit_card_rounded),
+                    ChoiceItem(
+                      value: PaymentMethod.qris,
+                      label: 'QRIS',
+                      icon: Icons.qr_code_rounded,
+                    ),
+                    ChoiceItem(
+                      value: PaymentMethod.ewallet,
+                      label: 'E-wallet',
+                      icon: Icons.account_balance_wallet_rounded,
+                    ),
+                    ChoiceItem(
+                      value: PaymentMethod.cash,
+                      label: 'Tunai',
+                      icon: Icons.payments_rounded,
+                    ),
+                    ChoiceItem(
+                      value: PaymentMethod.card,
+                      label: 'Debit/Kredit',
+                      icon: Icons.credit_card_rounded,
+                    ),
                   ],
                   value: _method,
-                  onChanged: (value) => setState(() => _method = value),
+                  onChanged: isPayable
+                      ? (value) => setState(() {
+                          _method = value;
+                          _paymentError = null;
+                        })
+                      : (_) {},
                 ),
                 const SizedBox(height: 20),
-                SummaryRow(label: 'Ringkasan biaya', value: booking.locationName),
-                SummaryRow(label: 'Nomor tiket', value: booking.ticketNumber),
-                SummaryRow(label: 'Total pembayaran', value: formatCurrency(booking.estimatedCost)),
-                const SizedBox(height: 22),
-                PrimaryButton(
-                  label: 'Bayar sekarang',
-                  icon: Icons.lock_rounded,
-                  onPressed: () {
-                    ref.read(appControllerProvider.notifier).payBooking(_method);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Pembayaran berhasil')),
-                    );
-                    context.go('/customer/tickets');
-                  },
-                ),
+                if (!isPayable)
+                  InlineNotice(
+                    icon: Icons.verified_rounded,
+                    accent: AppTheme.emerald,
+                    message: 'Pembayaran sudah selesai. Tiket QR sudah aktif.',
+                  )
+                else
+                  _buildPaymentMethodPanel(booking),
               ],
             ),
           ),
@@ -2929,7 +3422,350 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
       ),
     );
   }
+
+  Widget _buildPaymentMethodPanel(Booking booking) {
+    return switch (_method) {
+      PaymentMethod.qris => _buildQrisPanel(booking),
+      PaymentMethod.ewallet => _buildEWalletPanel(booking),
+      PaymentMethod.cash => _buildCashPanel(booking),
+      PaymentMethod.card => _buildCardPanel(booking),
+    };
+  }
+
+  Widget _buildQrisPanel(Booking booking) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PaymentPanelHeader(
+          icon: Icons.qr_code_2_rounded,
+          title: 'Pembayaran QRIS',
+          subtitle: 'Scan QRIS menggunakan aplikasi pembayaran',
+        ),
+        const SizedBox(height: 18),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.blueSoft,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: QrImageView(
+              data:
+                  'PARKIR-CEPAT-PAY-${booking.ticketNumber}-${booking.estimatedCost}',
+              size: 190,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: AppTheme.blue,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        SummaryRow(
+          label: 'Total bayar',
+          value: formatCurrency(booking.estimatedCost),
+          valueColor: AppTheme.blue,
+        ),
+        const SizedBox(height: 18),
+        PrimaryButton(
+          label: 'Saya Sudah Membayar',
+          icon: Icons.verified_rounded,
+          onPressed: () => _completePayment(booking),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEWalletPanel(Booking booking) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PaymentPanelHeader(
+          icon: Icons.account_balance_wallet_rounded,
+          title: 'Pembayaran E-Wallet',
+          subtitle: 'Pilih wallet dan masukkan nomor HP aktif.',
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: ['GoPay', 'OVO', 'DANA', 'ShopeePay'].map((wallet) {
+            final selected = _wallet == wallet;
+            return ChoiceChip(
+              label: Text(wallet),
+              selected: selected,
+              selectedColor: AppTheme.blueSoft,
+              onSelected: (_) => setState(() => _wallet = wallet),
+              labelStyle: TextStyle(
+                color: selected ? AppTheme.blue : AppTheme.ink,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _walletPhoneController,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            labelText: 'Nomor HP $_wallet',
+            prefixIcon: const Icon(Icons.phone_iphone_rounded),
+          ),
+        ),
+        _paymentErrorWidget(),
+        const SizedBox(height: 18),
+        PrimaryButton(
+          label: 'Bayar dengan E-Wallet',
+          icon: Icons.account_balance_wallet_rounded,
+          onPressed: () => _payWithEWallet(booking),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCashPanel(Booking booking) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PaymentPanelHeader(
+          icon: Icons.payments_rounded,
+          title: 'Pembayaran Tunai',
+          subtitle: 'Silakan bayar di loket parkir saat masuk atau keluar.',
+        ),
+        const SizedBox(height: 16),
+        SummaryRow(
+          label: 'Total bayar',
+          value: formatCurrency(booking.estimatedCost),
+          valueColor: AppTheme.blue,
+        ),
+        const SizedBox(height: 18),
+        PrimaryButton(
+          label: 'Konfirmasi Bayar Tunai',
+          icon: Icons.payments_rounded,
+          onPressed: () => _completePayment(booking),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCardPanel(Booking booking) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PaymentPanelHeader(
+          icon: Icons.credit_card_rounded,
+          title: 'Pembayaran Debit/Kredit',
+          subtitle:
+              'Gunakan kartu debit atau kredit untuk simulasi pembayaran.',
+        ),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: _useDemoCard,
+          icon: const Icon(Icons.auto_fix_high_rounded),
+          label: const Text('Gunakan Kartu Demo'),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _cardNumberController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Nomor kartu',
+            prefixIcon: Icon(Icons.credit_card_rounded),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _cardNameController,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Nama pemilik kartu',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _cardExpiryController,
+                keyboardType: TextInputType.datetime,
+                decoration: const InputDecoration(
+                  labelText: 'Masa berlaku MM/YY',
+                  prefixIcon: Icon(Icons.calendar_month_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _cardCvvController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'CVV',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                ),
+              ),
+            ),
+          ],
+        ),
+        _paymentErrorWidget(),
+        const SizedBox(height: 18),
+        PrimaryButton(
+          label: 'Bayar dengan Kartu',
+          icon: Icons.lock_rounded,
+          onPressed: () => _payWithCard(booking),
+        ),
+      ],
+    );
+  }
+
+  Widget _paymentErrorWidget() {
+    if (_paymentError == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: InlineNotice(
+        icon: Icons.error_outline_rounded,
+        accent: const Color(0xFFDC2626),
+        message: _paymentError!,
+      ),
+    );
+  }
 }
+
+class _PaymentPanelHeader extends StatelessWidget {
+  const _PaymentPanelHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: AppTheme.blueSoft,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Icon(icon, color: AppTheme.blue),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.slate,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+int _hourlyRateFor(AppState state, Booking booking) {
+  for (final lot in state.lots) {
+    if (lot.name == booking.locationName) {
+      return lot.pricePerHour;
+    }
+  }
+  return state.selectedLot?.pricePerHour ?? state.lots.first.pricePerHour;
+}
+
+int _durationHoursFor(AppState state, Booking booking) {
+  final rate = math.max(1, _hourlyRateFor(state, booking));
+  return math.max(1, booking.estimatedCost ~/ rate);
+}
+
+class _PaymentSuccessDialog extends StatelessWidget {
+  const _PaymentSuccessDialog({
+    required this.ticketNumber,
+    required this.total,
+    required this.method,
+  });
+
+  final String ticketNumber;
+  final int total;
+  final PaymentMethod method;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: AppTheme.emeraldSoft,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: AppTheme.emerald,
+              size: 46,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Pembayaran berhasil',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 16),
+          SummaryRow(label: 'Nomor tiket', value: ticketNumber),
+          SummaryRow(label: 'Total bayar', value: formatCurrency(total)),
+          SummaryRow(label: 'Metode', value: _paymentMethodLabel(method)),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            final router = GoRouter.of(context);
+            Navigator.of(context).pop();
+            router.go('/customer/tickets');
+          },
+          child: const Text('Lihat Tiket QR'),
+        ),
+      ],
+    );
+  }
+}
+
+String _paymentMethodLabel(PaymentMethod method) => switch (method) {
+  PaymentMethod.qris => 'QRIS',
+  PaymentMethod.ewallet => 'E-Wallet',
+  PaymentMethod.cash => 'Tunai',
+  PaymentMethod.card => 'Debit/Kredit',
+};
 
 class ParkingHistoryScreen extends ConsumerWidget {
   const ParkingHistoryScreen({super.key});
@@ -2949,23 +3785,29 @@ class ParkingHistoryScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SummaryRow(label: item.id, value: item.status, valueColor: AppTheme.emerald),
+                      SummaryRow(
+                        label: item.id,
+                        value: item.status,
+                        valueColor: AppTheme.emerald,
+                      ),
                       const SizedBox(height: 8),
-                      Text(item.locationName,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              )),
+                      Text(
+                        item.locationName,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
                       const SizedBox(height: 6),
                       Text(
                         '${item.plateNumber} • ${item.timeLabel}',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.slate,
-                            ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                       ),
                       const SizedBox(height: 10),
                       Text(
                         formatCurrency(item.total),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
                               color: AppTheme.blue,
                               fontWeight: FontWeight.w700,
                             ),
@@ -2991,7 +3833,8 @@ class CustomerNotificationsScreen extends ConsumerWidget {
       currentIndex: 3,
       child: NotificationsList(
         title: 'Notifikasi pengguna',
-        subtitle: 'Booking, pembayaran, verifikasi QR, dan status durasi parkir.',
+        subtitle:
+            'Booking, pembayaran, verifikasi QR, dan status durasi parkir.',
         items: notices,
       ),
     );
@@ -3012,24 +3855,40 @@ class CustomerProfileScreen extends ConsumerWidget {
           PremiumCard(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.blueSoft,
-                  child: Icon(Icons.person_rounded, size: 40, color: AppTheme.blue),
+                  backgroundImage: state.customerAvatarBytes == null
+                      ? null
+                      : MemoryImage(state.customerAvatarBytes!),
+                  child: state.customerAvatarBytes == null
+                      ? const Icon(
+                          Icons.person_rounded,
+                          size: 40,
+                          color: AppTheme.blue,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  state.userName,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  state.customerName,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  state.email,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  state.customerEmail,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  state.customerPhone,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
               ],
             ),
@@ -3040,7 +3899,7 @@ class CustomerProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.blue,
             title: 'Edit profil',
             subtitle: 'Perbarui data akun dan kontak.',
-            onTap: () {},
+            onTap: () => context.push('/customer/edit-profile'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -3064,7 +3923,7 @@ class CustomerProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.slate,
             title: 'Pengaturan akun',
             subtitle: 'Kelola preferensi parkir dan notifikasi.',
-            onTap: () {},
+            onTap: () => context.push('/customer/account-settings'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -3085,6 +3944,554 @@ class CustomerProfileScreen extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class CustomerEditProfileScreen extends ConsumerStatefulWidget {
+  const CustomerEditProfileScreen({super.key});
+
+  @override
+  ConsumerState<CustomerEditProfileScreen> createState() =>
+      _CustomerEditProfileScreenState();
+}
+
+class _CustomerEditProfileScreenState
+    extends ConsumerState<CustomerEditProfileScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  Uint8List? _avatarBytes;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    _nameController = TextEditingController(text: state.customerName);
+    _emailController = TextEditingController(text: state.customerEmail);
+    _phoneController = TextEditingController(text: state.customerPhone);
+    _avatarBytes = state.customerAvatarBytes;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Nama lengkap tidak boleh kosong.');
+      return;
+    }
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _errorMessage = 'Email tidak valid.');
+      return;
+    }
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Nomor HP tidak boleh kosong.');
+      return;
+    }
+
+    ref
+        .read(appControllerProvider.notifier)
+        .updateCustomerProfile(name: name, email: email, phone: phone);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Profil berhasil diperbarui')));
+    context.go('/customer/profile');
+  }
+
+  Future<void> _pickPhoto() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (picked == null) {
+      return;
+    }
+    final bytes = await picked.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+    final result = await showDialog<Uint8List>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CustomerAvatarAdjustDialog(
+        bytes: bytes,
+        hasExistingPhoto: _avatarBytes != null,
+      ),
+    );
+    if (result == null) {
+      return;
+    }
+    if (result.isEmpty) {
+      _removePhoto();
+      return;
+    }
+    ref.read(appControllerProvider.notifier).updateCustomerAvatar(result);
+    setState(() => _avatarBytes = result);
+  }
+
+  void _removePhoto() {
+    ref.read(appControllerProvider.notifier).removeCustomerAvatar();
+    setState(() => _avatarBytes = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit Profil')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GestureDetector(
+                  onTap: _pickPhoto,
+                  child: CircleAvatar(
+                    radius: 48,
+                    backgroundColor: AppTheme.blueSoft,
+                    backgroundImage: _avatarBytes == null
+                        ? null
+                        : MemoryImage(_avatarBytes!),
+                    child: _avatarBytes == null
+                        ? const Icon(
+                            Icons.person_rounded,
+                            size: 46,
+                            color: AppTheme.blue,
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _pickPhoto,
+                        icon: const Icon(Icons.photo_camera_rounded, size: 18),
+                        label: const Text('Ganti Foto'),
+                      ),
+                      if (_avatarBytes != null)
+                        OutlinedButton.icon(
+                          onPressed: _removePhoto,
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                          ),
+                          label: const Text('Hapus Foto'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFDC2626),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama lengkap',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Nomor HP',
+                    prefixIcon: Icon(Icons.phone_iphone_rounded),
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFDC2626),
+                    message: _errorMessage!,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                _CustomerCompactButton(
+                  label: 'Simpan Perubahan',
+                  icon: Icons.save_rounded,
+                  onPressed: _save,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CustomerAccountSettingsScreen extends ConsumerStatefulWidget {
+  const CustomerAccountSettingsScreen({super.key});
+
+  @override
+  ConsumerState<CustomerAccountSettingsScreen> createState() =>
+      _CustomerAccountSettingsScreenState();
+}
+
+class _CustomerAccountSettingsScreenState
+    extends ConsumerState<CustomerAccountSettingsScreen> {
+  late bool _bookingNotificationEnabled;
+  late bool _paymentNotificationEnabled;
+  late bool _promoNotificationEnabled;
+  late bool _accountSecurityEnabled;
+  late String _selectedLanguage;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    _bookingNotificationEnabled = state.bookingNotificationEnabled;
+    _paymentNotificationEnabled = state.paymentNotificationEnabled;
+    _promoNotificationEnabled = state.promoNotificationEnabled;
+    _accountSecurityEnabled = state.accountSecurityEnabled;
+    _selectedLanguage = state.selectedLanguage;
+  }
+
+  void _save() {
+    ref
+        .read(appControllerProvider.notifier)
+        .updateCustomerSettings(
+          bookingNotificationEnabled: _bookingNotificationEnabled,
+          paymentNotificationEnabled: _paymentNotificationEnabled,
+          promoNotificationEnabled: _promoNotificationEnabled,
+          selectedLanguage: _selectedLanguage,
+          accountSecurityEnabled: _accountSecurityEnabled,
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
+    );
+    context.go('/customer/profile');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pengaturan Akun')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Notifikasi',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  value: _bookingNotificationEnabled,
+                  onChanged: (value) =>
+                      setState(() => _bookingNotificationEnabled = value),
+                  title: const Text('Notifikasi booking'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.blue,
+                ),
+                SwitchListTile(
+                  value: _paymentNotificationEnabled,
+                  onChanged: (value) =>
+                      setState(() => _paymentNotificationEnabled = value),
+                  title: const Text('Notifikasi pembayaran'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.emerald,
+                ),
+                SwitchListTile(
+                  value: _promoNotificationEnabled,
+                  onChanged: (value) =>
+                      setState(() => _promoNotificationEnabled = value),
+                  title: const Text('Notifikasi promo'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.blue,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Preferensi akun',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedLanguage,
+                  decoration: const InputDecoration(
+                    labelText: 'Bahasa aplikasi',
+                    prefixIcon: Icon(Icons.language_rounded),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Indonesia',
+                      child: Text('Indonesia'),
+                    ),
+                    DropdownMenuItem(value: 'English', child: Text('English')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _selectedLanguage = value ?? 'Indonesia'),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  value: _accountSecurityEnabled,
+                  onChanged: (value) =>
+                      setState(() => _accountSecurityEnabled = value),
+                  title: const Text('Mode keamanan akun'),
+                  subtitle: const Text('Aktifkan perlindungan akun tambahan.'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.emerald,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _CustomerCompactButton(
+            label: 'Simpan Pengaturan',
+            icon: Icons.save_rounded,
+            onPressed: _save,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerAvatarAdjustDialog extends StatefulWidget {
+  const _CustomerAvatarAdjustDialog({
+    required this.bytes,
+    required this.hasExistingPhoto,
+  });
+
+  final Uint8List bytes;
+  final bool hasExistingPhoto;
+
+  @override
+  State<_CustomerAvatarAdjustDialog> createState() =>
+      _CustomerAvatarAdjustDialogState();
+}
+
+class _CustomerAvatarAdjustDialogState
+    extends State<_CustomerAvatarAdjustDialog> {
+  final TransformationController _controller = TransformationController();
+  final GlobalKey _previewKey = GlobalKey();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _zoom(double factor) {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final nextScale = (currentScale * factor).clamp(1.0, 4.0);
+    _controller.value = Matrix4.diagonal3Values(nextScale, nextScale, 1);
+  }
+
+  void _reset() {
+    _controller.value = Matrix4.identity();
+  }
+
+  Future<Uint8List> _capturePreview() async {
+    final boundary =
+        _previewKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) {
+      return widget.bytes;
+    }
+    final image = await boundary.toImage(pixelRatio: 3);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List() ?? widget.bytes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
+    final maxHeight = mediaSize.height * 0.80;
+    final previewSize = math.min(mediaSize.width - 72, 320.0);
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 18, 20, 12),
+              child: Text(
+                'Atur Foto Profil',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.ink,
+                ),
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Center(
+                      child: RepaintBoundary(
+                        key: _previewKey,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: SizedBox(
+                            width: previewSize,
+                            height: previewSize,
+                            child: InteractiveViewer(
+                              transformationController: _controller,
+                              minScale: 1,
+                              maxScale: 4,
+                              panEnabled: true,
+                              boundaryMargin: const EdgeInsets.all(80),
+                              child: Image.memory(
+                                widget.bytes,
+                                width: previewSize,
+                                height: previewSize,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Zoom out',
+                          onPressed: () => _zoom(0.85),
+                          icon: const Icon(Icons.zoom_out_rounded),
+                        ),
+                        const SizedBox(width: 10),
+                        IconButton.filledTonal(
+                          tooltip: 'Reset posisi',
+                          onPressed: _reset,
+                          icon: const Icon(Icons.center_focus_strong_rounded),
+                        ),
+                        const SizedBox(width: 10),
+                        IconButton.filledTonal(
+                          tooltip: 'Zoom in',
+                          onPressed: () => _zoom(1.18),
+                          icon: const Icon(Icons.zoom_in_rounded),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.end,
+                children: [
+                  if (widget.hasExistingPhoto)
+                    TextButton.icon(
+                      onPressed: () => Navigator.of(context).pop(Uint8List(0)),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Hapus Foto'),
+                    ),
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Batal'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final bytes = await _capturePreview();
+                      if (context.mounted) {
+                        Navigator.of(context).pop(bytes);
+                      }
+                    },
+                    icon: const Icon(Icons.check_rounded),
+                    label: const Text('Gunakan Foto Ini'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerCompactButton extends StatelessWidget {
+  const _CustomerCompactButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
       ),
     );
   }
@@ -3111,7 +4518,8 @@ class AdminDashboardScreen extends ConsumerWidget {
         children: [
           HeaderSection(
             title: 'Dashboard Penyedia',
-            subtitle: 'Kelola lahan, slot, tarif, penjaga, transaksi, dan pendapatan.',
+            subtitle:
+                'Kelola lahan, slot, tarif, penjaga, transaksi, dan pendapatan.',
             trailing: IconButton.filledTonal(
               onPressed: () => context.push('/provider/add-lot'),
               icon: const Icon(Icons.add_business_rounded),
@@ -3136,7 +4544,8 @@ class AdminDashboardScreen extends ConsumerWidget {
               ),
               StatCard(
                 label: 'Slot tersedia',
-                value: '${state.slots.where((slot) => slot.isAvailable).length}',
+                value:
+                    '${state.slots.where((slot) => slot.isAvailable).length}',
                 accent: AppTheme.slate,
                 icon: Icons.local_parking_rounded,
               ),
@@ -3161,12 +4570,7 @@ class AdminDashboardScreen extends ConsumerWidget {
             onTap: () => context.push('/provider/monitoring'),
           ),
           const SizedBox(height: 12),
-          PremiumCard(
-            child: SizedBox(
-              height: 220,
-              child: RevenueChart(),
-            ),
-          ),
+          PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
           const SizedBox(height: 20),
           SectionTitle(
             title: 'Aksi cepat',
@@ -3246,16 +4650,16 @@ class AdminDashboardScreen extends ConsumerWidget {
                       Text(
                         'Preview kamera area parkir',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Gerbang masuk, area A, dan lane keluar terpantau realtime.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.slate,
-                              height: 1.45,
-                            ),
+                          color: AppTheme.slate,
+                          height: 1.45,
+                        ),
                       ),
                     ],
                   ),
@@ -3272,16 +4676,16 @@ class AdminDashboardScreen extends ConsumerWidget {
                 Text(
                   'AI parking density prediction',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   'Prediksi jam ramai berikutnya pukul 17:30 - 19:00 dengan okupansi hingga 92%.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                        height: 1.45,
-                      ),
+                    color: AppTheme.slate,
+                    height: 1.45,
+                  ),
                 ),
               ],
             ),
@@ -3299,6 +4703,9 @@ class AdminMapScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
     final lots = visibleLotsFor(state);
+    final selectedLot = lots.contains(state.selectedLot)
+        ? state.selectedLot!
+        : lots.first;
     return AdminShell(
       currentIndex: 1,
       child: ListView(
@@ -3309,10 +4716,20 @@ class AdminMapScreen extends ConsumerWidget {
             subtitle: 'Kelola multi cabang, marker lokasi, dan status slot.',
           ),
           const SizedBox(height: 18),
+          MapEmbedView(
+            key: ValueKey(selectedLot.id),
+            title: selectedLot.name,
+            embedUrl: selectedLot.mapEmbedUrl,
+            latitude: selectedLot.latitude,
+            longitude: selectedLot.longitude,
+            height: 240,
+          ),
+          const SizedBox(height: 18),
           ParkingMapCard(
             lots: lots,
-            selected: state.selectedLot,
-            onSelect: (lot) => ref.read(appControllerProvider.notifier).selectLot(lot),
+            selected: selectedLot,
+            onSelect: (lot) =>
+                ref.read(appControllerProvider.notifier).selectLot(lot),
           ),
           const SizedBox(height: 18),
           ...lots.map(
@@ -3322,8 +4739,10 @@ class AdminMapScreen extends ConsumerWidget {
                 icon: Icons.domain_add_rounded,
                 iconColor: lot.accent,
                 title: lot.name,
-                subtitle: '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}',
-                onTap: () => ref.read(appControllerProvider.notifier).selectLot(lot),
+                subtitle:
+                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}',
+                onTap: () =>
+                    ref.read(appControllerProvider.notifier).selectLot(lot),
               ),
             ),
           ),
@@ -3337,7 +4756,8 @@ class AddParkingLotScreen extends ConsumerStatefulWidget {
   const AddParkingLotScreen({super.key});
 
   @override
-  ConsumerState<AddParkingLotScreen> createState() => _AddParkingLotScreenState();
+  ConsumerState<AddParkingLotScreen> createState() =>
+      _AddParkingLotScreenState();
 }
 
 class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
@@ -3350,7 +4770,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: 'Neo Smart Parking Hub');
-    _addressController = TextEditingController(text: 'Jl. Gatot Subroto Smart Gate 8');
+    _addressController = TextEditingController(
+      text: 'Jl. Gatot Subroto Smart Gate 8',
+    );
   }
 
   @override
@@ -3386,7 +4808,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const ParkingMapPlaceholder(title: 'Pilih titik lokasi pada map'),
+                const ParkingMapPlaceholder(
+                  title: 'Pilih titik lokasi pada map',
+                ),
                 const SizedBox(height: 18),
                 LabeledSlider(
                   label: 'Kapasitas kendaraan',
@@ -3419,7 +4843,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   label: 'Simpan lahan',
                   icon: Icons.save_rounded,
                   onPressed: () {
-                    ref.read(appControllerProvider.notifier).addLot(
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .addLot(
                           name: _nameController.text,
                           address: _addressController.text,
                           capacity: _capacity.toInt(),
@@ -3459,7 +4885,9 @@ class _ParkingGuardManagementScreenState
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: 'Sinta Penjaga');
-    _emailController = TextEditingController(text: 'sinta.guard@parkircepat.app');
+    _emailController = TextEditingController(
+      text: 'sinta.guard@parkircepat.app',
+    );
     _phoneController = TextEditingController(text: '+62 812 4455 6677');
     final lots = visibleLotsFor(ref.read(appControllerProvider));
     if (lots.isNotEmpty) {
@@ -3516,8 +4944,8 @@ class _ParkingGuardManagementScreenState
                   child: Text(
                     'Lokasi yang boleh diakses',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -3560,7 +4988,9 @@ class _ParkingGuardManagementScreenState
                   onPressed: _selectedLotIds.isEmpty
                       ? null
                       : () {
-                          ref.read(appControllerProvider.notifier).createParkingGuard(
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .createParkingGuard(
                                 name: _nameController.text,
                                 email: _emailController.text,
                                 phoneNumber: _phoneController.text,
@@ -3570,7 +5000,9 @@ class _ParkingGuardManagementScreenState
                                 canManageSlots: _canManageSlots,
                               );
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Akun penjaga berhasil dibuat.')),
+                            const SnackBar(
+                              content: Text('Akun penjaga berhasil dibuat.'),
+                            ),
                           );
                         },
                 ),
@@ -3611,7 +5043,8 @@ class VehicleMonitoringScreen extends ConsumerWidget {
         children: [
           const HeaderSection(
             title: 'Monitoring kendaraan',
-            subtitle: 'Daftar kendaraan masuk, keluar, pembayaran, dan filter realtime.',
+            subtitle:
+                'Daftar kendaraan masuk, keluar, pembayaran, dan filter realtime.',
           ),
           const SizedBox(height: 18),
           const InlineNotice(
@@ -3630,20 +5063,24 @@ class VehicleMonitoringScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SummaryRow(label: item.plateNumber, value: item.status, valueColor: AppTheme.emerald),
+                    SummaryRow(
+                      label: item.plateNumber,
+                      value: item.status,
+                      valueColor: AppTheme.emerald,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       item.locationName,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       '${item.timeLabel} • ${formatCurrency(item.total)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.slate,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                     ),
                   ],
                 ),
@@ -3698,8 +5135,8 @@ class ScanQrScreen extends ConsumerWidget {
                       ? 'Tidak ada tiket aktif saat ini.'
                       : 'Tiket aktif ${booking.ticketNumber}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 18),
                 PrimaryButton(
@@ -3710,7 +5147,9 @@ class ScanQrScreen extends ConsumerWidget {
                       : () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Tiket valid dan pembayaran terkonfirmasi'),
+                              content: Text(
+                                'Tiket valid dan pembayaran terkonfirmasi',
+                              ),
                             ),
                           );
                         },
@@ -3722,8 +5161,12 @@ class ScanQrScreen extends ConsumerWidget {
                   onPressed: booking == null
                       ? null
                       : () {
-                          ref.read(appControllerProvider.notifier).markVehicleExit();
-                          final mode = ref.read(appControllerProvider).currentMode;
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .markVehicleExit();
+                          final mode = ref
+                              .read(appControllerProvider)
+                              .currentMode;
                           context.go(
                             mode == AccountMode.parkingGuard
                                 ? '/guard/dashboard'
@@ -3759,8 +5202,15 @@ class TransactionDetailScreen extends ConsumerWidget {
                 SummaryRow(label: 'Lokasi', value: transaction.locationName),
                 SummaryRow(label: 'Kendaraan', value: transaction.plateNumber),
                 SummaryRow(label: 'Waktu parkir', value: transaction.timeLabel),
-                SummaryRow(label: 'Total biaya', value: formatCurrency(transaction.total)),
-                SummaryRow(label: 'Status', value: transaction.status, valueColor: AppTheme.emerald),
+                SummaryRow(
+                  label: 'Total biaya',
+                  value: formatCurrency(transaction.total),
+                ),
+                SummaryRow(
+                  label: 'Status',
+                  value: transaction.status,
+                  valueColor: AppTheme.emerald,
+                ),
               ],
             ),
           ),
@@ -3787,8 +5237,8 @@ class ReceiptScreen extends ConsumerWidget {
                 Text(
                   'Nota Digital',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 QrImageView(
@@ -3799,14 +5249,19 @@ class ReceiptScreen extends ConsumerWidget {
                 const SizedBox(height: 18),
                 SummaryRow(label: 'Transaksi', value: transaction.id),
                 SummaryRow(label: 'Pembayaran', value: transaction.status),
-                SummaryRow(label: 'Total', value: formatCurrency(transaction.total)),
+                SummaryRow(
+                  label: 'Total',
+                  value: formatCurrency(transaction.total),
+                ),
                 const SizedBox(height: 20),
                 PrimaryButton(
                   label: 'Cetak nota',
                   icon: Icons.print_rounded,
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Preview nota siap dicetak')),
+                      const SnackBar(
+                        content: Text('Preview nota siap dicetak'),
+                      ),
                     );
                   },
                 ),
@@ -3849,12 +5304,7 @@ class StatisticsScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
-          PremiumCard(
-            child: SizedBox(
-              height: 220,
-              child: RevenueChart(),
-            ),
-          ),
+          PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -3864,7 +5314,9 @@ class StatisticsScreen extends ConsumerWidget {
                   icon: Icons.picture_as_pdf_rounded,
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Laporan PDF berhasil disiapkan')),
+                      const SnackBar(
+                        content: Text('Laporan PDF berhasil disiapkan'),
+                      ),
                     );
                   },
                 ),
@@ -3876,7 +5328,9 @@ class StatisticsScreen extends ConsumerWidget {
                   icon: Icons.table_view_rounded,
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Laporan Excel berhasil disiapkan')),
+                      const SnackBar(
+                        content: Text('Laporan Excel berhasil disiapkan'),
+                      ),
                     );
                   },
                 ),
@@ -3891,17 +5345,19 @@ class StatisticsScreen extends ConsumerWidget {
                 Text(
                   'Statistik slot parkir',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 14),
                 SummaryRow(
                   label: 'Slot tersedia',
-                  value: '${state.slots.where((slot) => slot.isAvailable).length}',
+                  value:
+                      '${state.slots.where((slot) => slot.isAvailable).length}',
                 ),
                 SummaryRow(
                   label: 'Slot penuh',
-                  value: '${state.slots.where((slot) => !slot.isAvailable).length}',
+                  value:
+                      '${state.slots.where((slot) => !slot.isAvailable).length}',
                 ),
               ],
             ),
@@ -3928,7 +5384,9 @@ class ManageSlotsScreen extends ConsumerWidget {
             icon: Icons.add_rounded,
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Slot baru ditambahkan ke prototipe')),
+                const SnackBar(
+                  content: Text('Slot baru ditambahkan ke prototipe'),
+                ),
               );
             },
           ),
@@ -3945,14 +5403,14 @@ class ManageSlotsScreen extends ConsumerWidget {
                         children: [
                           Text(
                             'Slot ${slot.label}',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 6),
                           Text(
                             slot.isAvailable ? 'Tersedia' : 'Penuh',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
                                   color: slot.isAvailable
                                       ? AppTheme.emerald
                                       : AppTheme.slate,
@@ -3964,8 +5422,9 @@ class ManageSlotsScreen extends ConsumerWidget {
                     Switch(
                       value: slot.isAvailable,
                       activeThumbColor: AppTheme.emerald,
-                      onChanged: (_) =>
-                          ref.read(appControllerProvider.notifier).toggleSlot(slot.id),
+                      onChanged: (_) => ref
+                          .read(appControllerProvider.notifier)
+                          .toggleSlot(slot.id),
                     ),
                   ],
                 ),
@@ -4012,15 +5471,18 @@ class AdminProfileScreen extends ConsumerWidget {
                 const CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.emeraldSoft,
-                  child: Icon(Icons.admin_panel_settings_rounded,
-                      size: 40, color: AppTheme.emerald),
+                  child: Icon(
+                    Icons.admin_panel_settings_rounded,
+                    size: 40,
+                    color: AppTheme.emerald,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   'Admin ${state.userName}',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 StatusBadge(
@@ -4038,9 +5500,9 @@ class AdminProfileScreen extends ConsumerWidget {
                 const SizedBox(height: 10),
                 Text(
                   'Kelola ${state.lots.length} lahan parkir',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                 ),
               ],
             ),
@@ -4107,7 +5569,9 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: AppTheme.emerald,
         foregroundColor: Colors.white,
-        onPressed: guard?.canScanQr ?? false ? () => context.push('/guard/scan-qr') : null,
+        onPressed: guard?.canScanQr ?? false
+            ? () => context.push('/guard/scan-qr')
+            : null,
         icon: const Icon(Icons.qr_code_scanner_rounded),
         label: const Text('Scan QR'),
       ),
@@ -4160,7 +5624,8 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
                 icon: Icons.local_parking_rounded,
                 iconColor: lot.accent,
                 title: lot.name,
-                subtitle: '${lot.availableSlots}/${lot.totalSlots} slot tersedia',
+                subtitle:
+                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia',
               ),
             ),
           ),
@@ -4190,7 +5655,8 @@ class GuardVehiclesScreen extends ConsumerWidget {
         children: [
           const HeaderSection(
             title: 'Kendaraan aktif',
-            subtitle: 'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
+            subtitle:
+                'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
           ),
           const SizedBox(height: 18),
           if (booking == null)
@@ -4212,7 +5678,9 @@ class GuardVehiclesScreen extends ConsumerWidget {
                   SummaryRow(
                     label: 'Pembayaran',
                     value: booking.isPaid ? 'Lunas' : 'Belum lunas',
-                    valueColor: booking.isPaid ? AppTheme.emerald : const Color(0xFFD97706),
+                    valueColor: booking.isPaid
+                        ? AppTheme.emerald
+                        : const Color(0xFFD97706),
                   ),
                   const SizedBox(height: 18),
                   SecondaryButton(
@@ -4221,7 +5689,9 @@ class GuardVehiclesScreen extends ConsumerWidget {
                     onPressed: booking.isPaid
                         ? null
                         : () {
-                            ref.read(appControllerProvider.notifier).payBooking(PaymentMethod.cash);
+                            ref
+                                .read(appControllerProvider.notifier)
+                                .payBooking(PaymentMethod.cash);
                           },
                   ),
                 ],
@@ -4251,21 +5721,25 @@ class GuardProfileScreen extends ConsumerWidget {
                 const CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.emeraldSoft,
-                  child: Icon(Icons.security_rounded, size: 40, color: AppTheme.emerald),
+                  child: Icon(
+                    Icons.security_rounded,
+                    size: 40,
+                    color: AppTheme.emerald,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   guard?.name ?? state.userName,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Akses lokasi: ${visibleLotsFor(state).length}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                 ),
               ],
             ),
@@ -4304,11 +5778,31 @@ class CustomerShell extends StatelessWidget {
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
       destinations: const [
-        ShellDestination(label: 'Home', icon: Icons.home_rounded, route: '/customer/home'),
-        ShellDestination(label: 'Map', icon: Icons.map_rounded, route: '/customer/map'),
-        ShellDestination(label: 'Tiket', icon: Icons.confirmation_num_rounded, route: '/customer/tickets'),
-        ShellDestination(label: 'Notifikasi', icon: Icons.notifications_rounded, route: '/customer/notifications'),
-        ShellDestination(label: 'Profil', icon: Icons.person_rounded, route: '/customer/profile'),
+        ShellDestination(
+          label: 'Home',
+          icon: Icons.home_rounded,
+          route: '/customer/home',
+        ),
+        ShellDestination(
+          label: 'Map',
+          icon: Icons.map_rounded,
+          route: '/customer/map',
+        ),
+        ShellDestination(
+          label: 'Tiket',
+          icon: Icons.confirmation_num_rounded,
+          route: '/customer/tickets',
+        ),
+        ShellDestination(
+          label: 'Notifikasi',
+          icon: Icons.notifications_rounded,
+          route: '/customer/notifications',
+        ),
+        ShellDestination(
+          label: 'Profil',
+          icon: Icons.person_rounded,
+          route: '/customer/profile',
+        ),
       ],
       child: child,
     );
@@ -4333,11 +5827,31 @@ class AdminShell extends StatelessWidget {
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
       destinations: const [
-        ShellDestination(label: 'Home', icon: Icons.space_dashboard_rounded, route: '/provider/dashboard'),
-        ShellDestination(label: 'Map', icon: Icons.map_rounded, route: '/provider/map'),
-        ShellDestination(label: 'Monitor', icon: Icons.radar_rounded, route: '/provider/monitoring'),
-        ShellDestination(label: 'Notif', icon: Icons.notifications_rounded, route: '/provider/notifications'),
-        ShellDestination(label: 'Profil', icon: Icons.person_rounded, route: '/provider/profile'),
+        ShellDestination(
+          label: 'Home',
+          icon: Icons.space_dashboard_rounded,
+          route: '/provider/dashboard',
+        ),
+        ShellDestination(
+          label: 'Map',
+          icon: Icons.map_rounded,
+          route: '/provider/map',
+        ),
+        ShellDestination(
+          label: 'Monitor',
+          icon: Icons.radar_rounded,
+          route: '/provider/monitoring',
+        ),
+        ShellDestination(
+          label: 'Notif',
+          icon: Icons.notifications_rounded,
+          route: '/provider/notifications',
+        ),
+        ShellDestination(
+          label: 'Profil',
+          icon: Icons.person_rounded,
+          route: '/provider/profile',
+        ),
       ],
       child: child,
     );
@@ -4481,8 +5995,11 @@ class AppShell extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           item.label,
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: selected ? AppTheme.blue : AppTheme.slate,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: selected
+                                    ? AppTheme.blue
+                                    : AppTheme.slate,
                                 fontWeight: FontWeight.w600,
                               ),
                         ),
@@ -4534,17 +6051,17 @@ class AuthScaffold extends StatelessWidget {
             const SizedBox(height: 20),
             Text(
               title,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Text(
               subtitle,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppTheme.slate,
-                    height: 1.5,
-                  ),
+                color: AppTheme.slate,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 26),
             PremiumCard(child: child),
@@ -4605,24 +6122,21 @@ class HeaderSection extends StatelessWidget {
               Text(
                 title,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 subtitle,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.slate,
-                      height: 1.45,
-                    ),
+                  color: AppTheme.slate,
+                  height: 1.45,
+                ),
               ),
             ],
           ),
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: 12),
-          trailing!,
-        ],
+        if (trailing != null) ...[const SizedBox(width: 12), trailing!],
       ],
     );
   }
@@ -4670,17 +6184,17 @@ class HeroBanner extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
                   body,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.92),
-                        height: 1.5,
-                      ),
+                    color: Colors.white.withValues(alpha: 0.92),
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -4718,12 +6232,7 @@ class SearchField extends StatelessWidget {
 }
 
 class SectionTitle extends StatelessWidget {
-  const SectionTitle({
-    super.key,
-    required this.title,
-    this.action,
-    this.onTap,
-  });
+  const SectionTitle({super.key, required this.title, this.action, this.onTap});
 
   final String title;
   final String? action;
@@ -4736,13 +6245,12 @@ class SectionTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
-        if (action != null)
-          TextButton(onPressed: onTap, child: Text(action!)),
+        if (action != null) TextButton(onPressed: onTap, child: Text(action!)),
       ],
     );
   }
@@ -4863,17 +6371,17 @@ class RoleSelectionCard extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.slate,
-                    height: 1.4,
-                  ),
+                color: AppTheme.slate,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -4909,10 +6417,9 @@ class InlineNotice extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTheme.ink,
-                    height: 1.4,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.ink, height: 1.4),
             ),
           ),
         ],
@@ -4929,6 +6436,7 @@ class AiRecommendationCard extends StatelessWidget {
     required this.detail,
     required this.accent,
     required this.icon,
+    required this.onTap,
   });
 
   final String title;
@@ -4936,44 +6444,51 @@ class AiRecommendationCard extends StatelessWidget {
   final String detail;
   final Color accent;
   final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 52) / 2;
-    return Container(
+    return SizedBox(
       width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: accent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppTheme.ink),
-          const SizedBox(height: 18),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppTheme.ink),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: AppTheme.slate,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                detail,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            detail,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.slate,
-                ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -4997,99 +6512,106 @@ class ParkingLotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PremiumCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: lot.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(18),
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: onDetail,
+      child: PremiumCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: lot.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Icon(Icons.local_parking_rounded, color: lot.accent),
                 ),
-                child: Icon(Icons.local_parking_rounded, color: lot.accent),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      lot.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      lot.address,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.slate,
-                          ),
-                    ),
-                  ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        lot.name,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        lot.address,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: onToggleFavorite,
-                icon: Icon(
-                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: isFavorite ? const Color(0xFFDC2626) : AppTheme.slate,
+                IconButton(
+                  onPressed: onToggleFavorite,
+                  icon: Icon(
+                    isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: isFavorite
+                        ? const Color(0xFFDC2626)
+                        : AppTheme.slate,
+                  ),
                 ),
-              ),
-              StatusBadge(
-                label: lot.isFull ? 'Penuh' : 'Tersedia',
-                color: lot.isFull ? AppTheme.slate : AppTheme.emerald,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: MetricColumn(
-                  label: 'Harga',
-                  value: '${formatCurrency(lot.pricePerHour)}/jam',
+                StatusBadge(
+                  label: lot.isFull ? 'Penuh' : 'Tersedia',
+                  color: lot.isFull ? AppTheme.slate : AppTheme.emerald,
                 ),
-              ),
-              Expanded(
-                child: MetricColumn(
-                  label: 'Slot',
-                  value: '${lot.availableSlots}/${lot.totalSlots}',
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: MetricColumn(
+                    label: 'Harga',
+                    value: '${formatCurrency(lot.pricePerHour)}/jam',
+                  ),
                 ),
-              ),
-              Expanded(
-                child: MetricColumn(
-                  label: 'Jarak',
-                  value: '${lot.distanceKm} km',
+                Expanded(
+                  child: MetricColumn(
+                    label: 'Slot',
+                    value: '${lot.availableSlots}/${lot.totalSlots}',
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Detail',
-                  icon: Icons.chevron_right_rounded,
-                  onPressed: onDetail,
+                Expanded(
+                  child: MetricColumn(
+                    label: 'Jarak',
+                    value: '${lot.distanceKm} km',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: PrimaryButton(
-                  label: 'Booking',
-                  icon: Icons.flash_on_rounded,
-                  onPressed: lot.isFull ? null : onBooking,
+              ],
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: SecondaryButton(
+                    label: 'Detail',
+                    icon: Icons.chevron_right_rounded,
+                    onPressed: onDetail,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: PrimaryButton(
+                    label: 'Booking',
+                    icon: Icons.flash_on_rounded,
+                    onPressed: lot.isFull ? null : onBooking,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -5145,7 +6667,9 @@ class ParkingMapCard extends StatelessWidget {
                                 color: isSelected ? lot.accent : Colors.white,
                                 shape: BoxShape.circle,
                                 boxShadow: [
-                                  softShadow(lot.accent.withValues(alpha: 0.24)),
+                                  softShadow(
+                                    lot.accent.withValues(alpha: 0.24),
+                                  ),
                                 ],
                               ),
                               child: Icon(
@@ -5165,7 +6689,10 @@ class ParkingMapCard extends StatelessWidget {
               right: 12,
               bottom: 12,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
@@ -5174,9 +6701,9 @@ class ParkingMapCard extends StatelessWidget {
                   selected == null
                       ? 'Pilih marker'
                       : '${selected!.name} • ${selected!.etaMinutes} menit',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
             ),
@@ -5212,10 +6739,7 @@ class _MapPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Offset.zero & size,
-        const Radius.circular(26),
-      ),
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(26)),
       Paint()..color = AppTheme.blueSoft,
     );
 
@@ -5289,7 +6813,9 @@ class SmartCityIllustration extends StatelessWidget {
               width: height * 0.9,
               height: height * 0.18,
               decoration: BoxDecoration(
-                color: (foreground ?? AppTheme.emeraldSoft).withValues(alpha: 0.24),
+                color: (foreground ?? AppTheme.emeraldSoft).withValues(
+                  alpha: 0.24,
+                ),
                 borderRadius: BorderRadius.circular(999),
               ),
             ),
@@ -5309,7 +6835,8 @@ class SmartCityIllustration extends StatelessWidget {
             child: _BuildingBlock(
               width: height * 0.2,
               height: height * 0.58,
-              color: foreground?.withValues(alpha: 0.22) ?? AppTheme.emeraldSoft,
+              color:
+                  foreground?.withValues(alpha: 0.22) ?? AppTheme.emeraldSoft,
             ),
           ),
           Positioned(
@@ -5318,10 +6845,14 @@ class SmartCityIllustration extends StatelessWidget {
               width: height * 0.46,
               height: height * 0.34,
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: foreground == null ? 1 : 0.18),
+                color: Colors.white.withValues(
+                  alpha: foreground == null ? 1 : 0.18,
+                ),
                 borderRadius: BorderRadius.circular(28),
                 border: Border.all(
-                  color: foreground?.withValues(alpha: 0.5) ?? accent.withValues(alpha: 0.16),
+                  color:
+                      foreground?.withValues(alpha: 0.5) ??
+                      accent.withValues(alpha: 0.16),
                 ),
                 boxShadow: foreground == null
                     ? [softShadow(accent.withValues(alpha: 0.16))]
@@ -5417,16 +6948,16 @@ class MiniInfoTile extends StatelessWidget {
                   Text(
                     title,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.slate,
-                          height: 1.4,
-                        ),
+                      color: AppTheme.slate,
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),
@@ -5557,15 +7088,18 @@ class SegmentedChoice<T> extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(item.icon, color: selected ? AppTheme.blue : AppTheme.slate),
+                    Icon(
+                      item.icon,
+                      color: selected ? AppTheme.blue : AppTheme.slate,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       item.label,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: selected ? AppTheme.blue : AppTheme.slate,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        color: selected ? AppTheme.blue : AppTheme.slate,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
@@ -5579,11 +7113,7 @@ class SegmentedChoice<T> extends StatelessWidget {
 }
 
 class InfoChip extends StatelessWidget {
-  const InfoChip({
-    super.key,
-    required this.icon,
-    required this.label,
-  });
+  const InfoChip({super.key, required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -5609,11 +7139,7 @@ class InfoChip extends StatelessWidget {
 }
 
 class MetricColumn extends StatelessWidget {
-  const MetricColumn({
-    super.key,
-    required this.label,
-    required this.value,
-  });
+  const MetricColumn({super.key, required this.label, required this.value});
 
   final String label;
   final String value;
@@ -5625,16 +7151,16 @@ class MetricColumn extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppTheme.slate,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
         ),
         const SizedBox(height: 6),
         Text(
           value,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         ),
       ],
     );
@@ -5642,11 +7168,7 @@ class MetricColumn extends StatelessWidget {
 }
 
 class StatusBadge extends StatelessWidget {
-  const StatusBadge({
-    super.key,
-    required this.label,
-    required this.color,
-  });
+  const StatusBadge({super.key, required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -5662,9 +7184,9 @@ class StatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -5691,9 +7213,9 @@ class SummaryRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.slate,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
             ),
           ),
           const SizedBox(width: 12),
@@ -5702,9 +7224,9 @@ class SummaryRow extends StatelessWidget {
               value,
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: valueColor ?? AppTheme.ink,
-                  ),
+                fontWeight: FontWeight.w700,
+                color: valueColor ?? AppTheme.ink,
+              ),
             ),
           ),
         ],
@@ -5736,18 +7258,18 @@ class EmptyStateCard extends StatelessWidget {
           const SizedBox(height: 18),
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           Text(
             body,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.slate,
-                  height: 1.5,
-                ),
+              color: AppTheme.slate,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 18),
           PrimaryButton(
@@ -5802,17 +7324,14 @@ class NotificationsList extends StatelessWidget {
                       children: [
                         Text(
                           item.title,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           item.message,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppTheme.slate,
-                                height: 1.45,
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.slate, height: 1.45),
                         ),
                       ],
                     ),
@@ -5820,9 +7339,9 @@ class NotificationsList extends StatelessWidget {
                   const SizedBox(width: 12),
                   Text(
                     item.timeLabel,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppTheme.slate,
-                        ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: AppTheme.slate),
                   ),
                 ],
               ),
@@ -5874,17 +7393,17 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.slate,
-                  height: 1.45,
-                ),
+              color: AppTheme.slate,
+              height: 1.45,
+            ),
           ),
         ],
       ),
@@ -5925,9 +7444,9 @@ class ActionCard extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               label,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -5964,9 +7483,9 @@ class RevenueChart extends StatelessWidget {
               reservedSize: 28,
               getTitlesWidget: (value, meta) => Text(
                 value.toInt().toString(),
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppTheme.slate,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: AppTheme.slate),
               ),
             ),
           ),
@@ -5974,15 +7493,23 @@ class RevenueChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (value, meta) {
-                const labels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+                const labels = [
+                  'Sen',
+                  'Sel',
+                  'Rab',
+                  'Kam',
+                  'Jum',
+                  'Sab',
+                  'Min',
+                ];
                 final text = value.toInt() >= 0 && value.toInt() < labels.length
                     ? labels[value.toInt()]
                     : '';
                 return Text(
                   text,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: AppTheme.slate),
                 );
               },
             ),
@@ -6084,17 +7611,17 @@ class LabeledSlider extends StatelessWidget {
           children: [
             Text(
               label,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const Spacer(),
             Text(
               display,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: AppTheme.blue,
-                    fontWeight: FontWeight.w700,
-                  ),
+                color: AppTheme.blue,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -6111,8 +7638,5 @@ class LabeledSlider extends StatelessWidget {
   }
 }
 
-BoxShadow softShadow(Color color) => BoxShadow(
-      color: color,
-      blurRadius: 24,
-      offset: const Offset(0, 12),
-    );
+BoxShadow softShadow(Color color) =>
+    BoxShadow(color: color, blurRadius: 24, offset: const Offset(0, 12));
