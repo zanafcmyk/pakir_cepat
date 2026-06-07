@@ -202,6 +202,7 @@ class AdminMapScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    final selectedLot = state.selectedLot ?? state.lots.first;
     return AdminShell(
       currentIndex: 1,
       child: ListView(
@@ -212,10 +213,13 @@ class AdminMapScreen extends ConsumerWidget {
             subtitle: 'Kelola multi cabang, marker lokasi, dan status slot.',
           ),
           const SizedBox(height: 18),
-          ParkingMapCard(
-            lots: state.lots,
-            selected: state.selectedLot,
-            onSelect: (lot) => ref.read(appControllerProvider.notifier).selectLot(lot),
+          MapEmbedView(
+            key: ValueKey(selectedLot.id),
+            title: selectedLot.name,
+            embedUrl: selectedLot.mapEmbedUrl,
+            latitude: selectedLot.latitude,
+            longitude: selectedLot.longitude,
+            height: 240,
           ),
           const SizedBox(height: 18),
           ...state.lots.map(
@@ -746,17 +750,34 @@ class AdminProfileScreen extends ConsumerWidget {
           PremiumCard(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.emeraldSoft,
-                  child: Icon(Icons.admin_panel_settings_rounded,
-                      size: 40, color: AppTheme.emerald),
+                  backgroundImage: state.providerAvatarBytes == null
+                      ? null
+                      : MemoryImage(state.providerAvatarBytes!),
+                  child: state.providerAvatarBytes == null
+                      ? const Icon(
+                          Icons.admin_panel_settings_rounded,
+                          size: 40,
+                          color: AppTheme.emerald,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Admin ${state.userName}',
+                  state.providerName,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  state.businessName,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.slate,
+                        fontWeight: FontWeight.w600,
                       ),
                 ),
                 const SizedBox(height: 6),
@@ -774,7 +795,16 @@ class AdminProfileScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Kelola ${state.lots.length} lahan parkir',
+                  '${state.providerEmail} • ${state.providerPhone}',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTheme.slate,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Kelola ${state.lots.length} lahan parkir dari ${state.businessAddress}',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: AppTheme.slate,
                       ),
@@ -788,7 +818,7 @@ class AdminProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.blue,
             title: 'Edit profil',
             subtitle: 'Perbarui data admin dan kontak.',
-            onTap: () {},
+            onTap: () => context.push('/admin/edit-profile'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -796,7 +826,7 @@ class AdminProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.emerald,
             title: 'Data lahan parkir',
             subtitle: '${state.lots.length} lokasi aktif',
-            onTap: () => context.push('/admin/add-lot'),
+            onTap: () => context.push('/admin/parking-lots'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -804,7 +834,7 @@ class AdminProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.slate,
             title: 'Pengaturan akun',
             subtitle: 'Atur preferensi operasional dan notifikasi.',
-            onTap: () {},
+            onTap: () => context.push('/admin/account-settings'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -825,6 +855,624 @@ class AdminProfileScreen extends ConsumerWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class AdminEditProfileScreen extends ConsumerStatefulWidget {
+  const AdminEditProfileScreen({super.key});
+
+  @override
+  ConsumerState<AdminEditProfileScreen> createState() =>
+      _AdminEditProfileScreenState();
+}
+
+class _AdminEditProfileScreenState
+    extends ConsumerState<AdminEditProfileScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _businessNameController;
+  late final TextEditingController _businessAddressController;
+  Uint8List? _avatarBytes;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    _nameController = TextEditingController(text: state.providerName);
+    _emailController = TextEditingController(text: state.providerEmail);
+    _phoneController = TextEditingController(text: state.providerPhone);
+    _businessNameController = TextEditingController(text: state.businessName);
+    _businessAddressController =
+        TextEditingController(text: state.businessAddress);
+    _avatarBytes = state.providerAvatarBytes;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _businessNameController.dispose();
+    _businessAddressController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickLogo() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+    );
+    if (picked == null) {
+      return;
+    }
+    final bytes = await picked.readAsBytes();
+    ref.read(appControllerProvider.notifier).updateProviderAvatar(bytes);
+    if (mounted) {
+      setState(() => _avatarBytes = bytes);
+    }
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final businessName = _businessNameController.text.trim();
+    final businessAddress = _businessAddressController.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Nama penyedia tidak boleh kosong.');
+      return;
+    }
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _errorMessage = 'Email penyedia tidak valid.');
+      return;
+    }
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Nomor HP tidak boleh kosong.');
+      return;
+    }
+    if (businessName.isEmpty) {
+      setState(() => _errorMessage = 'Nama bisnis tidak boleh kosong.');
+      return;
+    }
+    if (businessAddress.isEmpty) {
+      setState(() => _errorMessage = 'Alamat tidak boleh kosong.');
+      return;
+    }
+
+    ref.read(appControllerProvider.notifier).updateProviderProfile(
+          name: name,
+          email: email,
+          phone: phone,
+          businessName: businessName,
+          businessAddress: businessAddress,
+          avatarBytes: _avatarBytes,
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profil penyedia berhasil diperbarui')),
+    );
+    context.go('/admin/profile');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Edit Profil Penyedia')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CircleAvatar(
+                  radius: 48,
+                  backgroundColor: AppTheme.emeraldSoft,
+                  backgroundImage:
+                      _avatarBytes == null ? null : MemoryImage(_avatarBytes!),
+                  child: _avatarBytes == null
+                      ? const Icon(
+                          Icons.storefront_rounded,
+                          size: 44,
+                          color: AppTheme.emerald,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _pickLogo,
+                        icon: const Icon(Icons.add_photo_alternate_rounded),
+                        label: const Text('Ganti Logo'),
+                      ),
+                      if (_avatarBytes != null)
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            ref
+                                .read(appControllerProvider.notifier)
+                                .clearProviderAvatar();
+                            setState(() => _avatarBytes = null);
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          label: const Text('Hapus Logo'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFDC2626),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama penyedia/admin',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Nomor HP',
+                    prefixIcon: Icon(Icons.phone_iphone_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _businessNameController,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama bisnis/tempat parkir',
+                    prefixIcon: Icon(Icons.business_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _businessAddressController,
+                  minLines: 2,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Alamat kantor/lokasi utama',
+                    prefixIcon: Icon(Icons.place_outlined),
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFDC2626),
+                    message: _errorMessage!,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                _AdminCompactButton(
+                  label: 'Simpan Perubahan',
+                  icon: Icons.save_rounded,
+                  onPressed: _save,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AdminAccountSettingsScreen extends ConsumerStatefulWidget {
+  const AdminAccountSettingsScreen({super.key});
+
+  @override
+  ConsumerState<AdminAccountSettingsScreen> createState() =>
+      _AdminAccountSettingsScreenState();
+}
+
+class _AdminAccountSettingsScreenState
+    extends ConsumerState<AdminAccountSettingsScreen> {
+  late final TextEditingController _passwordController;
+  late bool _transactionNotificationEnabled;
+  late bool _fullSlotNotificationEnabled;
+  late bool _newBookingNotificationEnabled;
+  late bool _providerSecurityEnabled;
+  late String _providerSelectedLanguage;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    _passwordController = TextEditingController();
+    _transactionNotificationEnabled = state.transactionNotificationEnabled;
+    _fullSlotNotificationEnabled = state.fullSlotNotificationEnabled;
+    _newBookingNotificationEnabled = state.newBookingNotificationEnabled;
+    _providerSecurityEnabled = state.providerSecurityEnabled;
+    _providerSelectedLanguage = state.providerSelectedLanguage;
+  }
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final password = _passwordController.text.trim();
+    if (password.isNotEmpty && password.length < 6) {
+      setState(() => _errorMessage = 'Password baru minimal 6 karakter.');
+      return;
+    }
+
+    ref.read(appControllerProvider.notifier).updateProviderSettings(
+          transactionNotificationEnabled: _transactionNotificationEnabled,
+          fullSlotNotificationEnabled: _fullSlotNotificationEnabled,
+          newBookingNotificationEnabled: _newBookingNotificationEnabled,
+          providerSelectedLanguage: _providerSelectedLanguage,
+          providerSecurityEnabled: _providerSecurityEnabled,
+        );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
+    );
+    context.go('/admin/profile');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pengaturan Akun Penyedia')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Notifikasi operasional',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  value: _transactionNotificationEnabled,
+                  onChanged: (value) => setState(
+                    () => _transactionNotificationEnabled = value,
+                  ),
+                  title: const Text('Notifikasi transaksi'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.blue,
+                ),
+                SwitchListTile(
+                  value: _fullSlotNotificationEnabled,
+                  onChanged: (value) => setState(
+                    () => _fullSlotNotificationEnabled = value,
+                  ),
+                  title: const Text('Notifikasi slot penuh'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.emerald,
+                ),
+                SwitchListTile(
+                  value: _newBookingNotificationEnabled,
+                  onChanged: (value) => setState(
+                    () => _newBookingNotificationEnabled = value,
+                  ),
+                  title: const Text('Notifikasi booking baru'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.blue,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Akun dan keamanan',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  initialValue: _providerSelectedLanguage,
+                  decoration: const InputDecoration(
+                    labelText: 'Bahasa aplikasi',
+                    prefixIcon: Icon(Icons.language_rounded),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Indonesia',
+                      child: Text('Indonesia'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'English',
+                      child: Text('English'),
+                    ),
+                  ],
+                  onChanged: (value) => setState(
+                    () => _providerSelectedLanguage = value ?? 'Indonesia',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SwitchListTile(
+                  value: _providerSecurityEnabled,
+                  onChanged: (value) =>
+                      setState(() => _providerSecurityEnabled = value),
+                  title: const Text('Mode keamanan akun'),
+                  subtitle: const Text('Aktifkan perlindungan akun penyedia.'),
+                  contentPadding: EdgeInsets.zero,
+                  activeThumbColor: AppTheme.emerald,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Ubah password',
+                    hintText: 'Kosongkan jika tidak ingin mengubah',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 16),
+            InlineNotice(
+              icon: Icons.error_outline_rounded,
+              accent: const Color(0xFFDC2626),
+              message: _errorMessage!,
+            ),
+          ],
+          const SizedBox(height: 18),
+          _AdminCompactButton(
+            label: 'Simpan Pengaturan',
+            icon: Icons.save_rounded,
+            onPressed: _save,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AdminParkingLotsScreen extends ConsumerWidget {
+  const AdminParkingLotsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final lots = ref.watch(appControllerProvider).lots;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Data Lahan Parkir')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+        children: [
+          HeaderSection(
+            title: 'Data lahan parkir',
+            subtitle: 'Daftar lokasi yang dikelola penyedia Parkir Cepat.',
+            trailing: IconButton.filledTonal(
+              onPressed: () => context.push('/admin/add-lot'),
+              icon: const Icon(Icons.add_business_rounded),
+            ),
+          ),
+          const SizedBox(height: 18),
+          ...lots.map(
+            (lot) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: () {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                  showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (sheetContext) => _ParkingLotDetailSheet(lot: lot),
+                  );
+                },
+                child: PremiumCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 52,
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: lot.accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Icon(
+                              Icons.local_parking_rounded,
+                              color: lot.accent,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  lot.name,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  lot.address,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        color: AppTheme.slate,
+                                        height: 1.45,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          StatusBadge(
+                            label: lot.isFull ? 'Penuh' : 'Aktif',
+                            color: lot.isFull
+                                ? const Color(0xFFDC2626)
+                                : AppTheme.emerald,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      SummaryRow(
+                        label: 'Total slot',
+                        value: '${lot.totalSlots} slot',
+                      ),
+                      SummaryRow(
+                        label: 'Slot tersedia',
+                        value: '${lot.availableSlots} slot',
+                        valueColor:
+                            lot.isFull ? const Color(0xFFDC2626) : AppTheme.emerald,
+                      ),
+                      SummaryRow(
+                        label: 'Tarif per jam',
+                        value: formatCurrency(lot.pricePerHour),
+                        valueColor: AppTheme.blue,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _AdminCompactButton(
+            label: 'Tambah Lahan Parkir',
+            icon: Icons.add_location_alt_rounded,
+            onPressed: () => context.push('/admin/add-lot'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ParkingLotDetailSheet extends StatelessWidget {
+  const _ParkingLotDetailSheet({required this.lot});
+
+  final ParkingLot lot;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              lot.name,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              lot.address,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.slate,
+                    height: 1.5,
+                  ),
+            ),
+            const SizedBox(height: 16),
+            SummaryRow(label: 'Total slot', value: '${lot.totalSlots} slot'),
+            SummaryRow(
+              label: 'Slot tersedia',
+              value: '${lot.availableSlots} slot',
+              valueColor: lot.isFull ? const Color(0xFFDC2626) : AppTheme.emerald,
+            ),
+            SummaryRow(
+              label: 'Tarif per jam',
+              value: formatCurrency(lot.pricePerHour),
+              valueColor: AppTheme.blue,
+            ),
+            SummaryRow(label: 'Jam buka', value: lot.openHours),
+            SummaryRow(
+              label: 'Status aktif',
+              value: lot.isFull ? 'Penuh sementara' : 'Aktif',
+              valueColor: lot.isFull ? const Color(0xFFDC2626) : AppTheme.emerald,
+            ),
+            const SizedBox(height: 18),
+            _AdminCompactButton(
+              label: 'Tutup',
+              icon: Icons.check_rounded,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminCompactButton extends StatelessWidget {
+  const _AdminCompactButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.blue,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
     );
   }

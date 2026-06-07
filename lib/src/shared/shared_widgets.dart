@@ -531,6 +531,7 @@ class AiRecommendationCard extends StatelessWidget {
     required this.detail,
     required this.accent,
     required this.icon,
+    required this.onTap,
   });
 
   final String title;
@@ -538,44 +539,52 @@ class AiRecommendationCard extends StatelessWidget {
   final String detail;
   final Color accent;
   final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 52) / 2;
-    return Container(
-      width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: accent,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppTheme.ink),
-          const SizedBox(height: 18),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTheme.slate,
-                  fontWeight: FontWeight.w700,
-                ),
+        child: Ink(
+          width: math.max(150, width),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(24),
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppTheme.ink),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppTheme.slate,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                detail,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.slate,
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            detail,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.slate,
-                ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -599,104 +608,110 @@ class ParkingLotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PremiumCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onDetail,
+        borderRadius: BorderRadius.circular(28),
+        child: PremiumCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: lot.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Icon(Icons.local_parking_rounded, color: lot.accent),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      lot.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+              Row(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: lot.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      lot.address,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.slate,
-                          ),
+                    child: Icon(Icons.local_parking_rounded, color: lot.accent),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          lot.name,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          lot.address,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.slate,
+                              ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    onPressed: onToggleFavorite,
+                    icon: Icon(
+                      isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      color: isFavorite ? const Color(0xFFDC2626) : AppTheme.slate,
+                    ),
+                  ),
+                  StatusBadge(
+                    label: lot.isFull ? 'Penuh' : 'Tersedia',
+                    color: lot.isFull ? AppTheme.slate : AppTheme.emerald,
+                  ),
+                ],
               ),
-              IconButton(
-                onPressed: onToggleFavorite,
-                icon: Icon(
-                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: isFavorite ? const Color(0xFFDC2626) : AppTheme.slate,
-                ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricColumn(
+                      label: 'Harga',
+                      value: '${formatCurrency(lot.pricePerHour)}/jam',
+                    ),
+                  ),
+                  Expanded(
+                    child: MetricColumn(
+                      label: 'Slot',
+                      value: '${lot.availableSlots}/${lot.totalSlots}',
+                    ),
+                  ),
+                  Expanded(
+                    child: MetricColumn(
+                      label: 'Jarak',
+                      value: '${lot.distanceKm} km',
+                    ),
+                  ),
+                ],
               ),
-              StatusBadge(
-                label: lot.isFull ? 'Penuh' : 'Tersedia',
-                color: lot.isFull ? AppTheme.slate : AppTheme.emerald,
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: SecondaryButton(
+                      label: 'Detail',
+                      icon: Icons.chevron_right_rounded,
+                      onPressed: onDetail,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: PrimaryButton(
+                      label: 'Booking',
+                      icon: Icons.flash_on_rounded,
+                      onPressed: lot.isFull ? null : onBooking,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: MetricColumn(
-                  label: 'Harga',
-                  value: '${formatCurrency(lot.pricePerHour)}/jam',
-                ),
-              ),
-              Expanded(
-                child: MetricColumn(
-                  label: 'Slot',
-                  value: '${lot.availableSlots}/${lot.totalSlots}',
-                ),
-              ),
-              Expanded(
-                child: MetricColumn(
-                  label: 'Jarak',
-                  value: '${lot.distanceKm} km',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Detail',
-                  icon: Icons.chevron_right_rounded,
-                  onPressed: onDetail,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: PrimaryButton(
-                  label: 'Booking',
-                  icon: Icons.flash_on_rounded,
-                  onPressed: lot.isFull ? null : onBooking,
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
 }
-
 class ParkingMapCard extends StatelessWidget {
   const ParkingMapCard({
     super.key,

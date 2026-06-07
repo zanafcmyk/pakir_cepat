@@ -37,6 +37,10 @@ dependencies:
   google_fonts: ^6.3.2
   fl_chart: ^1.1.1
   qr_flutter: ^4.1.0
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.2
+  web: ^1.1.1
+  image_cropper: ^12.2.1
 
 dev_dependencies:
   flutter_test:

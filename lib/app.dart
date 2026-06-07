@@ -1,12 +1,19 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+
+import 'src/shared/map_embed_view.dart';
 
 part 'src/core/app_state.dart';
 part 'src/core/app_theme.dart';
@@ -65,6 +72,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CustomerProfileScreen(),
       ),
       GoRoute(
+        path: '/customer/edit-profile',
+        builder: (context, state) => const CustomerEditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/customer/account-settings',
+        builder: (context, state) => const CustomerAccountSettingsScreen(),
+      ),
+      GoRoute(
         path: '/customer/parking-detail',
         builder: (context, state) => const ParkingDetailScreen(),
       ),
@@ -103,6 +118,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/profile',
         builder: (context, state) => const AdminProfileScreen(),
+      ),
+      GoRoute(
+        path: '/admin/edit-profile',
+        builder: (context, state) => const AdminEditProfileScreen(),
+      ),
+      GoRoute(
+        path: '/admin/account-settings',
+        builder: (context, state) => const AdminAccountSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/parking-lots',
+        builder: (context, state) => const AdminParkingLotsScreen(),
       ),
       GoRoute(
         path: '/admin/add-lot',

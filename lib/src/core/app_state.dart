@@ -8,6 +8,8 @@ enum VehicleKind { motor, mobil, truk }
 
 enum PaymentMethod { qris, ewallet, cash, card }
 
+enum BookingStatus { pendingPayment, paid, active, completed }
+
 class ParkingLot {
   const ParkingLot({
     required this.id,
@@ -21,6 +23,9 @@ class ParkingLot {
     required this.openHours,
     required this.rating,
     required this.accent,
+    required this.mapEmbedUrl,
+    required this.latitude,
+    required this.longitude,
   });
 
   final String id;
@@ -34,6 +39,9 @@ class ParkingLot {
   final String openHours;
   final double rating;
   final Color accent;
+  final String mapEmbedUrl;
+  final double latitude;
+  final double longitude;
 
   bool get isFull => availableSlots <= 0;
 
@@ -49,6 +57,9 @@ class ParkingLot {
     String? openHours,
     double? rating,
     Color? accent,
+    String? mapEmbedUrl,
+    double? latitude,
+    double? longitude,
   }) {
     return ParkingLot(
       id: id ?? this.id,
@@ -62,6 +73,9 @@ class ParkingLot {
       openHours: openHours ?? this.openHours,
       rating: rating ?? this.rating,
       accent: accent ?? this.accent,
+      mapEmbedUrl: mapEmbedUrl ?? this.mapEmbedUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
@@ -114,7 +128,7 @@ class Booking {
     required this.entryTime,
     required this.estimatedCost,
     required this.paymentMethod,
-    required this.isPaid,
+    required this.status,
   });
 
   final String ticketNumber;
@@ -125,7 +139,15 @@ class Booking {
   final DateTime entryTime;
   final int estimatedCost;
   final PaymentMethod paymentMethod;
-  final bool isPaid;
+  final BookingStatus status;
+
+  bool get isPaid =>
+      status == BookingStatus.paid ||
+      status == BookingStatus.active ||
+      status == BookingStatus.completed;
+
+  bool get canShowTicket =>
+      status == BookingStatus.paid || status == BookingStatus.active;
 
   Booking copyWith({
     String? ticketNumber,
@@ -136,7 +158,7 @@ class Booking {
     DateTime? entryTime,
     int? estimatedCost,
     PaymentMethod? paymentMethod,
-    bool? isPaid,
+    BookingStatus? status,
   }) {
     return Booking(
       ticketNumber: ticketNumber ?? this.ticketNumber,
@@ -147,7 +169,7 @@ class Booking {
       entryTime: entryTime ?? this.entryTime,
       estimatedCost: estimatedCost ?? this.estimatedCost,
       paymentMethod: paymentMethod ?? this.paymentMethod,
-      isPaid: isPaid ?? this.isPaid,
+      status: status ?? this.status,
     );
   }
 }
@@ -256,6 +278,27 @@ class AppState {
     required this.userName,
     required this.email,
     required this.phoneNumber,
+    required this.customerName,
+    required this.customerEmail,
+    required this.customerPhone,
+    this.customerAvatarPath,
+    this.customerAvatarBytes,
+    required this.bookingNotificationEnabled,
+    required this.paymentNotificationEnabled,
+    required this.promoNotificationEnabled,
+    required this.selectedLanguage,
+    required this.accountSecurityEnabled,
+    required this.providerName,
+    required this.providerEmail,
+    required this.providerPhone,
+    required this.businessName,
+    required this.businessAddress,
+    this.providerAvatarBytes,
+    required this.transactionNotificationEnabled,
+    required this.fullSlotNotificationEnabled,
+    required this.newBookingNotificationEnabled,
+    required this.providerSelectedLanguage,
+    required this.providerSecurityEnabled,
     required this.rememberMe,
     required this.passwordResetRequested,
     required this.lots,
@@ -280,6 +323,27 @@ class AppState {
   final String userName;
   final String email;
   final String phoneNumber;
+  final String customerName;
+  final String customerEmail;
+  final String customerPhone;
+  final String? customerAvatarPath;
+  final Uint8List? customerAvatarBytes;
+  final bool bookingNotificationEnabled;
+  final bool paymentNotificationEnabled;
+  final bool promoNotificationEnabled;
+  final String selectedLanguage;
+  final bool accountSecurityEnabled;
+  final String providerName;
+  final String providerEmail;
+  final String providerPhone;
+  final String businessName;
+  final String businessAddress;
+  final Uint8List? providerAvatarBytes;
+  final bool transactionNotificationEnabled;
+  final bool fullSlotNotificationEnabled;
+  final bool newBookingNotificationEnabled;
+  final String providerSelectedLanguage;
+  final bool providerSecurityEnabled;
   final bool rememberMe;
   final bool passwordResetRequested;
   final List<ParkingLot> lots;
@@ -304,6 +368,28 @@ class AppState {
     String? userName,
     String? email,
     String? phoneNumber,
+    String? customerName,
+    String? customerEmail,
+    String? customerPhone,
+    String? customerAvatarPath,
+    Uint8List? customerAvatarBytes,
+    bool? bookingNotificationEnabled,
+    bool? paymentNotificationEnabled,
+    bool? promoNotificationEnabled,
+    String? selectedLanguage,
+    bool? accountSecurityEnabled,
+    String? providerName,
+    String? providerEmail,
+    String? providerPhone,
+    String? businessName,
+    String? businessAddress,
+    Uint8List? providerAvatarBytes,
+    bool clearProviderAvatar = false,
+    bool? transactionNotificationEnabled,
+    bool? fullSlotNotificationEnabled,
+    bool? newBookingNotificationEnabled,
+    String? providerSelectedLanguage,
+    bool? providerSecurityEnabled,
     bool? rememberMe,
     bool? passwordResetRequested,
     List<ParkingLot>? lots,
@@ -314,6 +400,7 @@ class AppState {
     Booking? activeBooking,
     DateTime? reservationLockedUntil,
     bool clearBooking = false,
+    bool clearCustomerAvatar = false,
     List<String>? favoriteLotIds,
     ProviderApplication? providerApplication,
     bool clearProviderApplication = false,
@@ -330,6 +417,41 @@ class AppState {
       userName: userName ?? this.userName,
       email: email ?? this.email,
       phoneNumber: phoneNumber ?? this.phoneNumber,
+      customerName: customerName ?? this.customerName,
+      customerEmail: customerEmail ?? this.customerEmail,
+      customerPhone: customerPhone ?? this.customerPhone,
+      customerAvatarPath:
+          clearCustomerAvatar ? null : (customerAvatarPath ?? this.customerAvatarPath),
+      customerAvatarBytes: clearCustomerAvatar
+          ? null
+          : (customerAvatarBytes ?? this.customerAvatarBytes),
+      bookingNotificationEnabled:
+          bookingNotificationEnabled ?? this.bookingNotificationEnabled,
+      paymentNotificationEnabled:
+          paymentNotificationEnabled ?? this.paymentNotificationEnabled,
+      promoNotificationEnabled:
+          promoNotificationEnabled ?? this.promoNotificationEnabled,
+      selectedLanguage: selectedLanguage ?? this.selectedLanguage,
+      accountSecurityEnabled:
+          accountSecurityEnabled ?? this.accountSecurityEnabled,
+      providerName: providerName ?? this.providerName,
+      providerEmail: providerEmail ?? this.providerEmail,
+      providerPhone: providerPhone ?? this.providerPhone,
+      businessName: businessName ?? this.businessName,
+      businessAddress: businessAddress ?? this.businessAddress,
+      providerAvatarBytes: clearProviderAvatar
+          ? null
+          : (providerAvatarBytes ?? this.providerAvatarBytes),
+      transactionNotificationEnabled:
+          transactionNotificationEnabled ?? this.transactionNotificationEnabled,
+      fullSlotNotificationEnabled:
+          fullSlotNotificationEnabled ?? this.fullSlotNotificationEnabled,
+      newBookingNotificationEnabled:
+          newBookingNotificationEnabled ?? this.newBookingNotificationEnabled,
+      providerSelectedLanguage:
+          providerSelectedLanguage ?? this.providerSelectedLanguage,
+      providerSecurityEnabled:
+          providerSecurityEnabled ?? this.providerSecurityEnabled,
       rememberMe: rememberMe ?? this.rememberMe,
       passwordResetRequested:
           passwordResetRequested ?? this.passwordResetRequested,
@@ -366,11 +488,15 @@ class AppState {
         openHours: '24 Jam',
         rating: 4.9,
         accent: AppTheme.blue,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid',
+        latitude: -6.208714500000001,
+        longitude: 106.82248539999999,
       ),
       ParkingLot(
         id: 'lot-2',
-        name: 'Emerald Smart Parking',
-        address: 'Jl. Thamrin Smart City Blok A',
+        name: 'Mal Ciputra Tangerang',
+        address: 'Jl. Citra Raya Boulevard, Tangerang',
         pricePerHour: 15000,
         availableSlots: 12,
         totalSlots: 70,
@@ -379,11 +505,15 @@ class AppState {
         openHours: '05.00 - 23.30',
         rating: 4.8,
         accent: AppTheme.emerald,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.021363564612!2d106.5250774!3d-6.260916!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e42077a46320d39%3A0x426b60f7dfe14e13!2sMal%20Ciputra%20Tangerang!5e0!3m2!1sid!2sid!4v1780720738829!5m2!1sid!2sid',
+        latitude: -6.260916,
+        longitude: 106.5250774,
       ),
       ParkingLot(
         id: 'lot-3',
         name: 'Citra Mall Parking Hub',
-        address: 'Jl. Gatot Subroto Timur No. 22',
+        address: 'Pusat Bisnis Thamrin City, Jakarta',
         pricePerHour: 10000,
         availableSlots: 0,
         totalSlots: 96,
@@ -392,6 +522,10 @@ class AppState {
         openHours: '08.00 - 22.00',
         rating: 4.7,
         accent: AppTheme.slate,
+        mapEmbedUrl:
+            'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15866.089919400229!2d106.8179532500215!3d-6.194579097638339!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f69e2ca1776f%3A0x729d6549e71fa7e7!2sPusat%20Bisnis%20Thamrin%20City!5e0!3m2!1sen!2sid!4v1780720526115!5m2!1sen!2sid',
+        latitude: -6.194579097638339,
+        longitude: 106.8179532500215,
       ),
     ];
 
@@ -490,6 +624,27 @@ class AppState {
       userName: 'Dio Pratama',
       email: 'dio@parkircepat.app',
       phoneNumber: '+62 812 7788 9911',
+      customerName: 'Dio Pratama',
+      customerEmail: 'dio@parkircepat.app',
+      customerPhone: '+62 812 7788 9911',
+      customerAvatarPath: null,
+      customerAvatarBytes: null,
+      bookingNotificationEnabled: true,
+      paymentNotificationEnabled: true,
+      promoNotificationEnabled: false,
+      selectedLanguage: 'Indonesia',
+      accountSecurityEnabled: true,
+      providerName: 'Dio Pratama',
+      providerEmail: 'admin@parkircepat.app',
+      providerPhone: '+62 812 7788 9911',
+      businessName: 'Parkir Cepat Operator',
+      businessAddress: 'Jl. Jenderal Sudirman No. 18, Jakarta',
+      providerAvatarBytes: null,
+      transactionNotificationEnabled: true,
+      fullSlotNotificationEnabled: true,
+      newBookingNotificationEnabled: true,
+      providerSelectedLanguage: 'Indonesia',
+      providerSecurityEnabled: true,
       rememberMe: true,
       passwordResetRequested: false,
       lots: lots,
@@ -546,6 +701,12 @@ class AppController extends StateNotifier<AppState> {
       accountStatus: accountStatus,
       email: email.isEmpty ? state.email : email,
       phoneNumber: phoneNumber.isEmpty ? state.phoneNumber : phoneNumber,
+      customerEmail: mode == AccountMode.customer && email.isNotEmpty
+          ? email
+          : state.customerEmail,
+      customerPhone: mode == AccountMode.customer && phoneNumber.isNotEmpty
+          ? phoneNumber
+          : state.customerPhone,
       isAuthenticated: true,
       rememberMe: rememberMe,
     );
@@ -562,6 +723,22 @@ class AppController extends StateNotifier<AppState> {
       userName: fullName,
       email: email,
       phoneNumber: phoneNumber,
+      customerName: mode == AccountMode.customer ? fullName : state.customerName,
+      customerEmail: mode == AccountMode.customer ? email : state.customerEmail,
+      customerPhone:
+          mode == AccountMode.customer ? phoneNumber : state.customerPhone,
+      providerName: mode == AccountMode.provider ? fullName : state.providerName,
+      providerEmail: mode == AccountMode.provider ? email : state.providerEmail,
+      providerPhone:
+          mode == AccountMode.provider ? phoneNumber : state.providerPhone,
+      businessName: mode == AccountMode.provider &&
+              providerApplication != null
+          ? providerApplication.parkingName
+          : state.businessName,
+      businessAddress: mode == AccountMode.provider &&
+              providerApplication != null
+          ? providerApplication.address
+          : state.businessAddress,
       currentMode: mode,
       isAuthenticated: true,
       onboardingDone: true,
@@ -593,6 +770,95 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(accountStatus: status);
   }
 
+  void updateCustomerProfile({
+    required String name,
+    required String email,
+    required String phone,
+    String? avatarPath,
+    Uint8List? avatarBytes,
+  }) {
+    state = state.copyWith(
+      userName: name,
+      email: email,
+      phoneNumber: phone,
+      customerName: name,
+      customerEmail: email,
+      customerPhone: phone,
+      customerAvatarPath: avatarPath,
+      customerAvatarBytes: avatarBytes,
+    );
+  }
+
+  void updateCustomerAvatar(Uint8List bytes) {
+    state = state.copyWith(customerAvatarBytes: bytes);
+  }
+
+  void clearCustomerAvatar() {
+    state = state.copyWith(clearCustomerAvatar: true);
+  }
+
+  void updateCustomerSettings({
+    required bool bookingNotificationEnabled,
+    required bool paymentNotificationEnabled,
+    required bool promoNotificationEnabled,
+    required String selectedLanguage,
+    required bool accountSecurityEnabled,
+  }) {
+    state = state.copyWith(
+      bookingNotificationEnabled: bookingNotificationEnabled,
+      paymentNotificationEnabled: paymentNotificationEnabled,
+      promoNotificationEnabled: promoNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+  }
+
+  void updateProviderProfile({
+    required String name,
+    required String email,
+    required String phone,
+    required String businessName,
+    required String businessAddress,
+    Uint8List? avatarBytes,
+  }) {
+    state = state.copyWith(
+      userName: state.currentMode == AccountMode.provider ? name : state.userName,
+      email: state.currentMode == AccountMode.provider ? email : state.email,
+      phoneNumber:
+          state.currentMode == AccountMode.provider ? phone : state.phoneNumber,
+      providerName: name,
+      providerEmail: email,
+      providerPhone: phone,
+      businessName: businessName,
+      businessAddress: businessAddress,
+      providerAvatarBytes: avatarBytes,
+    );
+  }
+
+  void updateProviderAvatar(Uint8List bytes) {
+    state = state.copyWith(providerAvatarBytes: bytes);
+  }
+
+  void clearProviderAvatar() {
+    state = state.copyWith(clearProviderAvatar: true);
+  }
+
+  void updateProviderSettings({
+    required bool transactionNotificationEnabled,
+    required bool fullSlotNotificationEnabled,
+    required bool newBookingNotificationEnabled,
+    required String providerSelectedLanguage,
+    required bool providerSecurityEnabled,
+  }) {
+    state = state.copyWith(
+      transactionNotificationEnabled: transactionNotificationEnabled,
+      fullSlotNotificationEnabled: fullSlotNotificationEnabled,
+      newBookingNotificationEnabled: newBookingNotificationEnabled,
+      providerSelectedLanguage: providerSelectedLanguage,
+      providerSecurityEnabled: providerSecurityEnabled,
+    );
+  }
+
   void selectLot(ParkingLot lot) {
     state = state.copyWith(selectedLot: lot);
   }
@@ -615,6 +881,9 @@ class AppController extends StateNotifier<AppState> {
       openHours: '24 Jam',
       rating: 4.8,
       accent: AppTheme.emerald,
+      mapEmbedUrl: '',
+      latitude: -6.2,
+      longitude: 106.8,
     );
     state = state.copyWith(
       lots: [lot, ...state.lots],
@@ -667,7 +936,7 @@ class AppController extends StateNotifier<AppState> {
       entryTime: entryTime,
       estimatedCost: total,
       paymentMethod: PaymentMethod.qris,
-      isPaid: false,
+      status: BookingStatus.pendingPayment,
     );
 
     final updatedSlots = [
@@ -712,7 +981,7 @@ class AppController extends StateNotifier<AppState> {
     }
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
-      isPaid: true,
+      status: BookingStatus.paid,
     );
     final transaction = TransactionRecord(
       id: booking.ticketNumber,
