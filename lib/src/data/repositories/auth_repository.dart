@@ -19,6 +19,19 @@ class AuthRepository {
     return auth;
   }
 
+  Future<AuthResponse> signUpSuperAdmin({
+    required String fullName,
+    required String email,
+    required String phone,
+    required String password,
+  }) async {
+    final auth = await _client.auth.signUp(email: email, password: password);
+    final userId = auth.user?.id;
+    if (userId == null) throw Exception('Auth user not created');
+    await _upsertUser(userId, fullName, email, phone, UserRole.superAdmin);
+    return auth;
+  }
+
   Future<AuthResponse> signUpProvider({
     required String fullName,
     required String email,
@@ -49,6 +62,32 @@ class AuthRepository {
       'parking_price': 0,
     });
 
+    return auth;
+  }
+
+  Future<AuthResponse> createParkingGuard({
+    required String providerId,
+    required String fullName,
+    required String email,
+    required String phone,
+    required String password,
+    required List<String> assignedLocationIds,
+    required bool canScanQr,
+    required bool canConfirmCash,
+    required bool canManageSlots,
+  }) async {
+    final auth = await _client.auth.signUp(email: email, password: password);
+    final userId = auth.user?.id;
+    if (userId == null) throw Exception('Auth user not created');
+    await _upsertUser(userId, fullName, email, phone, UserRole.parkingGuard);
+    await _client.from('parking_guards').upsert({
+      'user_id': userId,
+      'provider_id': providerId,
+      'assigned_location_ids': assignedLocationIds,
+      'can_scan_qr': canScanQr,
+      'can_confirm_cash': canConfirmCash,
+      'can_manage_slots': canManageSlots,
+    });
     return auth;
   }
 

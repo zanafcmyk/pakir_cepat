@@ -1,12 +1,18 @@
-enum UserRole { customer, provider }
+enum UserRole { superAdmin, provider, parkingGuard, customer }
 enum VerificationStatus { pending, verified, rejected }
 enum BookingStatus { pending, active, completed, cancelled }
 enum PaymentStatus { pending, paid, failed }
 
 enum RealtimeEventType { slot, vehicle, payment, stats, booking }
 
-UserRole userRoleFromString(String? value) =>
-    value == 'provider' ? UserRole.provider : UserRole.customer;
+UserRole userRoleFromString(String? value) {
+  return switch (value) {
+    'superAdmin' || 'super_admin' => UserRole.superAdmin,
+    'provider' => UserRole.provider,
+    'parkingGuard' || 'parking_guard' => UserRole.parkingGuard,
+    _ => UserRole.customer,
+  };
+}
 String userRoleToString(UserRole role) => role.name;
 VerificationStatus verificationStatusFromString(String? value) {
   return switch (value) {
@@ -45,6 +51,43 @@ class ProviderProfile {
   ProviderProfile({required this.id, required this.userId, required this.parkingName, required this.address, required this.latitude, required this.longitude, required this.capacity, required this.parkingPhoto, required this.ktpPhoto, required this.verificationStatus, required this.createdAt});
   final String id; final String userId; final String parkingName; final String address; final double latitude; final double longitude; final int capacity; final String parkingPhoto; final String ktpPhoto; final VerificationStatus verificationStatus; final DateTime createdAt;
   factory ProviderProfile.fromJson(Map<String, dynamic> json) => ProviderProfile(id: json['id'] as String, userId: json['user_id'] as String, parkingName: json['parking_name'] as String? ?? '', address: json['address'] as String? ?? '', latitude: (json['latitude'] as num?)?.toDouble() ?? 0, longitude: (json['longitude'] as num?)?.toDouble() ?? 0, capacity: (json['capacity'] as num?)?.toInt() ?? 0, parkingPhoto: json['parking_photo'] as String? ?? '', ktpPhoto: json['ktp_photo'] as String? ?? '', verificationStatus: verificationStatusFromString(json['verification_status'] as String?), createdAt: DateTime.parse(json['created_at'] as String));
+}
+
+class ParkingGuardProfile {
+  ParkingGuardProfile({
+    required this.id,
+    required this.userId,
+    required this.providerId,
+    required this.assignedLocationIds,
+    required this.canScanQr,
+    required this.canConfirmCash,
+    required this.canManageSlots,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String providerId;
+  final List<String> assignedLocationIds;
+  final bool canScanQr;
+  final bool canConfirmCash;
+  final bool canManageSlots;
+  final DateTime createdAt;
+
+  factory ParkingGuardProfile.fromJson(Map<String, dynamic> json) =>
+      ParkingGuardProfile(
+        id: json['id'] as String,
+        userId: json['user_id'] as String,
+        providerId: json['provider_id'] as String,
+        assignedLocationIds: [
+          for (final item in (json['assigned_location_ids'] as List? ?? const []))
+            item.toString(),
+        ],
+        canScanQr: json['can_scan_qr'] as bool? ?? true,
+        canConfirmCash: json['can_confirm_cash'] as bool? ?? true,
+        canManageSlots: json['can_manage_slots'] as bool? ?? true,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
 }
 
 class ParkingLocation {

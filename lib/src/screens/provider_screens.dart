@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/providers.dart';
 
@@ -8,9 +9,22 @@ class ProviderDashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final locationsAsync = ref.watch(appRepositoryProvider).fetchParkingLocations();
+    final session = ref.watch(sessionControllerProvider).valueOrNull;
+    final providerId = session?.session?.user.id;
+    final locationsAsync = providerId == null
+        ? Future.value(const [])
+        : ref.watch(appRepositoryProvider).fetchProviderParkingLocations(providerId);
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard Penyedia')),
+      appBar: AppBar(
+        title: const Text('Dashboard Penyedia'),
+        actions: [
+          IconButton(
+            tooltip: 'Kelola penjaga',
+            onPressed: () => context.go('/provider/guards'),
+            icon: const Icon(Icons.security_rounded),
+          ),
+        ],
+      ),
       body: FutureBuilder(
         future: locationsAsync,
         builder: (context, snapshot) {

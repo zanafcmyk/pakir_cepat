@@ -75,7 +75,7 @@ class _HeroPanel extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
         gradient: const LinearGradient(colors: [Color(0xFF1D4ED8), Color(0xFF60A5FA)]),
-        boxShadow: [BoxShadow(color: _BrandColors.primary.withOpacity(.18), blurRadius: 40, offset: const Offset(0, 18))],
+        boxShadow: [BoxShadow(color: _BrandColors.primary.withValues(alpha: .18), blurRadius: 40, offset: const Offset(0, 18))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,7 +143,7 @@ class _StatChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(.14), borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(16)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12))]),
       );
 }
@@ -157,8 +157,8 @@ class _FeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(.12), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(.14))),
-        child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(.16), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: Colors.white)), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text(subtitle, style: const TextStyle(color: Colors.white70, height: 1.4))]))]),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .12), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withValues(alpha: .14))),
+        child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .16), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: Colors.white)), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)), const SizedBox(height: 4), Text(subtitle, style: const TextStyle(color: Colors.white70, height: 1.4))]))]),
       );
 }
 
@@ -208,7 +208,7 @@ class _SplashBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         width: 88,
         height: 88,
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: _BrandColors.primary.withOpacity(.12), blurRadius: 30, offset: const Offset(0, 14))]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: _BrandColors.primary.withValues(alpha: .12), blurRadius: 30, offset: const Offset(0, 14))]),
         child: const Icon(Icons.local_parking_rounded, color: _BrandColors.primary, size: 44),
       );
 }
@@ -289,11 +289,13 @@ class RegisterChoiceScreen extends StatelessWidget {
                   const SizedBox(height: 24),
                   const Text('Pilih tipe akun', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: _BrandColors.text)),
                   const SizedBox(height: 8),
-                  Text('Dua flow register: user parkir atau penyedia parkir.', style: TextStyle(color: Colors.grey.shade600)),
+                  Text('Pilih role utama. Akun penjaga dibuat dari dashboard penyedia parkir.', style: TextStyle(color: Colors.grey.shade600)),
                   const SizedBox(height: 20),
                   Wrap(spacing: 16, runSpacing: 16, children: [
                     _ChoiceCard(title: 'User Parkir', subtitle: 'Cari, pesan, dan pantau parkir.', icon: Icons.person_search_rounded, onTap: () => context.go('/register/customer')),
                     _ChoiceCard(title: 'Penyedia Parkir', subtitle: 'Kelola lokasi dan slot.', icon: Icons.store_mall_directory_rounded, onTap: () => context.go('/register/provider')),
+                    _ChoiceCard(title: 'Super Admin', subtitle: 'Pantau pengguna, verifikasi, laporan, dan komplain.', icon: Icons.admin_panel_settings_rounded, onTap: () => context.go('/register/super-admin')),
+                    _ChoiceCard(title: 'Penjaga Parkir', subtitle: 'Login memakai akun yang dibuat penyedia.', icon: Icons.security_rounded, onTap: () => context.go('/login')),
                   ]),
                 ]),
               ),
@@ -380,6 +382,80 @@ class _CustomerRegisterScreenState extends ConsumerState<CustomerRegisterScreen>
       );
 }
 
+class SuperAdminRegisterScreen extends ConsumerStatefulWidget {
+  const SuperAdminRegisterScreen({super.key});
+
+  @override
+  ConsumerState<SuperAdminRegisterScreen> createState() =>
+      _SuperAdminRegisterScreenState();
+}
+
+class _SuperAdminRegisterScreenState
+    extends ConsumerState<SuperAdminRegisterScreen> {
+  final fullName = TextEditingController();
+  final email = TextEditingController();
+  final phone = TextEditingController();
+  final password = TextEditingController();
+  bool loading = false;
+  bool hidePassword = true;
+  String? errorMessage;
+
+  @override
+  void dispose() {
+    fullName.dispose();
+    email.dispose();
+    phone.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> submit() async {
+    setState(() {
+      loading = true;
+      errorMessage = null;
+    });
+    try {
+      await ref.read(authRepositoryProvider).signUpSuperAdmin(
+            fullName: fullName.text.trim(),
+            email: email.text.trim(),
+            phone: phone.text.trim(),
+            password: password.text,
+          );
+      if (mounted) context.go('/login');
+    } catch (error) {
+      setState(() => errorMessage = error.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _AuthShell(
+        title: 'Daftar Super Admin.',
+        subtitle: 'Akun untuk monitoring pengguna, verifikasi, laporan, dan komplain.',
+        child: _FormCard(
+          title: 'Register Super Admin',
+          subtitle: 'Gunakan hanya untuk pengelola aplikasi.',
+          child: Column(children: [
+            TextField(controller: fullName, decoration: const InputDecoration(labelText: 'Nama lengkap', prefixIcon: Icon(Icons.badge_outlined))),
+            const SizedBox(height: 14),
+            TextField(controller: email, decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined))),
+            const SizedBox(height: 14),
+            TextField(controller: phone, decoration: const InputDecoration(labelText: 'No. HP', prefixIcon: Icon(Icons.phone_outlined))),
+            const SizedBox(height: 14),
+            TextField(controller: password, obscureText: hidePassword, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(icon: Icon(hidePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined), onPressed: () => setState(() => hidePassword = !hidePassword)))),
+            if (errorMessage != null) ...[const SizedBox(height: 12), _NoticeBox(message: errorMessage!, error: true)],
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: loading ? null : submit,
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+              child: loading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Buat akun super admin'),
+            ),
+          ]),
+        ),
+      );
+}
+
 class ProviderRegisterScreen extends ConsumerStatefulWidget {
   const ProviderRegisterScreen({super.key});
   @override
@@ -405,7 +481,7 @@ class _ProviderRegisterScreenState extends ConsumerState<ProviderRegisterScreen>
   Future<void> pickPhoto(bool isKtp) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return;
-    setState(() { isKtp ? ktpPhoto = File(picked.path) : parkingPhoto = File(picked.path); });
+    setState(() { isKtp ? profilePhoto = File(picked.path) : parkingPhoto = File(picked.path); });
   }
 
   Future<void> submit() async {

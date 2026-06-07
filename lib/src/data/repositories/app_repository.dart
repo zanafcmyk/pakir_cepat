@@ -16,8 +16,33 @@ class AppRepository {
     return data == null ? null : ProviderProfile.fromJson(data);
   }
 
+  Future<ParkingGuardProfile?> fetchParkingGuardProfile(String userId) async {
+    final data = await _client.from('parking_guards').select().eq('user_id', userId).maybeSingle();
+    return data == null ? null : ParkingGuardProfile.fromJson(data);
+  }
+
   Future<List<ParkingLocation>> fetchParkingLocations() async {
     final data = await _client.from('parking_locations').select().order('created_at');
+    return data.map<ParkingLocation>((e) => ParkingLocation.fromJson(e)).toList();
+  }
+
+  Future<List<ParkingLocation>> fetchProviderParkingLocations(String providerId) async {
+    final data = await _client
+        .from('parking_locations')
+        .select()
+        .eq('provider_id', providerId)
+        .order('created_at');
+    return data.map<ParkingLocation>((e) => ParkingLocation.fromJson(e)).toList();
+  }
+
+  Future<List<ParkingLocation>> fetchGuardParkingLocations(String guardUserId) async {
+    final guard = await fetchParkingGuardProfile(guardUserId);
+    if (guard == null || guard.assignedLocationIds.isEmpty) return [];
+    final data = await _client
+        .from('parking_locations')
+        .select()
+        .inFilter('id', guard.assignedLocationIds)
+        .order('created_at');
     return data.map<ParkingLocation>((e) => ParkingLocation.fromJson(e)).toList();
   }
 
