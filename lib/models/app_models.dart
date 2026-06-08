@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 enum AccountMode { superAdmin, provider, parkingGuard, customer }
@@ -7,6 +9,8 @@ enum AccountStatus { pending, verified, rejected }
 enum VehicleKind { motor, mobil, truk }
 
 enum PaymentMethod { qris, ewallet, cash, card }
+
+enum ParkingTariffType { hourly, flat, daily, progressive }
 
 class ParkingLot {
   const ParkingLot({
@@ -22,6 +26,15 @@ class ParkingLot {
     required this.openHours,
     required this.rating,
     required this.accent,
+    this.mapEmbedUrl,
+    this.latitude,
+    this.longitude,
+    this.photoLabel,
+    this.photoBytes,
+    this.tariffType = ParkingTariffType.hourly,
+    this.motorRate,
+    this.carRate,
+    this.truckRate,
   });
 
   final String id;
@@ -36,6 +49,15 @@ class ParkingLot {
   final String openHours;
   final double rating;
   final Color accent;
+  final String? mapEmbedUrl;
+  final double? latitude;
+  final double? longitude;
+  final String? photoLabel;
+  final Uint8List? photoBytes;
+  final ParkingTariffType tariffType;
+  final int? motorRate;
+  final int? carRate;
+  final int? truckRate;
 
   bool get isFull => availableSlots <= 0;
 
@@ -52,6 +74,15 @@ class ParkingLot {
     String? openHours,
     double? rating,
     Color? accent,
+    String? mapEmbedUrl,
+    double? latitude,
+    double? longitude,
+    String? photoLabel,
+    Uint8List? photoBytes,
+    ParkingTariffType? tariffType,
+    int? motorRate,
+    int? carRate,
+    int? truckRate,
   }) {
     return ParkingLot(
       id: id ?? this.id,
@@ -66,6 +97,15 @@ class ParkingLot {
       openHours: openHours ?? this.openHours,
       rating: rating ?? this.rating,
       accent: accent ?? this.accent,
+      mapEmbedUrl: mapEmbedUrl ?? this.mapEmbedUrl,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      photoLabel: photoLabel ?? this.photoLabel,
+      photoBytes: photoBytes ?? this.photoBytes,
+      tariffType: tariffType ?? this.tariffType,
+      motorRate: motorRate ?? this.motorRate,
+      carRate: carRate ?? this.carRate,
+      truckRate: truckRate ?? this.truckRate,
     );
   }
 }
@@ -102,10 +142,10 @@ class Vehicle {
   }
 
   String get label => switch (kind) {
-        VehicleKind.motor => 'Motor',
-        VehicleKind.mobil => 'Mobil',
-        VehicleKind.truk => 'Truk',
-      };
+    VehicleKind.motor => 'Motor',
+    VehicleKind.mobil => 'Mobil',
+    VehicleKind.truk => 'Truk',
+  };
 }
 
 class Booking {
@@ -201,11 +241,7 @@ class ParkingSlot {
   final String label;
   final bool isAvailable;
 
-  ParkingSlot copyWith({
-    String? id,
-    String? label,
-    bool? isAvailable,
-  }) {
+  ParkingSlot copyWith({String? id, String? label, bool? isAvailable}) {
     return ParkingSlot(
       id: id ?? this.id,
       label: label ?? this.label,
