@@ -8,6 +8,8 @@ enum VehicleKind { motor, mobil, truk }
 
 enum PaymentMethod { qris, ewallet, cash, card }
 
+enum ComplaintStatus { waiting, answered, closed }
+
 class ParkingLot {
   const ParkingLot({
     required this.id,
@@ -102,10 +104,10 @@ class Vehicle {
   }
 
   String get label => switch (kind) {
-        VehicleKind.motor => 'Motor',
-        VehicleKind.mobil => 'Mobil',
-        VehicleKind.truk => 'Truk',
-      };
+    VehicleKind.motor => 'Motor',
+    VehicleKind.mobil => 'Mobil',
+    VehicleKind.truk => 'Truk',
+  };
 }
 
 class Booking {
@@ -190,6 +192,94 @@ class NoticeItem {
   final Color accent;
 }
 
+class ComplaintItem {
+  const ComplaintItem({
+    required this.id,
+    required this.senderName,
+    required this.senderRole,
+    required this.subject,
+    required this.message,
+    required this.timeLabel,
+    required this.status,
+    this.reply,
+  });
+
+  final String id;
+  final String senderName;
+  final AccountMode senderRole;
+  final String subject;
+  final String message;
+  final String timeLabel;
+  final ComplaintStatus status;
+  final String? reply;
+
+  ComplaintItem copyWith({
+    String? id,
+    String? senderName,
+    AccountMode? senderRole,
+    String? subject,
+    String? message,
+    String? timeLabel,
+    ComplaintStatus? status,
+    String? reply,
+  }) {
+    return ComplaintItem(
+      id: id ?? this.id,
+      senderName: senderName ?? this.senderName,
+      senderRole: senderRole ?? this.senderRole,
+      subject: subject ?? this.subject,
+      message: message ?? this.message,
+      timeLabel: timeLabel ?? this.timeLabel,
+      status: status ?? this.status,
+      reply: reply ?? this.reply,
+    );
+  }
+}
+
+class RegistrationRequest {
+  const RegistrationRequest({
+    required this.id,
+    required this.fullName,
+    required this.email,
+    required this.phoneNumber,
+    required this.role,
+    required this.timeLabel,
+    required this.status,
+    this.providerApplication,
+  });
+
+  final String id;
+  final String fullName;
+  final String email;
+  final String phoneNumber;
+  final AccountMode role;
+  final String timeLabel;
+  final AccountStatus status;
+  final ProviderApplication? providerApplication;
+
+  RegistrationRequest copyWith({
+    String? id,
+    String? fullName,
+    String? email,
+    String? phoneNumber,
+    AccountMode? role,
+    String? timeLabel,
+    AccountStatus? status,
+    ProviderApplication? providerApplication,
+  }) {
+    return RegistrationRequest(
+      id: id ?? this.id,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      role: role ?? this.role,
+      timeLabel: timeLabel ?? this.timeLabel,
+      status: status ?? this.status,
+      providerApplication: providerApplication ?? this.providerApplication,
+    );
+  }
+}
+
 class ParkingSlot {
   const ParkingSlot({
     required this.id,
@@ -201,11 +291,7 @@ class ParkingSlot {
   final String label;
   final bool isAvailable;
 
-  ParkingSlot copyWith({
-    String? id,
-    String? label,
-    bool? isAvailable,
-  }) {
+  ParkingSlot copyWith({String? id, String? label, bool? isAvailable}) {
     return ParkingSlot(
       id: id ?? this.id,
       label: label ?? this.label,
