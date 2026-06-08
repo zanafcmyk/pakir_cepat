@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'models/app_models.dart';
@@ -162,6 +163,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ParkingGuardDashboardScreen(),
       ),
       GoRoute(
+        path: '/guard/home',
+        builder: (context, state) => const ParkingGuardDashboardScreen(),
+      ),
+      GoRoute(
         path: '/guard/scan-qr',
         builder: (context, state) => const ScanQrScreen(),
       ),
@@ -170,12 +175,46 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const GuardVehiclesScreen(),
       ),
       GoRoute(
+        path: '/guard/chat',
+        builder: (context, state) => const GuardChatListScreen(),
+      ),
+      GoRoute(
+        path: '/guard/chat-room',
+        builder: (context, state) => GuardChatRoomScreen(
+          roomId: state.uri.queryParameters['roomId'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/guard/complaint',
+        builder: (context, state) => const GuardComplaintScreen(),
+      ),
+      GoRoute(
         path: '/guard/slots',
         builder: (context, state) => const ManageSlotsScreen(),
       ),
       GoRoute(
         path: '/guard/profile',
         builder: (context, state) => const GuardProfileScreen(),
+      ),
+      GoRoute(
+        path: '/guard/assigned-locations',
+        builder: (context, state) => const GuardAssignedLocationsScreen(),
+      ),
+      GoRoute(
+        path: '/guard/available-slots',
+        builder: (context, state) => const GuardAvailableSlotsScreen(),
+      ),
+      GoRoute(
+        path: '/guard/occupied-slots',
+        builder: (context, state) => const GuardOccupiedSlotsScreen(),
+      ),
+      GoRoute(
+        path: '/guard/check-payment',
+        builder: (context, state) => const GuardCheckPaymentScreen(),
+      ),
+      GoRoute(
+        path: '/guard/location-detail',
+        builder: (context, state) => const GuardLocationDetailScreen(),
       ),
       GoRoute(
         path: '/admin/dashboard',
@@ -275,6 +314,9 @@ class AppState {
     required this.history,
     required this.customerNotifications,
     required this.adminNotifications,
+    required this.guardChatRooms,
+    required this.guardChatMessages,
+    required this.guardComplaints,
   });
 
   final int onboardingIndex;
@@ -310,6 +352,9 @@ class AppState {
   final List<TransactionRecord> history;
   final List<NoticeItem> customerNotifications;
   final List<NoticeItem> adminNotifications;
+  final List<ChatRoom> guardChatRooms;
+  final List<ChatMessage> guardChatMessages;
+  final List<Complaint> guardComplaints;
 
   AppState copyWith({
     int? onboardingIndex,
@@ -349,6 +394,9 @@ class AppState {
     List<TransactionRecord>? history,
     List<NoticeItem>? customerNotifications,
     List<NoticeItem>? adminNotifications,
+    List<ChatRoom>? guardChatRooms,
+    List<ChatMessage>? guardChatMessages,
+    List<Complaint>? guardComplaints,
   }) {
     return AppState(
       onboardingIndex: onboardingIndex ?? this.onboardingIndex,
@@ -399,6 +447,9 @@ class AppState {
       customerNotifications:
           customerNotifications ?? this.customerNotifications,
       adminNotifications: adminNotifications ?? this.adminNotifications,
+      guardChatRooms: guardChatRooms ?? this.guardChatRooms,
+      guardChatMessages: guardChatMessages ?? this.guardChatMessages,
+      guardComplaints: guardComplaints ?? this.guardComplaints,
     );
   }
 
@@ -557,6 +608,84 @@ class AppState {
       ),
     ];
 
+    final seededChatTime = DateTime(2026, 6, 8, 9, 15);
+    final guardChatRooms = [
+      ChatRoom(
+        id: 'guard-customer-tkt-1002',
+        title: 'Chat Customer - TKT-1002',
+        participantRole: 'Customer',
+        participantName: 'Customer TKT-1002',
+        lastMessage: 'Baik Pak, saya cek tiketnya.',
+        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 12)),
+        unreadCount: 1,
+      ),
+      ChatRoom(
+        id: 'guard-provider-main',
+        title: 'Penyedia Parkir',
+        participantRole: 'Penyedia Parkir',
+        participantName: 'Penyedia Parkir',
+        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
+        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
+        unreadCount: 0,
+      ),
+      ChatRoom(
+        id: 'guard-admin-app',
+        title: 'Admin Aplikasi',
+        participantRole: 'Admin Aplikasi',
+        participantName: 'Admin Aplikasi',
+        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
+        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
+        unreadCount: 0,
+      ),
+    ];
+
+    final guardChatMessages = [
+      ChatMessage(
+        id: 'msg-guard-customer-1',
+        roomId: 'guard-customer-tkt-1002',
+        senderRole: 'Customer',
+        senderName: 'Customer TKT-1002',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Raka Penjaga',
+        message: 'Pak, tiket saya TKT-1002 belum terbaca di gerbang.',
+        createdAt: seededChatTime.subtract(const Duration(minutes: 18)),
+        isRead: false,
+      ),
+      ChatMessage(
+        id: 'msg-guard-customer-2',
+        roomId: 'guard-customer-tkt-1002',
+        senderRole: 'Penjaga Parkir',
+        senderName: 'Raka Penjaga',
+        receiverRole: 'Customer',
+        receiverName: 'Customer TKT-1002',
+        message: 'Baik Pak, saya cek tiketnya.',
+        createdAt: seededChatTime.subtract(const Duration(minutes: 12)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-guard-provider-1',
+        roomId: 'guard-provider-main',
+        senderRole: 'Penyedia Parkir',
+        senderName: 'Penyedia Parkir',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Raka Penjaga',
+        message: 'Laporkan kondisi operasional jika ada kendala.',
+        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-guard-admin-1',
+        roomId: 'guard-admin-app',
+        senderRole: 'Admin Aplikasi',
+        senderName: 'Admin Aplikasi',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Raka Penjaga',
+        message: 'Gunakan form komplain untuk masalah aplikasi.',
+        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
+        isRead: true,
+      ),
+    ];
+
     return AppState(
       onboardingIndex: 0,
       onboardingDone: false,
@@ -591,6 +720,9 @@ class AppState {
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
+      guardChatRooms: guardChatRooms,
+      guardChatMessages: guardChatMessages,
+      guardComplaints: const [],
     );
   }
 }
@@ -814,6 +946,126 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(selectedLot: lot);
   }
 
+  String createGuardChatRoom({
+    required String id,
+    required String title,
+    required String participantRole,
+    required String participantName,
+    String initialMessage = 'Room chat siap digunakan.',
+  }) {
+    for (final room in state.guardChatRooms) {
+      if (room.id == id) {
+        return room.id;
+      }
+    }
+    final now = DateTime.now();
+    final room = ChatRoom(
+      id: id,
+      title: title,
+      participantRole: participantRole,
+      participantName: participantName,
+      lastMessage: initialMessage,
+      lastMessageAt: now,
+      unreadCount: 0,
+    );
+    state = state.copyWith(guardChatRooms: [room, ...state.guardChatRooms]);
+    return id;
+  }
+
+  String createCustomerChatRoomForBooking(Booking booking) {
+    return createGuardChatRoom(
+      id: 'guard-customer-${booking.ticketNumber.toLowerCase()}',
+      title: 'Chat Customer - ${booking.ticketNumber}',
+      participantRole: 'Customer',
+      participantName: 'Customer ${booking.ticketNumber}',
+      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+    );
+  }
+
+  void markChatAsRead(String roomId) {
+    state = state.copyWith(
+      guardChatRooms: [
+        for (final room in state.guardChatRooms)
+          if (room.id == roomId) room.copyWith(unreadCount: 0) else room,
+      ],
+      guardChatMessages: [
+        for (final message in state.guardChatMessages)
+          if (message.roomId == roomId)
+            message.copyWith(isRead: true)
+          else
+            message,
+      ],
+    );
+  }
+
+  void sendGuardMessage({required String roomId, required String message}) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    ChatRoom? room;
+    for (final item in state.guardChatRooms) {
+      if (item.id == roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return;
+    }
+    final guard = activeGuard(state);
+    final now = DateTime.now();
+    final chatMessage = ChatMessage(
+      id: 'msg-${now.microsecondsSinceEpoch}',
+      roomId: roomId,
+      senderRole: 'Penjaga Parkir',
+      senderName: guard?.name ?? 'Penjaga Parkir',
+      receiverRole: room.participantRole,
+      receiverName: room.participantName,
+      message: trimmed,
+      createdAt: now,
+      isRead: true,
+    );
+    state = state.copyWith(
+      guardChatMessages: [...state.guardChatMessages, chatMessage],
+      guardChatRooms: [
+        for (final item in state.guardChatRooms)
+          if (item.id == roomId)
+            item.copyWith(
+              lastMessage: trimmed,
+              lastMessageAt: now,
+              unreadCount: 0,
+            )
+          else
+            item,
+      ],
+    );
+  }
+
+  void submitGuardComplaint({
+    required String title,
+    required String category,
+    required String description,
+    required String priority,
+  }) {
+    final guard = activeGuard(state);
+    final now = DateTime.now();
+    final complaint = Complaint(
+      id: 'CMP-${now.millisecondsSinceEpoch}',
+      senderRole: 'Penjaga Parkir',
+      senderName: guard?.name ?? 'Penjaga Parkir',
+      title: title,
+      category: category,
+      description: description,
+      priority: priority,
+      status: 'Terkirim',
+      createdAt: now,
+    );
+    state = state.copyWith(
+      guardComplaints: [complaint, ...state.guardComplaints],
+    );
+  }
+
   void addLot({
     required String name,
     required String address,
@@ -959,6 +1211,95 @@ class AppController extends StateNotifier<AppState> {
         ...state.adminNotifications,
       ],
     );
+  }
+
+  Booking? bookingByTicketNumber(String ticketNumber) {
+    final booking = state.activeBooking;
+    if (booking == null || booking.ticketNumber != ticketNumber) {
+      return null;
+    }
+    return booking;
+  }
+
+  bool verifyVehicleEntry(String ticketNumber) {
+    final booking = bookingByTicketNumber(ticketNumber);
+    if (booking == null || !booking.isPaid) {
+      return false;
+    }
+    final updatedSlots = [
+      for (final slot in state.slots)
+        if (slot.label == booking.slotCode)
+          slot.copyWith(isAvailable: false)
+        else
+          slot,
+    ];
+    final updatedBooking = booking.copyWith(status: BookingStatus.active);
+    final activity = TransactionRecord(
+      id: 'LOG-IN-${booking.ticketNumber}',
+      locationName: booking.locationName,
+      plateNumber: booking.plateNumber,
+      status: 'Kendaraan masuk',
+      total: 0,
+      timeLabel: formatDateTime(DateTime.now()),
+    );
+    state = state.copyWith(
+      activeBooking: updatedBooking,
+      slots: updatedSlots,
+      history: [activity, ...state.history],
+      adminNotifications: [
+        NoticeItem(
+          title: 'Kendaraan masuk',
+          message:
+              '${booking.plateNumber} diverifikasi masuk di ${booking.locationName}.',
+          timeLabel: 'Baru saja',
+          icon: Icons.login_rounded,
+          accent: AppTheme.emerald,
+        ),
+        ...state.adminNotifications,
+      ],
+    );
+    return true;
+  }
+
+  bool confirmVehicleExit(String ticketNumber) {
+    final booking = bookingByTicketNumber(ticketNumber);
+    if (booking == null || !booking.isPaid) {
+      return false;
+    }
+    final updatedSlots = [
+      for (final slot in state.slots)
+        if (slot.label == booking.slotCode)
+          slot.copyWith(isAvailable: true)
+        else
+          slot,
+    ];
+    final updatedBooking = booking.copyWith(status: BookingStatus.completed);
+    final activity = TransactionRecord(
+      id: 'LOG-OUT-${booking.ticketNumber}',
+      locationName: booking.locationName,
+      plateNumber: booking.plateNumber,
+      status: 'Kendaraan keluar',
+      total: 0,
+      timeLabel: formatDateTime(DateTime.now()),
+    );
+    state = state.copyWith(
+      activeBooking: updatedBooking,
+      slots: updatedSlots,
+      reservationLockedUntil: null,
+      history: [activity, ...state.history],
+      adminNotifications: [
+        NoticeItem(
+          title: 'Kendaraan keluar',
+          message:
+              '${booking.plateNumber} keluar dari ${booking.locationName}. Slot ${booking.slotCode} tersedia kembali.',
+          timeLabel: 'Baru saja',
+          icon: Icons.logout_rounded,
+          accent: AppTheme.blue,
+        ),
+        ...state.adminNotifications,
+      ],
+    );
+    return true;
   }
 
   void markVehicleExit() {
@@ -5093,89 +5434,670 @@ class VehicleMonitoringScreen extends ConsumerWidget {
   }
 }
 
-class ScanQrScreen extends ConsumerWidget {
+class ScanQrScreen extends ConsumerStatefulWidget {
   const ScanQrScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final booking = ref.watch(appControllerProvider).activeBooking;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scan QR kendaraan')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          PremiumCard(
-            child: Column(
-              children: [
-                Container(
-                  height: 240,
-                  decoration: BoxDecoration(
-                    color: AppTheme.ink,
+  ConsumerState<ScanQrScreen> createState() => _ScanQrScreenState();
+}
+
+class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
+  late final MobileScannerController _scannerController;
+  final TextEditingController _manualTicketController = TextEditingController();
+  Booking? _scannedBooking;
+  String? _lastScannedTicket;
+  DateTime? _lastScanTime;
+  String? _lastScanStatus;
+  bool _handlingScan = false;
+  bool _isLeaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scannerController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      formats: const [BarcodeFormat.qrCode],
+    );
+  }
+
+  @override
+  void dispose() {
+    _scannerController.stop();
+    _scannerController.dispose();
+    _manualTicketController.dispose();
+    super.dispose();
+  }
+
+  String get _dashboardRoute {
+    final mode = ref.read(appControllerProvider).currentMode;
+    return switch (mode) {
+      AccountMode.parkingGuard => '/guard/home',
+      AccountMode.provider => '/provider/dashboard',
+      AccountMode.superAdmin => '/admin/dashboard',
+      AccountMode.customer => '/customer/home',
+    };
+  }
+
+  Future<void> _stopCamera() async {
+    try {
+      await _scannerController.stop();
+    } catch (_) {}
+  }
+
+  Future<void> _startCamera() async {
+    try {
+      await _scannerController.start();
+    } catch (_) {}
+  }
+
+  Future<void> _goBack() async {
+    if (_isLeaving) {
+      return;
+    }
+    _isLeaving = true;
+    await _stopCamera();
+    if (!mounted) {
+      return;
+    }
+    if (Navigator.of(context).canPop()) {
+      context.pop();
+    } else {
+      context.go(_dashboardRoute);
+    }
+  }
+
+  Future<void> _goDashboard() async {
+    if (_isLeaving) {
+      return;
+    }
+    _isLeaving = true;
+    await _stopCamera();
+    if (mounted) {
+      context.go(_dashboardRoute);
+    }
+  }
+
+  Future<void> _scanAgain() async {
+    setState(() {
+      _handlingScan = false;
+      _scannedBooking = null;
+      _lastScanStatus = 'Siap scan ulang';
+    });
+    await _startCamera();
+  }
+
+  Future<void> _toggleTorch() async {
+    try {
+      await _scannerController.toggleTorch();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Flash tidak tersedia di perangkat ini')),
+      );
+    }
+  }
+
+  Future<void> _switchCamera() async {
+    try {
+      await _scannerController.switchCamera();
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ganti kamera tidak tersedia')),
+      );
+    }
+  }
+
+  Future<void> _handleDetectedCode(String rawCode) async {
+    final ticketNumber = _extractTicketNumber(rawCode);
+    await _stopCamera();
+    if (!mounted) {
+      return;
+    }
+    final booking = ref
+        .read(appControllerProvider.notifier)
+        .bookingByTicketNumber(ticketNumber);
+    setState(() {
+      _lastScannedTicket = ticketNumber;
+      _lastScanTime = DateTime.now();
+      _scannedBooking = booking;
+      _lastScanStatus = booking == null
+          ? 'Tiket tidak ditemukan'
+          : 'Tiket ditemukan';
+    });
+    if (booking == null) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text('QR Ticket tidak ditemukan'),
+          content: Text('Kode "$ticketNumber" tidak cocok dengan tiket aktif.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _goDashboard();
+              },
+              child: const Text('Kembali'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _scanAgain();
+              },
+              child: const Text('Scan Lagi'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    await _showScanResultDialog(booking);
+  }
+
+  String _extractTicketNumber(String rawCode) {
+    final trimmed = rawCode.trim();
+    final match = RegExp(r'TKT-\d+').firstMatch(trimmed);
+    return match?.group(0) ?? trimmed;
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_handlingScan) {
+      return;
+    }
+    final code = capture.barcodes
+        .map((barcode) => barcode.rawValue)
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .firstOrNull;
+    if (code == null) {
+      return;
+    }
+    _handlingScan = true;
+    _handleDetectedCode(code);
+  }
+
+  Future<void> _showManualInputDialog() async {
+    _manualTicketController.text = _lastScannedTicket ?? '';
+    final code = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Input Kode Tiket Manual'),
+        content: TextField(
+          controller: _manualTicketController,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(
+            labelText: 'Nomor tiket',
+            hintText: 'Contoh: TKT-1001',
+            prefixIcon: Icon(Icons.confirmation_num_rounded),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () =>
+                Navigator.of(context).pop(_manualTicketController.text),
+            child: const Text('Cek Tiket'),
+          ),
+        ],
+      ),
+    );
+    if (code != null && code.trim().isNotEmpty) {
+      await _handleDetectedCode(code);
+    }
+  }
+
+  Future<void> _showScanResultDialog(Booking booking) async {
+    if (!mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text('Hasil Scan QR'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ScannedTicketCard(booking: booking),
+              const SizedBox(height: 12),
+              const Text(
+                'Pilih aksi verifikasi atau scan ulang.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _goDashboard();
+            },
+            child: const Text('Kembali'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _scanAgain();
+            },
+            child: const Text('Scan Lagi'),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _confirmExit();
+            },
+            child: const Text('Konfirmasi Keluar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _verifyEntry();
+            },
+            child: const Text('Verifikasi Masuk'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _verifyEntry() {
+    final booking = _scannedBooking;
+    if (booking == null) {
+      return;
+    }
+    final success = ref
+        .read(appControllerProvider.notifier)
+        .verifyVehicleEntry(booking.ticketNumber);
+    final updatedBooking = ref
+        .read(appControllerProvider.notifier)
+        .bookingByTicketNumber(booking.ticketNumber);
+    setState(() {
+      _scannedBooking = updatedBooking ?? booking;
+      _lastScanTime = DateTime.now();
+      _lastScanStatus = success
+          ? 'Kendaraan masuk terverifikasi'
+          : 'Tiket belum dapat diverifikasi';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Kendaraan masuk berhasil diverifikasi'
+              : 'Tiket belum lunas atau tidak valid',
+        ),
+      ),
+    );
+  }
+
+  void _confirmExit() {
+    final booking = _scannedBooking;
+    if (booking == null) {
+      return;
+    }
+    final success = ref
+        .read(appControllerProvider.notifier)
+        .confirmVehicleExit(booking.ticketNumber);
+    final updatedBooking = ref
+        .read(appControllerProvider.notifier)
+        .bookingByTicketNumber(booking.ticketNumber);
+    setState(() {
+      _scannedBooking =
+          updatedBooking ??
+          booking.copyWith(
+            status: success ? BookingStatus.completed : booking.status,
+          );
+      _lastScanTime = DateTime.now();
+      _lastScanStatus = success
+          ? 'Kendaraan keluar dikonfirmasi'
+          : 'Tiket belum dapat dikonfirmasi';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Kendaraan keluar berhasil dikonfirmasi'
+              : 'Tiket tidak valid untuk keluar',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final booking = _scannedBooking;
+    final scanContextLot = _selectedGuardLot(ref.watch(appControllerProvider));
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _goBack();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _goBack,
+          ),
+          title: const Text('Scan QR kendaraan'),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            if (scanContextLot != null) ...[
+              InlineNotice(
+                icon: Icons.location_on_rounded,
+                accent: scanContextLot.accent,
+                message: 'Scan untuk lokasi ${scanContextLot.name}.',
+              ),
+              const SizedBox(height: 14),
+            ],
+            PremiumCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ClipRRect(
                     borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 2),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: const Icon(
-                        Icons.qr_code_scanner_rounded,
-                        color: Colors.white,
-                        size: 60,
+                    child: SizedBox(
+                      height: 360,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          MobileScanner(
+                            controller: _scannerController,
+                            fit: BoxFit.cover,
+                            onDetect: _onDetect,
+                            errorBuilder: (context, error) {
+                              return _ScannerFallback(
+                                message:
+                                    error.errorCode ==
+                                        MobileScannerErrorCode.permissionDenied
+                                    ? 'Izin kamera diperlukan untuk scan QR.'
+                                    : 'Kamera tidak tersedia atau izin kamera ditolak.',
+                                onManualInput: _showManualInputDialog,
+                              );
+                            },
+                          ),
+                          const _ScannerFrameOverlay(),
+                          Positioned(
+                            left: 18,
+                            right: 18,
+                            bottom: 18,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.58),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: const Text(
+                                'Arahkan kamera ke QR Ticket pelanggan',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  booking == null
-                      ? 'Tidak ada tiket aktif saat ini.'
-                      : 'Tiket aktif ${booking.ticketNumber}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _toggleTorch,
+                        icon: const Icon(Icons.flash_on_rounded),
+                        label: const Text('Flash'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _switchCamera,
+                        icon: const Icon(Icons.cameraswitch_rounded),
+                        label: const Text('Ganti Kamera'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _scanAgain,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Scan Ulang'),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 18),
-                PrimaryButton(
-                  label: 'Verifikasi kendaraan',
-                  icon: Icons.verified_user_rounded,
-                  onPressed: booking == null
-                      ? null
-                      : () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Tiket valid dan pembayaran terkonfirmasi',
-                              ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _showManualInputDialog,
+                    icon: const Icon(Icons.keyboard_rounded),
+                    label: const Text('Input Kode Tiket Manual'),
+                  ),
+                  const SizedBox(height: 18),
+                  if (booking == null)
+                    const InlineNotice(
+                      icon: Icons.qr_code_scanner_rounded,
+                      accent: AppTheme.blue,
+                      message:
+                          'Belum ada tiket valid. Scan QR Ticket pelanggan atau input kode manual.',
+                    )
+                  else
+                    _ScannedTicketCard(booking: booking),
+                  const SizedBox(height: 18),
+                  if (_lastScannedTicket != null)
+                    PremiumCard(
+                      accent: AppTheme.slateSoft,
+                      child: Column(
+                        children: [
+                          SummaryRow(
+                            label: 'Last scanned ticket',
+                            value: _lastScannedTicket!,
+                          ),
+                          SummaryRow(
+                            label: 'Waktu scan',
+                            value: formatDateTime(
+                              _lastScanTime ?? DateTime.now(),
                             ),
-                          );
-                        },
-                ),
-                const SizedBox(height: 12),
-                SecondaryButton(
-                  label: 'Konfirmasi kendaraan keluar',
-                  icon: Icons.exit_to_app_rounded,
-                  onPressed: booking == null
-                      ? null
-                      : () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .markVehicleExit();
-                          final mode = ref
-                              .read(appControllerProvider)
-                              .currentMode;
-                          context.go(
-                            mode == AccountMode.parkingGuard
-                                ? '/guard/dashboard'
-                                : '/provider/dashboard',
-                          );
-                        },
-                ),
-              ],
+                          ),
+                          SummaryRow(
+                            label: 'Status',
+                            value: _lastScanStatus ?? '-',
+                            valueColor: booking == null
+                                ? const Color(0xFFDC2626)
+                                : AppTheme.emerald,
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 18),
+                  PrimaryButton(
+                    label: 'Verifikasi Kendaraan Masuk',
+                    icon: Icons.login_rounded,
+                    onPressed: booking == null ? null : _verifyEntry,
+                  ),
+                  const SizedBox(height: 12),
+                  SecondaryButton(
+                    label: 'Konfirmasi Kendaraan Keluar',
+                    icon: Icons.logout_rounded,
+                    onPressed: booking == null ? null : _confirmExit,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _goDashboard,
+                    icon: const Icon(Icons.dashboard_rounded),
+                    label: const Text('Kembali ke Dashboard'),
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerFrameOverlay extends StatelessWidget {
+  const _ScannerFrameOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        width: 220,
+        height: 220,
+        child: Stack(
+          children: const [
+            _ScannerCorner(alignment: Alignment.topLeft),
+            _ScannerCorner(alignment: Alignment.topRight),
+            _ScannerCorner(alignment: Alignment.bottomLeft),
+            _ScannerCorner(alignment: Alignment.bottomRight),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerCorner extends StatelessWidget {
+  const _ScannerCorner({required this.alignment});
+
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    final isTop = alignment.y < 0;
+    final isLeft = alignment.x < 0;
+    return Align(
+      alignment: alignment,
+      child: Container(
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          border: Border(
+            top: isTop
+                ? const BorderSide(color: Colors.white, width: 4)
+                : BorderSide.none,
+            bottom: !isTop
+                ? const BorderSide(color: Colors.white, width: 4)
+                : BorderSide.none,
+            left: isLeft
+                ? const BorderSide(color: Colors.white, width: 4)
+                : BorderSide.none,
+            right: !isLeft
+                ? const BorderSide(color: Colors.white, width: 4)
+                : BorderSide.none,
+          ),
+          borderRadius: BorderRadius.only(
+            topLeft: isTop && isLeft ? const Radius.circular(18) : Radius.zero,
+            topRight: isTop && !isLeft
+                ? const Radius.circular(18)
+                : Radius.zero,
+            bottomLeft: !isTop && isLeft
+                ? const Radius.circular(18)
+                : Radius.zero,
+            bottomRight: !isTop && !isLeft
+                ? const Radius.circular(18)
+                : Radius.zero,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.blue.withValues(alpha: 0.45),
+              blurRadius: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerFallback extends StatelessWidget {
+  const _ScannerFallback({required this.message, required this.onManualInput});
+
+  final String message;
+  final VoidCallback onManualInput;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppTheme.ink,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.videocam_off_rounded, color: Colors.white, size: 54),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, height: 1.45),
+          ),
+          const SizedBox(height: 18),
+          ElevatedButton.icon(
+            onPressed: onManualInput,
+            icon: const Icon(Icons.keyboard_rounded),
+            label: const Text('Input Kode Tiket Manual'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScannedTicketCard extends StatelessWidget {
+  const _ScannedTicketCard({required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      accent: AppTheme.emeraldSoft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Data Tiket',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 14),
+          SummaryRow(label: 'Nomor tiket', value: booking.ticketNumber),
+          SummaryRow(label: 'Nama lokasi parkir', value: booking.locationName),
+          SummaryRow(label: 'Plat kendaraan', value: booking.plateNumber),
+          SummaryRow(label: 'Jenis kendaraan', value: booking.vehicleLabel),
+          SummaryRow(
+            label: 'Status pembayaran',
+            value: booking.isPaid ? 'Lunas' : 'Belum lunas',
+            valueColor: booking.isPaid
+                ? AppTheme.emerald
+                : const Color(0xFFD97706),
+          ),
+          SummaryRow(
+            label: 'Status tiket',
+            value: _bookingStatusLabel(booking.status),
+            valueColor: booking.status == BookingStatus.completed
+                ? AppTheme.slate
+                : AppTheme.blue,
           ),
         ],
       ),
@@ -5593,26 +6515,38 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
                 value: '${lots.length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
+                onTap: () => context.push('/guard/assigned-locations'),
               ),
               StatCard(
                 label: 'Slot tersedia',
                 value: '$availableSlots',
                 accent: AppTheme.blue,
                 icon: Icons.local_parking_rounded,
+                onTap: () => context.push('/guard/available-slots'),
               ),
               StatCard(
                 label: 'Slot penuh',
                 value: '${state.slots.length - availableSlots}',
                 accent: const Color(0xFFD97706),
                 icon: Icons.block_rounded,
+                onTap: () => context.push('/guard/occupied-slots'),
               ),
               StatCard(
-                label: 'Pembayaran',
+                label: 'Cek Pembayaran',
                 value: state.activeBooking?.isPaid ?? false ? 'Lunas' : 'Cek',
                 accent: AppTheme.ink,
                 icon: Icons.payments_rounded,
+                onTap: () => context.push('/guard/check-payment'),
               ),
             ],
+          ),
+          const SizedBox(height: 20),
+          MiniInfoTile(
+            icon: Icons.chat_bubble_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Chat & Komplain',
+            subtitle: 'Hubungi customer, penyedia, atau admin aplikasi.',
+            onTap: () => context.push('/guard/chat'),
           ),
           const SizedBox(height: 20),
           SectionTitle(title: 'Lokasi kerja'),
@@ -5626,6 +6560,10 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
                 title: lot.name,
                 subtitle:
                     '${lot.availableSlots}/${lot.totalSlots} slot tersedia',
+                onTap: () {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                  context.push('/guard/location-detail');
+                },
               ),
             ),
           ),
@@ -5641,28 +6579,628 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
   }
 }
 
+class GuardAssignedLocationsScreen extends ConsumerWidget {
+  const GuardAssignedLocationsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final lots = visibleLotsFor(state);
+    return GuardShell(
+      currentIndex: 0,
+      child: _GuardSubPage(
+        title: 'Lokasi assigned',
+        subtitle: 'Daftar lokasi kerja yang terhubung dengan akun penjaga.',
+        children: [
+          if (lots.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada lokasi assigned',
+              body:
+                  'Penyedia parkir belum menetapkan lokasi kerja untuk akun ini.',
+              actionLabel: 'Kembali ke Dashboard',
+              onPressed: () => context.go('/guard/dashboard'),
+            )
+          else
+            ...lots.map((lot) {
+              final fullSlots = lot.totalSlots - lot.availableSlots;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: () {
+                    ref.read(appControllerProvider.notifier).selectLot(lot);
+                    context.push('/guard/location-detail');
+                  },
+                  child: PremiumCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                lot.name,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppTheme.slate,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          lot.address,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.slate, height: 1.45),
+                        ),
+                        const SizedBox(height: 14),
+                        SummaryRow(
+                          label: 'Slot tersedia',
+                          value: '${lot.availableSlots} slot',
+                          valueColor: AppTheme.emerald,
+                        ),
+                        SummaryRow(
+                          label: 'Slot penuh',
+                          value: '$fullSlots slot',
+                          valueColor: fullSlots > 0
+                              ? const Color(0xFFD97706)
+                              : AppTheme.slate,
+                        ),
+                        SummaryRow(
+                          label: 'Total slot',
+                          value: '${lot.totalSlots} slot',
+                        ),
+                        SummaryRow(
+                          label: 'Status aktif',
+                          value: lot.isFull ? 'Penuh' : 'Aktif',
+                          valueColor: lot.isFull
+                              ? const Color(0xFFDC2626)
+                              : AppTheme.emerald,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+class GuardLocationDetailScreen extends ConsumerWidget {
+  const GuardLocationDetailScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final lot = _selectedGuardLot(state);
+    final booking = state.activeBooking;
+
+    if (lot == null) {
+      return GuardShell(
+        currentIndex: 0,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            EmptyStateCard(
+              title: 'Lokasi belum dipilih',
+              body: 'Pilih salah satu lokasi kerja dari dashboard penjaga.',
+              actionLabel: 'Kembali ke Dashboard',
+              onPressed: () => context.go('/guard/dashboard'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final occupiedSlots = lot.totalSlots - lot.availableSlots;
+    return GuardShell(
+      currentIndex: 0,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          HeaderSection(
+            title: lot.name,
+            subtitle: 'Detail lokasi kerja penjaga parkir.',
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/guard/dashboard'),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Kembali ke Dashboard'),
+          ),
+          const SizedBox(height: 18),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: lot.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        Icons.local_parking_rounded,
+                        color: lot.accent,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            lot.name,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            lot.address,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.slate, height: 1.45),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                SummaryRow(
+                  label: 'Slot tersedia',
+                  value: '${lot.availableSlots} slot',
+                  valueColor: AppTheme.emerald,
+                ),
+                SummaryRow(
+                  label: 'Slot penuh',
+                  value: '$occupiedSlots slot',
+                  valueColor: occupiedSlots > 0
+                      ? const Color(0xFFD97706)
+                      : AppTheme.slate,
+                ),
+                SummaryRow(
+                  label: 'Total slot',
+                  value: '${lot.totalSlots} slot',
+                ),
+                SummaryRow(
+                  label: 'Tarif per jam',
+                  value: formatCurrency(lot.pricePerHour),
+                  valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Status aktif',
+                  value: lot.isFull ? 'Penuh' : 'Aktif',
+                  valueColor: lot.isFull
+                      ? const Color(0xFFDC2626)
+                      : AppTheme.emerald,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          SectionTitle(title: 'Daftar slot'),
+          const SizedBox(height: 12),
+          if (state.slots.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada data slot',
+              body: 'Data slot akan tampil setelah penyedia menambahkan slot.',
+              actionLabel: 'Kembali ke Dashboard',
+              onPressed: () => context.go('/guard/dashboard'),
+            )
+          else
+            ...state.slots.map((slot) {
+              final activeBookingInLot =
+                  booking != null && booking.locationName == lot.name;
+              final matchedBooking =
+                  activeBookingInLot && booking.slotCode == slot.label
+                  ? booking
+                  : null;
+              final statusColor = slot.isAvailable
+                  ? AppTheme.emerald
+                  : const Color(0xFFD97706);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _GuardSlotCard(
+                  slotCode: slot.label,
+                  locationName: lot.name,
+                  plateNumber: matchedBooking?.plateNumber,
+                  status: slot.isAvailable ? 'Tersedia' : 'Terisi',
+                  statusColor: statusColor,
+                ),
+              );
+            }),
+          const SizedBox(height: 10),
+          PrimaryButton(
+            label: 'Lihat Kendaraan Aktif',
+            icon: Icons.directions_car_rounded,
+            onPressed: () {
+              ref.read(appControllerProvider.notifier).selectLot(lot);
+              context.push('/guard/vehicles');
+            },
+          ),
+          const SizedBox(height: 12),
+          SecondaryButton(
+            label: 'Scan QR',
+            icon: Icons.qr_code_scanner_rounded,
+            onPressed: () {
+              ref.read(appControllerProvider.notifier).selectLot(lot);
+              context.push('/guard/scan-qr');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class GuardAvailableSlotsScreen extends ConsumerWidget {
+  const GuardAvailableSlotsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final lots = visibleLotsFor(state);
+    final slots = state.slots.where((slot) => slot.isAvailable).toList();
+    return GuardShell(
+      currentIndex: 0,
+      child: _GuardSubPage(
+        title: 'Slot tersedia',
+        subtitle: 'Slot kosong dari lokasi yang ditugaskan ke penjaga.',
+        children: [
+          if (slots.isEmpty)
+            EmptyStateCard(
+              title: 'Tidak ada slot tersedia',
+              body: 'Semua slot sedang penuh atau belum ada data slot.',
+              actionLabel: 'Kembali ke Dashboard',
+              onPressed: () => context.go('/guard/dashboard'),
+            )
+          else
+            ...slots.map(
+              (slot) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _GuardSlotCard(
+                  slotCode: slot.label,
+                  locationName: _guardSlotLocationName(lots),
+                  status: 'Tersedia',
+                  statusColor: AppTheme.emerald,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class GuardOccupiedSlotsScreen extends ConsumerWidget {
+  const GuardOccupiedSlotsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final lots = visibleLotsFor(state);
+    final slots = state.slots.where((slot) => !slot.isAvailable).toList();
+    final booking = state.activeBooking;
+    return GuardShell(
+      currentIndex: 0,
+      child: _GuardSubPage(
+        title: 'Slot penuh',
+        subtitle: 'Slot yang sedang terisi pada area kerja penjaga.',
+        children: [
+          if (slots.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada slot penuh',
+              body: 'Slot penuh akan tampil saat ada kendaraan yang masuk.',
+              actionLabel: 'Kembali ke Dashboard',
+              onPressed: () => context.go('/guard/dashboard'),
+            )
+          else
+            ...slots.map((slot) {
+              final matchedBooking =
+                  booking != null && booking.slotCode == slot.label
+                  ? booking
+                  : null;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _GuardSlotCard(
+                  slotCode: slot.label,
+                  locationName:
+                      matchedBooking?.locationName ??
+                      _guardSlotLocationName(lots),
+                  plateNumber: matchedBooking?.plateNumber,
+                  status: 'Terisi',
+                  statusColor: const Color(0xFFD97706),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+class GuardCheckPaymentScreen extends ConsumerStatefulWidget {
+  const GuardCheckPaymentScreen({super.key});
+
+  @override
+  ConsumerState<GuardCheckPaymentScreen> createState() =>
+      _GuardCheckPaymentScreenState();
+}
+
+class _GuardCheckPaymentScreenState
+    extends ConsumerState<GuardCheckPaymentScreen> {
+  final TextEditingController _ticketController = TextEditingController();
+  final TextEditingController _plateController = TextEditingController();
+  Booking? _result;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _ticketController.dispose();
+    _plateController.dispose();
+    super.dispose();
+  }
+
+  void _checkPayment() {
+    final ticket = _ticketController.text.trim();
+    final plate = _plateController.text.trim().toUpperCase();
+    final booking = ref.read(appControllerProvider).activeBooking;
+    final ticketMatches = ticket.isEmpty || booking?.ticketNumber == ticket;
+    final plateMatches =
+        plate.isEmpty || booking?.plateNumber.toUpperCase() == plate;
+
+    if (booking != null && ticketMatches && plateMatches) {
+      setState(() {
+        _result = booking;
+        _errorMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _result = null;
+      _errorMessage =
+          'Tiket tidak ditemukan. Periksa nomor tiket atau plat kendaraan.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GuardShell(
+      currentIndex: 0,
+      child: _GuardSubPage(
+        title: 'Cek Pembayaran',
+        subtitle:
+            'Masukkan nomor tiket atau plat kendaraan untuk mengecek status.',
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _ticketController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Nomor tiket',
+                    prefixIcon: Icon(Icons.confirmation_num_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _plateController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Plat kendaraan',
+                    prefixIcon: Icon(Icons.directions_car_rounded),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                PrimaryButton(
+                  label: 'Cek Status Pembayaran',
+                  icon: Icons.search_rounded,
+                  onPressed: _checkPayment,
+                ),
+              ],
+            ),
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 14),
+            InlineNotice(
+              icon: Icons.error_outline_rounded,
+              accent: const Color(0xFFDC2626),
+              message: _errorMessage!,
+            ),
+          ],
+          if (_result != null) ...[
+            const SizedBox(height: 14),
+            PremiumCard(
+              accent: AppTheme.blueSoft,
+              child: Column(
+                children: [
+                  SummaryRow(
+                    label: 'Nomor tiket',
+                    value: _result!.ticketNumber,
+                  ),
+                  SummaryRow(
+                    label: 'Nama lokasi',
+                    value: _result!.locationName,
+                  ),
+                  SummaryRow(
+                    label: 'Plat kendaraan',
+                    value: _result!.plateNumber,
+                  ),
+                  SummaryRow(
+                    label: 'Total bayar',
+                    value: formatCurrency(_result!.estimatedCost),
+                    valueColor: AppTheme.blue,
+                  ),
+                  SummaryRow(
+                    label: 'Metode pembayaran',
+                    value: _paymentMethodLabel(_result!.paymentMethod),
+                  ),
+                  SummaryRow(
+                    label: 'Status pembayaran',
+                    value: _result!.isPaid ? 'Sudah Bayar' : 'Belum Bayar',
+                    valueColor: _result!.isPaid
+                        ? AppTheme.emerald
+                        : const Color(0xFFD97706),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GuardSubPage extends StatelessWidget {
+  const _GuardSubPage({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+      children: [
+        HeaderSection(title: title, subtitle: subtitle),
+        const SizedBox(height: 14),
+        OutlinedButton.icon(
+          onPressed: () => context.go('/guard/dashboard'),
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Kembali ke Dashboard'),
+        ),
+        const SizedBox(height: 18),
+        ...children,
+      ],
+    );
+  }
+}
+
+class _GuardSlotCard extends StatelessWidget {
+  const _GuardSlotCard({
+    required this.slotCode,
+    required this.locationName,
+    required this.status,
+    required this.statusColor,
+    this.plateNumber,
+  });
+
+  final String slotCode;
+  final String locationName;
+  final String status;
+  final Color statusColor;
+  final String? plateNumber;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Icon(Icons.local_parking_rounded, color: statusColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Slot $slotCode',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  plateNumber == null
+                      ? locationName
+                      : '$locationName - $plateNumber',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.slate,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          StatusBadge(label: status, color: statusColor),
+        ],
+      ),
+    );
+  }
+}
+
+String _guardSlotLocationName(List<ParkingLot> lots) {
+  if (lots.isEmpty) {
+    return 'Lokasi belum ditetapkan';
+  }
+  return lots.first.name;
+}
+
+ParkingLot? _selectedGuardLot(AppState state) {
+  final lots = visibleLotsFor(state);
+  for (final lot in lots) {
+    if (lot.id == state.selectedLot?.id) {
+      return lot;
+    }
+  }
+  return null;
+}
+
 class GuardVehiclesScreen extends ConsumerWidget {
   const GuardVehiclesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final booking = state.activeBooking;
+    final selectedLot = _selectedGuardLot(state);
+    final activeBooking = state.activeBooking;
+    final booking =
+        selectedLot == null || activeBooking?.locationName == selectedLot.name
+        ? activeBooking
+        : null;
     return GuardShell(
       currentIndex: 2,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
-          const HeaderSection(
+          HeaderSection(
             title: 'Kendaraan aktif',
-            subtitle:
-                'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
+            subtitle: selectedLot == null
+                ? 'Verifikasi masuk, keluar, dan status pembayaran pelanggan.'
+                : 'Kendaraan aktif di ${selectedLot.name}.',
           ),
           const SizedBox(height: 18),
           if (booking == null)
             EmptyStateCard(
               title: 'Belum ada kendaraan aktif',
-              body: 'Kendaraan akan tampil setelah pelanggan booking tiket.',
+              body: selectedLot == null
+                  ? 'Kendaraan akan tampil setelah pelanggan booking tiket.'
+                  : 'Belum ada kendaraan aktif pada lokasi yang dipilih.',
               actionLabel: 'Scan QR tiket',
               onPressed: () => context.push('/guard/scan-qr'),
             )
@@ -5683,6 +7221,17 @@ class GuardVehiclesScreen extends ConsumerWidget {
                         : const Color(0xFFD97706),
                   ),
                   const SizedBox(height: 18),
+                  PrimaryButton(
+                    label: 'Chat Customer',
+                    icon: Icons.chat_bubble_rounded,
+                    onPressed: () {
+                      final roomId = ref
+                          .read(appControllerProvider.notifier)
+                          .createCustomerChatRoomForBooking(booking);
+                      context.push('/guard/chat-room?roomId=$roomId');
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   SecondaryButton(
                     label: 'Konfirmasi pembayaran tunai',
                     icon: Icons.payments_rounded,
@@ -5703,6 +7252,656 @@ class GuardVehiclesScreen extends ConsumerWidget {
   }
 }
 
+class GuardChatListScreen extends ConsumerWidget {
+  const GuardChatListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    ChatRoom? roomById(String id) {
+      for (final room in state.guardChatRooms) {
+        if (room.id == id) {
+          return room;
+        }
+      }
+      return null;
+    }
+
+    final customerRoom = roomById('guard-customer-tkt-1002');
+    final providerRoom = roomById('guard-provider-main');
+    final adminRoom = roomById('guard-admin-app');
+    return GuardShell(
+      currentIndex: 3,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Chat & Komplain',
+            subtitle:
+                'Hubungi customer, penyedia parkir, atau admin aplikasi dari satu tempat.',
+          ),
+          const SizedBox(height: 18),
+          if (customerRoom != null)
+            _GuardChatCategoryCard(
+              room: customerRoom,
+              icon: Icons.person_rounded,
+              accent: AppTheme.blue,
+              onTap: () =>
+                  context.push('/guard/chat-room?roomId=${customerRoom.id}'),
+            ),
+          if (providerRoom != null)
+            _GuardChatCategoryCard(
+              room: providerRoom,
+              icon: Icons.apartment_rounded,
+              accent: AppTheme.emerald,
+              onTap: () =>
+                  context.push('/guard/chat-room?roomId=${providerRoom.id}'),
+            ),
+          if (adminRoom != null)
+            _GuardChatCategoryCard(
+              room: adminRoom,
+              icon: Icons.support_agent_rounded,
+              accent: const Color(0xFFD97706),
+              actionLabel: 'Kirim komplain',
+              onTap: () => context.push('/guard/complaint'),
+            ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => context.push('/guard/complaint'),
+            icon: const Icon(Icons.report_problem_rounded),
+            label: const Text('Buat Komplain ke Admin Aplikasi'),
+          ),
+          if (state.guardComplaints.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            SectionTitle(title: 'Komplain terakhir'),
+            const SizedBox(height: 12),
+            ...state.guardComplaints
+                .take(3)
+                .map(
+                  (complaint) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: PremiumCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  complaint.title,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              StatusBadge(
+                                label: complaint.status,
+                                color: AppTheme.emerald,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.slate, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class GuardChatRoomScreen extends ConsumerStatefulWidget {
+  const GuardChatRoomScreen({super.key, required this.roomId});
+
+  final String roomId;
+
+  @override
+  ConsumerState<GuardChatRoomScreen> createState() =>
+      _GuardChatRoomScreenState();
+}
+
+class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.roomId.isNotEmpty) {
+        ref.read(appControllerProvider.notifier).markChatAsRead(widget.roomId);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+    ref
+        .read(appControllerProvider.notifier)
+        .sendGuardMessage(roomId: widget.roomId, message: text);
+    _messageController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    ChatRoom? room;
+    for (final item in state.guardChatRooms) {
+      if (item.id == widget.roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return GuardShell(
+        currentIndex: 3,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            EmptyStateCard(
+              title: 'Room chat tidak ditemukan',
+              body: 'Pilih room chat dari daftar Chat & Komplain.',
+              actionLabel: 'Kembali ke Chat',
+              onPressed: () => context.go('/guard/chat'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final messages =
+        state.guardChatMessages
+            .where((message) => message.roomId == room!.id)
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return GuardShell(
+      currentIndex: 3,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => context.go('/guard/chat'),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _guardChatAccent(
+                      room.participantRole,
+                    ).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    _guardChatIcon(room.participantRole),
+                    color: _guardChatAccent(room.participantRole),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        room.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${room.participantRole} - ${room.participantName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                return _GuardChatBubble(
+                  message: message,
+                  isMine: message.senderRole == 'Penjaga Parkir',
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.14))],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: const InputDecoration(
+                      hintText: 'Tulis pesan...',
+                      prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _sendMessage,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      backgroundColor: AppTheme.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Icon(Icons.send_rounded),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class GuardComplaintScreen extends ConsumerStatefulWidget {
+  const GuardComplaintScreen({super.key});
+
+  @override
+  ConsumerState<GuardComplaintScreen> createState() =>
+      _GuardComplaintScreenState();
+}
+
+class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  String _category = 'QR Scanner';
+  String _priority = 'Sedang';
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _submitComplaint() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    ref
+        .read(appControllerProvider.notifier)
+        .submitGuardComplaint(
+          title: _titleController.text.trim(),
+          category: _category,
+          description: _descriptionController.text.trim(),
+          priority: _priority,
+        );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
+    context.go('/guard/chat');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GuardShell(
+      currentIndex: 3,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Komplain Admin Aplikasi',
+            subtitle:
+                'Laporkan kendala aplikasi seperti scanner, tiket, pembayaran, atau akun.',
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/guard/chat'),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Kembali ke Chat'),
+          ),
+          const SizedBox(height: 18),
+          PremiumCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Judul komplain',
+                      prefixIcon: Icon(Icons.title_rounded),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Judul komplain wajib diisi'
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _category,
+                    decoration: const InputDecoration(
+                      labelText: 'Kategori masalah',
+                      prefixIcon: Icon(Icons.category_rounded),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'QR Scanner',
+                        child: Text('QR Scanner'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Pembayaran',
+                        child: Text('Pembayaran'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Data Tiket',
+                        child: Text('Data Tiket'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Aplikasi Error',
+                        child: Text('Aplikasi Error'),
+                      ),
+                      DropdownMenuItem(value: 'Akun', child: Text('Akun')),
+                      DropdownMenuItem(
+                        value: 'Lainnya',
+                        child: Text('Lainnya'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _category = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _descriptionController,
+                    minLines: 4,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Deskripsi masalah',
+                      alignLabelWithHint: true,
+                      prefixIcon: Icon(Icons.notes_rounded),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Deskripsi masalah wajib diisi'
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _priority,
+                    decoration: const InputDecoration(
+                      labelText: 'Prioritas',
+                      prefixIcon: Icon(Icons.priority_high_rounded),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Rendah', child: Text('Rendah')),
+                      DropdownMenuItem(value: 'Sedang', child: Text('Sedang')),
+                      DropdownMenuItem(value: 'Tinggi', child: Text('Tinggi')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _priority = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  PrimaryButton(
+                    label: 'Kirim Komplain',
+                    icon: Icons.send_rounded,
+                    onPressed: _submitComplaint,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GuardChatCategoryCard extends StatelessWidget {
+  const _GuardChatCategoryCard({
+    required this.room,
+    required this.icon,
+    required this.accent,
+    required this.onTap,
+    this.actionLabel = 'Buka chat',
+  });
+
+  final ChatRoom room;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+  final String actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: PremiumCard(
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(icon, color: accent),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            room.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        if (room.unreadCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDC2626),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${room.unreadCount}',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      room.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_guardChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(Icons.chevron_right_rounded, color: AppTheme.slate),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GuardChatBubble extends StatelessWidget {
+  const _GuardChatBubble({required this.message, required this.isMine});
+
+  final ChatMessage message;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final bubbleColor = isMine ? AppTheme.blue : Colors.white;
+    final textColor = isMine ? Colors.white : AppTheme.ink;
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        margin: EdgeInsets.only(
+          left: isMine ? 52 : 0,
+          right: isMine ? 0 : 52,
+          bottom: 12,
+        ),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isMine ? 20 : 6),
+            bottomRight: Radius.circular(isMine ? 6 : 20),
+          ),
+          boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.1))],
+        ),
+        child: Column(
+          crossAxisAlignment: isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.senderName,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? Colors.white70 : AppTheme.slate,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message.message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: textColor, height: 1.45),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _guardChatTimeLabel(message.createdAt),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? Colors.white70 : AppTheme.slate,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+IconData _guardChatIcon(String role) {
+  if (role == 'Customer') {
+    return Icons.person_rounded;
+  }
+  if (role == 'Penyedia Parkir') {
+    return Icons.apartment_rounded;
+  }
+  return Icons.support_agent_rounded;
+}
+
+Color _guardChatAccent(String role) {
+  if (role == 'Customer') {
+    return AppTheme.blue;
+  }
+  if (role == 'Penyedia Parkir') {
+    return AppTheme.emerald;
+  }
+  return const Color(0xFFD97706);
+}
+
+String _guardChatTimeLabel(DateTime time) {
+  final now = DateTime.now();
+  final difference = now.difference(time);
+  if (difference.inMinutes < 1) {
+    return 'Baru saja';
+  }
+  if (difference.inMinutes < 60) {
+    return '${difference.inMinutes} menit lalu';
+  }
+  if (difference.inHours < 24) {
+    return '${difference.inHours} jam lalu';
+  }
+  return formatDateTime(time);
+}
+
 class GuardProfileScreen extends ConsumerWidget {
   const GuardProfileScreen({super.key});
 
@@ -5711,7 +7910,7 @@ class GuardProfileScreen extends ConsumerWidget {
     final state = ref.watch(appControllerProvider);
     final guard = activeGuard(state);
     return GuardShell(
-      currentIndex: 3,
+      currentIndex: 4,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -5931,6 +8130,11 @@ class GuardShell extends StatelessWidget {
           label: 'Kendaraan',
           icon: Icons.directions_car_rounded,
           route: '/guard/vehicles',
+        ),
+        ShellDestination(
+          label: 'Chat',
+          icon: Icons.chat_bubble_rounded,
+          route: '/guard/chat',
         ),
         ShellDestination(
           label: 'Profil',
@@ -7360,52 +9564,64 @@ class StatCard extends StatelessWidget {
     required this.value,
     required this.accent,
     required this.icon,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final Color accent;
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 54) / 2;
-    return Container(
+    return SizedBox(
       width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
+      child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.12))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: accent),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.12))],
           ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: accent),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTheme.slate,
+                  height: 1.45,
+                ),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(height: 10),
+                Icon(Icons.chevron_right_rounded, color: accent),
+              ],
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.slate,
-              height: 1.45,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

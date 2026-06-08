@@ -232,6 +232,118 @@ class ParkingSlot {
   }
 }
 
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.roomId,
+    required this.senderRole,
+    required this.senderName,
+    required this.receiverRole,
+    required this.receiverName,
+    required this.message,
+    required this.createdAt,
+    required this.isRead,
+  });
+
+  final String id;
+  final String roomId;
+  final String senderRole;
+  final String senderName;
+  final String receiverRole;
+  final String receiverName;
+  final String message;
+  final DateTime createdAt;
+  final bool isRead;
+
+  ChatMessage copyWith({
+    String? id,
+    String? roomId,
+    String? senderRole,
+    String? senderName,
+    String? receiverRole,
+    String? receiverName,
+    String? message,
+    DateTime? createdAt,
+    bool? isRead,
+  }) {
+    return ChatMessage(
+      id: id ?? this.id,
+      roomId: roomId ?? this.roomId,
+      senderRole: senderRole ?? this.senderRole,
+      senderName: senderName ?? this.senderName,
+      receiverRole: receiverRole ?? this.receiverRole,
+      receiverName: receiverName ?? this.receiverName,
+      message: message ?? this.message,
+      createdAt: createdAt ?? this.createdAt,
+      isRead: isRead ?? this.isRead,
+    );
+  }
+}
+
+class ChatRoom {
+  const ChatRoom({
+    required this.id,
+    required this.title,
+    required this.participantRole,
+    required this.participantName,
+    required this.lastMessage,
+    required this.lastMessageAt,
+    required this.unreadCount,
+  });
+
+  final String id;
+  final String title;
+  final String participantRole;
+  final String participantName;
+  final String lastMessage;
+  final DateTime lastMessageAt;
+  final int unreadCount;
+
+  ChatRoom copyWith({
+    String? id,
+    String? title,
+    String? participantRole,
+    String? participantName,
+    String? lastMessage,
+    DateTime? lastMessageAt,
+    int? unreadCount,
+  }) {
+    return ChatRoom(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      participantRole: participantRole ?? this.participantRole,
+      participantName: participantName ?? this.participantName,
+      lastMessage: lastMessage ?? this.lastMessage,
+      lastMessageAt: lastMessageAt ?? this.lastMessageAt,
+      unreadCount: unreadCount ?? this.unreadCount,
+    );
+  }
+}
+
+class Complaint {
+  const Complaint({
+    required this.id,
+    required this.senderRole,
+    required this.senderName,
+    required this.title,
+    required this.category,
+    required this.description,
+    required this.priority,
+    required this.status,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String senderRole;
+  final String senderName;
+  final String title;
+  final String category;
+  final String description;
+  final String priority;
+  final String status;
+  final DateTime createdAt;
+}
+
 class ProviderApplication {
   const ProviderApplication({
     required this.parkingName,
