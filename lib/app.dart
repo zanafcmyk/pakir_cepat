@@ -256,6 +256,7 @@ class AppState {
     required this.superAdminNotifications,
     required this.complaints,
     required this.registrationRequests,
+    required this.managedUsers,
   });
 
   final int onboardingIndex;
@@ -285,6 +286,7 @@ class AppState {
   final List<NoticeItem> superAdminNotifications;
   final List<ComplaintItem> complaints;
   final List<RegistrationRequest> registrationRequests;
+  final List<ManagedUserAccount> managedUsers;
 
   AppState copyWith({
     int? onboardingIndex,
@@ -317,6 +319,7 @@ class AppState {
     List<NoticeItem>? superAdminNotifications,
     List<ComplaintItem>? complaints,
     List<RegistrationRequest>? registrationRequests,
+    List<ManagedUserAccount>? managedUsers,
   }) {
     return AppState(
       onboardingIndex: onboardingIndex ?? this.onboardingIndex,
@@ -356,6 +359,7 @@ class AppState {
           superAdminNotifications ?? this.superAdminNotifications,
       complaints: complaints ?? this.complaints,
       registrationRequests: registrationRequests ?? this.registrationRequests,
+      managedUsers: managedUsers ?? this.managedUsers,
     );
   }
 
@@ -555,6 +559,41 @@ class AppState {
       ),
     ];
 
+    const managedUsers = [
+      ManagedUserAccount(
+        id: 'usr-customer-1',
+        name: 'Dio Pratama',
+        email: 'dio@parkircepat.app',
+        role: AccountMode.customer,
+        status: UserAccessStatus.active,
+        note: 'Pelanggan aktif dengan tiket dan kendaraan tersimpan.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-provider-1',
+        name: 'Admin Plaza Sudirman',
+        email: 'admin@sudirmanparkir.app',
+        role: AccountMode.provider,
+        status: UserAccessStatus.active,
+        note: 'Penyedia utama dengan beberapa lokasi aktif.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-guard-1',
+        name: 'Raka Penjaga',
+        email: 'raka.guard@parkircepat.app',
+        role: AccountMode.parkingGuard,
+        status: UserAccessStatus.active,
+        note: 'Penjaga untuk Plaza Sudirman dan Emerald.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-review-1',
+        name: 'Akun Pembayaran Bermasalah',
+        email: 'review@parkircepat.app',
+        role: AccountMode.customer,
+        status: UserAccessStatus.suspended,
+        note: 'Ditahan karena laporan pembayaran manual belum cocok.',
+      ),
+    ];
+
     const history = [
       TransactionRecord(
         id: 'INV-1940',
@@ -602,6 +641,7 @@ class AppState {
       superAdminNotifications: superAdminNotifications,
       complaints: complaints,
       registrationRequests: registrationRequests,
+      managedUsers: managedUsers,
     );
   }
 }
@@ -637,6 +677,16 @@ Color complaintStatusColor(ComplaintStatus status) => switch (status) {
   ComplaintStatus.waiting => const Color(0xFFD97706),
   ComplaintStatus.answered => AppTheme.emerald,
   ComplaintStatus.closed => AppTheme.slate,
+};
+
+String userAccessStatusLabel(UserAccessStatus status) => switch (status) {
+  UserAccessStatus.active => 'Aktif',
+  UserAccessStatus.suspended => 'Nonaktif',
+};
+
+Color userAccessStatusColor(UserAccessStatus status) => switch (status) {
+  UserAccessStatus.active => AppTheme.emerald,
+  UserAccessStatus.suspended => const Color(0xFFDC2626),
 };
 
 ParkingGuardAccount? activeGuard(AppState state) {
@@ -843,7 +893,88 @@ class AppController extends StateNotifier<AppState> {
       accountStatus: selected?.providerApplication == null
           ? state.accountStatus
           : status,
+      managedUsers: selected == null || status != AccountStatus.verified
+          ? state.managedUsers
+          : [
+              ManagedUserAccount(
+                id: 'usr-${state.managedUsers.length + 1}',
+                name: selected.fullName,
+                email: selected.email,
+                role: selected.role,
+                status: UserAccessStatus.active,
+                note: 'Akun disetujui melalui verifikasi Super Admin.',
+              ),
+              ...state.managedUsers,
+            ],
       superAdminNotifications: notices,
+    );
+  }
+
+  void toggleManagedUserAccess(String id) {
+    ManagedUserAccount? updatedUser;
+    final users = [
+      for (final user in state.managedUsers)
+        if (user.id == id)
+          updatedUser = user.copyWith(
+            status: user.status == UserAccessStatus.active
+                ? UserAccessStatus.suspended
+                : UserAccessStatus.active,
+            note: user.status == UserAccessStatus.active
+                ? 'Dinonaktifkan oleh Super Admin untuk pemeriksaan.'
+                : 'Diaktifkan kembali oleh Super Admin.',
+          )
+        else
+          user,
+    ];
+    if (updatedUser == null) {
+      return;
+    }
+
+    state = state.copyWith(
+      managedUsers: users,
+      superAdminNotifications: [
+        NoticeItem(
+          title: updatedUser.status == UserAccessStatus.suspended
+              ? 'Akun dinonaktifkan'
+              : 'Akun diaktifkan',
+          message:
+              '${updatedUser.name} (${roleLabel(updatedUser.role)}) sekarang ${userAccessStatusLabel(updatedUser.status).toLowerCase()}.',
+          timeLabel: 'Baru saja',
+          icon: updatedUser.status == UserAccessStatus.suspended
+              ? Icons.block_rounded
+              : Icons.check_circle_rounded,
+          accent: userAccessStatusColor(updatedUser.status),
+        ),
+        ...state.superAdminNotifications,
+      ],
+    );
+  }
+
+  void suspendFirstActiveManagedUser() {
+    final activeUsers = state.managedUsers.where(
+      (user) => user.status == UserAccessStatus.active,
+    );
+    if (activeUsers.isEmpty) {
+      return;
+    }
+    toggleManagedUserAccess(activeUsers.first.id);
+  }
+
+  void prepareSuperAdminReport(String format) {
+    state = state.copyWith(
+      superAdminNotifications: [
+        NoticeItem(
+          title: 'Laporan $format siap',
+          message:
+              'Rekap ${state.history.length} transaksi dan ${state.lots.length} lokasi berhasil disiapkan.',
+          timeLabel: 'Baru saja',
+          icon: format == 'PDF'
+              ? Icons.picture_as_pdf_rounded
+              : Icons.table_view_rounded,
+          accent: format == 'PDF' ? AppTheme.blue : AppTheme.emerald,
+        ),
+        ...state.superAdminNotifications,
+      ],
     );
   }
 
@@ -2138,6 +2269,9 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
     final waitingComplaints = state.complaints
         .where((complaint) => complaint.status == ComplaintStatus.waiting)
         .length;
+    final suspendedUsers = state.managedUsers
+        .where((user) => user.status == UserAccessStatus.suspended)
+        .length;
     return SuperAdminShell(
       currentIndex: 0,
       child: ListView(
@@ -2155,20 +2289,22 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
             children: [
               StatCard(
                 label: 'Pelanggan',
-                value: '${state.vehicles.length + 124}',
+                value:
+                    '${state.managedUsers.where((user) => user.role == AccountMode.customer).length}',
                 accent: AppTheme.blue,
                 icon: Icons.groups_rounded,
               ),
               StatCard(
                 label: 'Penyedia',
                 value:
-                    '${state.lots.map((lot) => lot.providerId).toSet().length}',
+                    '${state.managedUsers.where((user) => user.role == AccountMode.provider).length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
               ),
               StatCard(
                 label: 'Penjaga',
-                value: '${state.parkingGuards.length}',
+                value:
+                    '${state.managedUsers.where((user) => user.role == AccountMode.parkingGuard).length}',
                 accent: const Color(0xFFD97706),
                 icon: Icons.security_rounded,
               ),
@@ -2179,9 +2315,15 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                 icon: Icons.verified_user_rounded,
               ),
               StatCard(
+                label: 'Akun nonaktif',
+                value: '$suspendedUsers',
+                accent: const Color(0xFFD97706),
+                icon: Icons.block_rounded,
+              ),
+              StatCard(
                 label: 'Komplain menunggu',
                 value: '$waitingComplaints',
-                accent: const Color(0xFFD97706),
+                accent: AppTheme.blue,
                 icon: Icons.mark_chat_unread_rounded,
               ),
             ],
@@ -2261,9 +2403,20 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                 icon: Icons.block_rounded,
                 accent: AppTheme.blueSoft,
                 onTap: () {
+                  final hasActiveUser = ref
+                      .read(appControllerProvider)
+                      .managedUsers
+                      .any((user) => user.status == UserAccessStatus.active);
+                  ref
+                      .read(appControllerProvider.notifier)
+                      .suspendFirstActiveManagedUser();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Akun bermasalah ditandai untuk review.'),
+                    SnackBar(
+                      content: Text(
+                        hasActiveUser
+                            ? 'Akun aktif pertama berhasil dinonaktifkan.'
+                            : 'Tidak ada akun aktif yang bisa dinonaktifkan.',
+                      ),
                     ),
                   );
                 },
@@ -2310,6 +2463,15 @@ class SuperAdminUsersScreen extends ConsumerWidget {
               ),
             ),
           const SizedBox(height: 18),
+          SectionTitle(title: 'Kelola akses akun'),
+          const SizedBox(height: 12),
+          ...state.managedUsers.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ManagedUserAccountCard(user: user),
+            ),
+          ),
+          const SizedBox(height: 18),
           SectionTitle(title: 'Ringkasan role'),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -2317,7 +2479,7 @@ class SuperAdminUsersScreen extends ConsumerWidget {
             iconColor: AppTheme.emerald,
             title: 'Penyedia Parkir',
             subtitle:
-                '${state.lots.length} lokasi, status ${roleLabel(AccountMode.provider)} aktif',
+                '${state.managedUsers.where((user) => user.role == AccountMode.provider && user.status == UserAccessStatus.active).length} akun aktif',
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -2325,15 +2487,15 @@ class SuperAdminUsersScreen extends ConsumerWidget {
             iconColor: const Color(0xFFD97706),
             title: 'Penjaga Parkir',
             subtitle:
-                '${state.parkingGuards.length} akun terdaftar dari penyedia',
+                '${state.managedUsers.where((user) => user.role == AccountMode.parkingGuard && user.status == UserAccessStatus.active).length} akun aktif',
           ),
           const SizedBox(height: 12),
-          const MiniInfoTile(
+          MiniInfoTile(
             icon: Icons.person_rounded,
             iconColor: AppTheme.blue,
             title: 'Pelanggan',
             subtitle:
-                'Register, login, kendaraan, tiket, dan rating/review terpantau.',
+                '${state.managedUsers.where((user) => user.role == AccountMode.customer && user.status == UserAccessStatus.active).length} akun aktif',
           ),
         ],
       ),
@@ -2358,6 +2520,44 @@ class SuperAdminReportsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 18),
           PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  onPressed: () {
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .prepareSuperAdminReport('PDF');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Laporan PDF Super Admin siap.'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export Excel',
+                  icon: Icons.table_view_rounded,
+                  onPressed: () {
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .prepareSuperAdminReport('Excel');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Laporan Excel Super Admin siap.'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           ...state.history.map(
             (item) => Padding(
@@ -2520,6 +2720,93 @@ class RegistrationRequestCard extends ConsumerWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class ManagedUserAccountCard extends ConsumerWidget {
+  const ManagedUserAccountCard({super.key, required this.user});
+
+  final ManagedUserAccount user;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isSuspended = user.status == UserAccessStatus.suspended;
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: roleAccent(user.role).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(roleIcon(user.role), color: roleAccent(user.role)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${roleLabel(user.role)} - ${user.email}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.slate,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              StatusBadge(
+                label: userAccessStatusLabel(user.status),
+                color: userAccessStatusColor(user.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            user.note,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppTheme.slate,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          PrimaryButton(
+            label: isSuspended ? 'Aktifkan akun' : 'Nonaktifkan akun',
+            icon: isSuspended
+                ? Icons.check_circle_rounded
+                : Icons.block_rounded,
+            color: isSuspended ? AppTheme.emerald : const Color(0xFFDC2626),
+            onPressed: () {
+              ref
+                  .read(appControllerProvider.notifier)
+                  .toggleManagedUserAccess(user.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    isSuspended
+                        ? 'Akun berhasil diaktifkan kembali.'
+                        : 'Akun berhasil dinonaktifkan.',
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

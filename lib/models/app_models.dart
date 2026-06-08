@@ -10,6 +10,8 @@ enum PaymentMethod { qris, ewallet, cash, card }
 
 enum ComplaintStatus { waiting, answered, closed }
 
+enum UserAccessStatus { active, suspended }
+
 class ParkingLot {
   const ParkingLot({
     required this.id,
@@ -276,6 +278,42 @@ class RegistrationRequest {
       timeLabel: timeLabel ?? this.timeLabel,
       status: status ?? this.status,
       providerApplication: providerApplication ?? this.providerApplication,
+    );
+  }
+}
+
+class ManagedUserAccount {
+  const ManagedUserAccount({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.status,
+    required this.note,
+  });
+
+  final String id;
+  final String name;
+  final String email;
+  final AccountMode role;
+  final UserAccessStatus status;
+  final String note;
+
+  ManagedUserAccount copyWith({
+    String? id,
+    String? name,
+    String? email,
+    AccountMode? role,
+    UserAccessStatus? status,
+    String? note,
+  }) {
+    return ManagedUserAccount(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      status: status ?? this.status,
+      note: note ?? this.note,
     );
   }
 }
