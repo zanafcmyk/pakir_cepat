@@ -75,6 +75,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CustomerTicketScreen(),
       ),
       GoRoute(
+        path: '/customer/chat',
+        builder: (context, state) => const CustomerChatListScreen(),
+      ),
+      GoRoute(
+        path: '/customer/chat-room',
+        builder: (context, state) => CustomerChatRoomScreen(
+          roomId: state.uri.queryParameters['roomId'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/customer/complaint',
+        builder: (context, state) => const CustomerComplaintScreen(),
+      ),
+      GoRoute(
         path: '/customer/notifications',
         builder: (context, state) => const CustomerNotificationsScreen(),
       ),
@@ -314,6 +328,9 @@ class AppState {
     required this.history,
     required this.customerNotifications,
     required this.adminNotifications,
+    required this.customerChatRooms,
+    required this.customerChatMessages,
+    required this.customerComplaints,
     required this.guardChatRooms,
     required this.guardChatMessages,
     required this.guardComplaints,
@@ -352,6 +369,9 @@ class AppState {
   final List<TransactionRecord> history;
   final List<NoticeItem> customerNotifications;
   final List<NoticeItem> adminNotifications;
+  final List<ChatRoom> customerChatRooms;
+  final List<ChatMessage> customerChatMessages;
+  final List<Complaint> customerComplaints;
   final List<ChatRoom> guardChatRooms;
   final List<ChatMessage> guardChatMessages;
   final List<Complaint> guardComplaints;
@@ -394,6 +414,9 @@ class AppState {
     List<TransactionRecord>? history,
     List<NoticeItem>? customerNotifications,
     List<NoticeItem>? adminNotifications,
+    List<ChatRoom>? customerChatRooms,
+    List<ChatMessage>? customerChatMessages,
+    List<Complaint>? customerComplaints,
     List<ChatRoom>? guardChatRooms,
     List<ChatMessage>? guardChatMessages,
     List<Complaint>? guardComplaints,
@@ -447,6 +470,9 @@ class AppState {
       customerNotifications:
           customerNotifications ?? this.customerNotifications,
       adminNotifications: adminNotifications ?? this.adminNotifications,
+      customerChatRooms: customerChatRooms ?? this.customerChatRooms,
+      customerChatMessages: customerChatMessages ?? this.customerChatMessages,
+      customerComplaints: customerComplaints ?? this.customerComplaints,
       guardChatRooms: guardChatRooms ?? this.guardChatRooms,
       guardChatMessages: guardChatMessages ?? this.guardChatMessages,
       guardComplaints: guardComplaints ?? this.guardComplaints,
@@ -686,6 +712,95 @@ class AppState {
       ),
     ];
 
+    final customerChatTime = DateTime(2026, 6, 8, 10, 5);
+    final customerChatRooms = [
+      ChatRoom(
+        id: 'customer-guard-tkt-1002',
+        title: 'Chat Penjaga - TKT-1002',
+        participantRole: 'Penjaga Parkir',
+        participantName: 'Penjaga Parkir - Parkir Plaza Sudirman',
+        lastMessage: 'Silakan tunjukkan QR tiket di gerbang masuk.',
+        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 10)),
+        unreadCount: 1,
+      ),
+      ChatRoom(
+        id: 'customer-provider-lot-1',
+        title: 'Chat Penyedia - Parkir Plaza Sudirman',
+        participantRole: 'Penyedia Parkir',
+        participantName: 'Penyedia - Parkir Plaza Sudirman',
+        lastMessage: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
+        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 28)),
+        unreadCount: 0,
+      ),
+      ChatRoom(
+        id: 'customer-admin-app',
+        title: 'Admin Aplikasi',
+        participantRole: 'Admin Aplikasi',
+        participantName: 'Admin Aplikasi',
+        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
+        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
+        unreadCount: 0,
+      ),
+    ];
+
+    final customerChatMessages = [
+      ChatMessage(
+        id: 'msg-customer-guard-1',
+        roomId: 'customer-guard-tkt-1002',
+        senderRole: 'Customer',
+        senderName: 'Dio Pratama',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Penjaga Parkir - Parkir Plaza Sudirman',
+        message: 'Pak, slot saya ada di area mana?',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 16)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-customer-guard-2',
+        roomId: 'customer-guard-tkt-1002',
+        senderRole: 'Penjaga Parkir',
+        senderName: 'Penjaga Parkir - Parkir Plaza Sudirman',
+        receiverRole: 'Customer',
+        receiverName: 'Dio Pratama',
+        message: 'Silakan tunjukkan QR tiket di gerbang masuk.',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 10)),
+        isRead: false,
+      ),
+      ChatMessage(
+        id: 'msg-customer-provider-1',
+        roomId: 'customer-provider-lot-1',
+        senderRole: 'Customer',
+        senderName: 'Dio Pratama',
+        receiverRole: 'Penyedia Parkir',
+        receiverName: 'Penyedia - Parkir Plaza Sudirman',
+        message: 'Apakah tarif malam sama dengan siang?',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-customer-provider-2',
+        roomId: 'customer-provider-lot-1',
+        senderRole: 'Penyedia Parkir',
+        senderName: 'Penyedia - Parkir Plaza Sudirman',
+        receiverRole: 'Customer',
+        receiverName: 'Dio Pratama',
+        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-customer-admin-1',
+        roomId: 'customer-admin-app',
+        senderRole: 'Admin Aplikasi',
+        senderName: 'Admin Aplikasi',
+        receiverRole: 'Customer',
+        receiverName: 'Dio Pratama',
+        message: 'Laporkan kendala aplikasi lewat form komplain.',
+        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
+        isRead: true,
+      ),
+    ];
+
     return AppState(
       onboardingIndex: 0,
       onboardingDone: false,
@@ -720,6 +835,9 @@ class AppState {
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
+      customerChatRooms: customerChatRooms,
+      customerChatMessages: customerChatMessages,
+      customerComplaints: const [],
       guardChatRooms: guardChatRooms,
       guardChatMessages: guardChatMessages,
       guardComplaints: const [],
@@ -940,6 +1058,136 @@ class AppController extends StateNotifier<AppState> {
 
   void removeCustomerAvatar() {
     state = state.copyWith(removeCustomerAvatar: true);
+  }
+
+  String createCustomerChatRoom({
+    required String id,
+    required String title,
+    required String participantRole,
+    required String participantName,
+    String initialMessage = 'Room chat siap digunakan.',
+  }) {
+    for (final room in state.customerChatRooms) {
+      if (room.id == id) {
+        return room.id;
+      }
+    }
+    final now = DateTime.now();
+    final room = ChatRoom(
+      id: id,
+      title: title,
+      participantRole: participantRole,
+      participantName: participantName,
+      lastMessage: initialMessage,
+      lastMessageAt: now,
+      unreadCount: 0,
+    );
+    state = state.copyWith(
+      customerChatRooms: [room, ...state.customerChatRooms],
+    );
+    return id;
+  }
+
+  String createCustomerGuardChatRoomForBooking(Booking booking) {
+    return createCustomerChatRoom(
+      id: 'customer-guard-${booking.ticketNumber.toLowerCase()}',
+      title: 'Chat Penjaga - ${booking.ticketNumber}',
+      participantRole: 'Penjaga Parkir',
+      participantName: 'Penjaga Parkir - ${booking.locationName}',
+      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+    );
+  }
+
+  String createCustomerProviderChatRoomForLot(ParkingLot lot) {
+    return createCustomerChatRoom(
+      id: 'customer-provider-${lot.id}',
+      title: 'Chat Penyedia - ${lot.name}',
+      participantRole: 'Penyedia Parkir',
+      participantName: 'Penyedia - ${lot.name}',
+      initialMessage: 'Chat terkait lokasi ${lot.name}.',
+    );
+  }
+
+  void markCustomerChatAsRead(String roomId) {
+    state = state.copyWith(
+      customerChatRooms: [
+        for (final room in state.customerChatRooms)
+          if (room.id == roomId) room.copyWith(unreadCount: 0) else room,
+      ],
+      customerChatMessages: [
+        for (final message in state.customerChatMessages)
+          if (message.roomId == roomId)
+            message.copyWith(isRead: true)
+          else
+            message,
+      ],
+    );
+  }
+
+  void sendCustomerMessage({required String roomId, required String message}) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    ChatRoom? room;
+    for (final item in state.customerChatRooms) {
+      if (item.id == roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return;
+    }
+    final now = DateTime.now();
+    final chatMessage = ChatMessage(
+      id: 'msg-customer-${now.microsecondsSinceEpoch}',
+      roomId: roomId,
+      senderRole: 'Customer',
+      senderName: state.customerName,
+      receiverRole: room.participantRole,
+      receiverName: room.participantName,
+      message: trimmed,
+      createdAt: now,
+      isRead: true,
+    );
+    state = state.copyWith(
+      customerChatMessages: [...state.customerChatMessages, chatMessage],
+      customerChatRooms: [
+        for (final item in state.customerChatRooms)
+          if (item.id == roomId)
+            item.copyWith(
+              lastMessage: trimmed,
+              lastMessageAt: now,
+              unreadCount: 0,
+            )
+          else
+            item,
+      ],
+    );
+  }
+
+  void submitCustomerComplaint({
+    required String title,
+    required String category,
+    required String description,
+    required String priority,
+  }) {
+    final now = DateTime.now();
+    final complaint = Complaint(
+      id: 'CUS-CMP-${now.millisecondsSinceEpoch}',
+      senderRole: 'Customer',
+      senderName: state.customerName,
+      title: title,
+      category: category,
+      description: description,
+      priority: priority,
+      status: 'Terkirim',
+      createdAt: now,
+    );
+    state = state.copyWith(
+      customerComplaints: [complaint, ...state.customerComplaints],
+    );
   }
 
   void selectLot(ParkingLot lot) {
@@ -3116,6 +3364,17 @@ class ParkingDetailScreen extends ConsumerWidget {
                                 context.push('/customer/booking');
                               },
                       ),
+                      const SizedBox(height: 12),
+                      SecondaryButton(
+                        label: 'Chat Penyedia',
+                        icon: Icons.chat_bubble_rounded,
+                        onPressed: () {
+                          final roomId = ref
+                              .read(appControllerProvider.notifier)
+                              .createCustomerProviderChatRoomForLot(lot);
+                          context.push('/customer/chat-room?roomId=$roomId');
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -3502,6 +3761,17 @@ class CustomerTicketScreen extends ConsumerWidget {
                     valueColor: AppTheme.emerald,
                   ),
                   const SizedBox(height: 22),
+                  PrimaryButton(
+                    label: 'Chat Penjaga',
+                    icon: Icons.chat_bubble_rounded,
+                    onPressed: () {
+                      final roomId = ref
+                          .read(appControllerProvider.notifier)
+                          .createCustomerGuardChatRoomForBooking(booking);
+                      context.push('/customer/chat-room?roomId=$roomId');
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -3967,10 +4237,21 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: InlineNotice(
-        icon: Icons.error_outline_rounded,
-        accent: const Color(0xFFDC2626),
-        message: _paymentError!,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InlineNotice(
+            icon: Icons.error_outline_rounded,
+            accent: const Color(0xFFDC2626),
+            message: _paymentError!,
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => context.push('/customer/complaint'),
+            icon: const Icon(Icons.report_problem_rounded),
+            label: const Text('Komplain Admin'),
+          ),
+        ],
       ),
     );
   }
@@ -4164,6 +4445,664 @@ class ParkingHistoryScreen extends ConsumerWidget {
   }
 }
 
+class CustomerChatListScreen extends ConsumerWidget {
+  const CustomerChatListScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    ChatRoom? roomById(String id) {
+      for (final room in state.customerChatRooms) {
+        if (room.id == id) {
+          return room;
+        }
+      }
+      return null;
+    }
+
+    final guardRoom = roomById('customer-guard-tkt-1002');
+    final providerRoom = roomById('customer-provider-lot-1');
+    final adminRoom = roomById('customer-admin-app');
+    return CustomerShell(
+      currentIndex: 3,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Chat Pelanggan',
+            subtitle:
+                'Hubungi penjaga, penyedia parkir, atau laporkan masalah aplikasi.',
+          ),
+          const SizedBox(height: 18),
+          if (guardRoom != null)
+            _CustomerChatCategoryCard(
+              room: guardRoom,
+              icon: Icons.security_rounded,
+              accent: AppTheme.blue,
+              onTap: () =>
+                  context.push('/customer/chat-room?roomId=${guardRoom.id}'),
+            ),
+          if (providerRoom != null)
+            _CustomerChatCategoryCard(
+              room: providerRoom,
+              icon: Icons.apartment_rounded,
+              accent: AppTheme.emerald,
+              onTap: () =>
+                  context.push('/customer/chat-room?roomId=${providerRoom.id}'),
+            ),
+          if (adminRoom != null)
+            _CustomerChatCategoryCard(
+              room: adminRoom,
+              icon: Icons.support_agent_rounded,
+              accent: const Color(0xFFD97706),
+              actionLabel: 'Kirim komplain',
+              onTap: () => context.push('/customer/complaint'),
+            ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => context.push('/customer/complaint'),
+            icon: const Icon(Icons.report_problem_rounded),
+            label: const Text('Buat Komplain ke Admin Aplikasi'),
+          ),
+          if (state.customerComplaints.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            SectionTitle(title: 'Riwayat komplain'),
+            const SizedBox(height: 12),
+            ...state.customerComplaints
+                .take(3)
+                .map(
+                  (complaint) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: PremiumCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  complaint.title,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              StatusBadge(
+                                label: complaint.status,
+                                color: AppTheme.emerald,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.slate, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class CustomerChatRoomScreen extends ConsumerStatefulWidget {
+  const CustomerChatRoomScreen({super.key, required this.roomId});
+
+  final String roomId;
+
+  @override
+  ConsumerState<CustomerChatRoomScreen> createState() =>
+      _CustomerChatRoomScreenState();
+}
+
+class _CustomerChatRoomScreenState
+    extends ConsumerState<CustomerChatRoomScreen> {
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.roomId.isNotEmpty) {
+        ref
+            .read(appControllerProvider.notifier)
+            .markCustomerChatAsRead(widget.roomId);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+    ref
+        .read(appControllerProvider.notifier)
+        .sendCustomerMessage(roomId: widget.roomId, message: text);
+    _messageController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    ChatRoom? room;
+    for (final item in state.customerChatRooms) {
+      if (item.id == widget.roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return CustomerShell(
+        currentIndex: 3,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            EmptyStateCard(
+              title: 'Room chat tidak ditemukan',
+              body: 'Pilih room chat dari daftar Chat Pelanggan.',
+              actionLabel: 'Kembali ke Chat',
+              onPressed: () => context.go('/customer/chat'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final messages =
+        state.customerChatMessages
+            .where((message) => message.roomId == room!.id)
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return CustomerShell(
+      currentIndex: 3,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => context.go('/customer/chat'),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _customerChatAccent(
+                      room.participantRole,
+                    ).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    _customerChatIcon(room.participantRole),
+                    color: _customerChatAccent(room.participantRole),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        room.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${room.participantRole} - ${room.participantName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                return _CustomerChatBubble(
+                  message: message,
+                  isMine: message.senderRole == 'Customer',
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.14))],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: const InputDecoration(
+                      hintText: 'Tulis pesan...',
+                      prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _sendMessage,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      backgroundColor: AppTheme.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                    child: const Icon(Icons.send_rounded),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CustomerComplaintScreen extends ConsumerStatefulWidget {
+  const CustomerComplaintScreen({super.key});
+
+  @override
+  ConsumerState<CustomerComplaintScreen> createState() =>
+      _CustomerComplaintScreenState();
+}
+
+class _CustomerComplaintScreenState
+    extends ConsumerState<CustomerComplaintScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final TextEditingController _titleController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  String _category = 'Pembayaran';
+  String _priority = 'Sedang';
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  void _submitComplaint() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    ref
+        .read(appControllerProvider.notifier)
+        .submitCustomerComplaint(
+          title: _titleController.text.trim(),
+          category: _category,
+          description: _descriptionController.text.trim(),
+          priority: _priority,
+        );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
+    context.go('/customer/chat');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomerShell(
+      currentIndex: 3,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Komplain Admin Aplikasi',
+            subtitle:
+                'Laporkan masalah pembayaran, QR ticket, booking, lokasi, akun, atau aplikasi.',
+          ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () => context.go('/customer/chat'),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Kembali ke Chat'),
+          ),
+          const SizedBox(height: 18),
+          PremiumCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Judul komplain',
+                      prefixIcon: Icon(Icons.title_rounded),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Judul komplain wajib diisi'
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _category,
+                    decoration: const InputDecoration(
+                      labelText: 'Kategori masalah',
+                      prefixIcon: Icon(Icons.category_rounded),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'Pembayaran',
+                        child: Text('Pembayaran'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'QR Ticket',
+                        child: Text('QR Ticket'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Booking',
+                        child: Text('Booking'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Lokasi Parkir',
+                        child: Text('Lokasi Parkir'),
+                      ),
+                      DropdownMenuItem(value: 'Akun', child: Text('Akun')),
+                      DropdownMenuItem(
+                        value: 'Aplikasi Error',
+                        child: Text('Aplikasi Error'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'Lainnya',
+                        child: Text('Lainnya'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _category = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _descriptionController,
+                    minLines: 4,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Deskripsi masalah',
+                      alignLabelWithHint: true,
+                      prefixIcon: Icon(Icons.notes_rounded),
+                    ),
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'Deskripsi masalah wajib diisi'
+                        : null,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _priority,
+                    decoration: const InputDecoration(
+                      labelText: 'Prioritas',
+                      prefixIcon: Icon(Icons.priority_high_rounded),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Rendah', child: Text('Rendah')),
+                      DropdownMenuItem(value: 'Sedang', child: Text('Sedang')),
+                      DropdownMenuItem(value: 'Tinggi', child: Text('Tinggi')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _priority = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  PrimaryButton(
+                    label: 'Kirim Komplain',
+                    icon: Icons.send_rounded,
+                    onPressed: _submitComplaint,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerChatCategoryCard extends StatelessWidget {
+  const _CustomerChatCategoryCard({
+    required this.room,
+    required this.icon,
+    required this.accent,
+    required this.onTap,
+    this.actionLabel = 'Buka chat',
+  });
+
+  final ChatRoom room;
+  final IconData icon;
+  final Color accent;
+  final VoidCallback onTap;
+  final String actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: PremiumCard(
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(icon, color: accent),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            room.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        if (room.unreadCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDC2626),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              '${room.unreadCount}',
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      room.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_customerChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(Icons.chevron_right_rounded, color: AppTheme.slate),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomerChatBubble extends StatelessWidget {
+  const _CustomerChatBubble({required this.message, required this.isMine});
+
+  final ChatMessage message;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    final bubbleColor = isMine ? AppTheme.blue : Colors.white;
+    final textColor = isMine ? Colors.white : AppTheme.ink;
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520),
+        margin: EdgeInsets.only(
+          left: isMine ? 52 : 0,
+          right: isMine ? 0 : 52,
+          bottom: 12,
+        ),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isMine ? 20 : 6),
+            bottomRight: Radius.circular(isMine ? 6 : 20),
+          ),
+          boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.1))],
+        ),
+        child: Column(
+          crossAxisAlignment: isMine
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.senderName,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? Colors.white70 : AppTheme.slate,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message.message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: textColor, height: 1.45),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _customerChatTimeLabel(message.createdAt),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? Colors.white70 : AppTheme.slate,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+IconData _customerChatIcon(String role) {
+  if (role == 'Penjaga Parkir') {
+    return Icons.security_rounded;
+  }
+  if (role == 'Penyedia Parkir') {
+    return Icons.apartment_rounded;
+  }
+  return Icons.support_agent_rounded;
+}
+
+Color _customerChatAccent(String role) {
+  if (role == 'Penjaga Parkir') {
+    return AppTheme.blue;
+  }
+  if (role == 'Penyedia Parkir') {
+    return AppTheme.emerald;
+  }
+  return const Color(0xFFD97706);
+}
+
+String _customerChatTimeLabel(DateTime time) {
+  final now = DateTime.now();
+  final difference = now.difference(time);
+  if (difference.inMinutes < 1) {
+    return 'Baru saja';
+  }
+  if (difference.inMinutes < 60) {
+    return '${difference.inMinutes} menit lalu';
+  }
+  if (difference.inHours < 24) {
+    return '${difference.inHours} jam lalu';
+  }
+  return formatDateTime(time);
+}
+
 class CustomerNotificationsScreen extends ConsumerWidget {
   const CustomerNotificationsScreen({super.key});
 
@@ -4171,7 +5110,7 @@ class CustomerNotificationsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final notices = ref.watch(appControllerProvider).customerNotifications;
     return CustomerShell(
-      currentIndex: 3,
+      currentIndex: -1,
       child: NotificationsList(
         title: 'Notifikasi pengguna',
         subtitle:
@@ -7993,9 +8932,9 @@ class CustomerShell extends StatelessWidget {
           route: '/customer/tickets',
         ),
         ShellDestination(
-          label: 'Notifikasi',
-          icon: Icons.notifications_rounded,
-          route: '/customer/notifications',
+          label: 'Chat',
+          icon: Icons.chat_bubble_rounded,
+          route: '/customer/chat',
         ),
         ShellDestination(
           label: 'Profil',
