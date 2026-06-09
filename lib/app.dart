@@ -1,3 +1,5 @@
+// ignore_for_file: unused_field, unused_element, prefer_final_fields
+
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -337,6 +339,7 @@ class AppState {
     required this.superAdminNotifications,
     required this.complaints,
     required this.registrationRequests,
+    required this.managedUsers,
   });
 
   final int onboardingIndex;
@@ -381,6 +384,7 @@ class AppState {
   final List<NoticeItem> superAdminNotifications;
   final List<ComplaintItem> complaints;
   final List<RegistrationRequest> registrationRequests;
+  final List<ManagedUserAccount> managedUsers;
 
   AppState copyWith({
     int? onboardingIndex,
@@ -429,6 +433,7 @@ class AppState {
     List<NoticeItem>? superAdminNotifications,
     List<ComplaintItem>? complaints,
     List<RegistrationRequest>? registrationRequests,
+    List<ManagedUserAccount>? managedUsers,
   }) {
     return AppState(
       onboardingIndex: onboardingIndex ?? this.onboardingIndex,
@@ -480,8 +485,7 @@ class AppState {
           customerNotifications ?? this.customerNotifications,
       adminNotifications: adminNotifications ?? this.adminNotifications,
       customerChatRooms: customerChatRooms ?? this.customerChatRooms,
-      customerChatMessages:
-          customerChatMessages ?? this.customerChatMessages,
+      customerChatMessages: customerChatMessages ?? this.customerChatMessages,
       customerComplaints: customerComplaints ?? this.customerComplaints,
       guardChatRooms: guardChatRooms ?? this.guardChatRooms,
       guardChatMessages: guardChatMessages ?? this.guardChatMessages,
@@ -490,6 +494,7 @@ class AppState {
           superAdminNotifications ?? this.superAdminNotifications,
       complaints: complaints ?? this.complaints,
       registrationRequests: registrationRequests ?? this.registrationRequests,
+      managedUsers: managedUsers ?? this.managedUsers,
     );
   }
 
@@ -698,6 +703,41 @@ class AppState {
           capacity: 180,
           identityLabel: 'KTP dan NIB terunggah',
         ),
+      ),
+    ];
+
+    const managedUsers = [
+      ManagedUserAccount(
+        id: 'usr-customer-1',
+        name: 'Dio Pratama',
+        email: 'dio@parkircepat.app',
+        role: AccountMode.customer,
+        status: UserAccessStatus.active,
+        note: 'Pelanggan aktif dengan tiket dan kendaraan tersimpan.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-provider-1',
+        name: 'Admin Plaza Sudirman',
+        email: 'admin@sudirmanparkir.app',
+        role: AccountMode.provider,
+        status: UserAccessStatus.active,
+        note: 'Penyedia utama dengan beberapa lokasi aktif.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-guard-1',
+        name: 'Raka Penjaga',
+        email: 'raka.guard@parkircepat.app',
+        role: AccountMode.parkingGuard,
+        status: UserAccessStatus.active,
+        note: 'Penjaga untuk Plaza Sudirman dan Emerald.',
+      ),
+      ManagedUserAccount(
+        id: 'usr-review-1',
+        name: 'Akun Pembayaran Bermasalah',
+        email: 'review@parkircepat.app',
+        role: AccountMode.customer,
+        status: UserAccessStatus.suspended,
+        note: 'Ditahan karena laporan pembayaran manual belum cocok.',
       ),
     ];
 
@@ -930,6 +970,7 @@ class AppState {
       superAdminNotifications: superAdminNotifications,
       complaints: complaints,
       registrationRequests: registrationRequests,
+      managedUsers: managedUsers,
     );
   }
 }
@@ -965,6 +1006,16 @@ Color complaintStatusColor(ComplaintStatus status) => switch (status) {
   ComplaintStatus.waiting => const Color(0xFFD97706),
   ComplaintStatus.answered => AppTheme.emerald,
   ComplaintStatus.closed => AppTheme.slate,
+};
+
+String userAccessStatusLabel(UserAccessStatus status) => switch (status) {
+  UserAccessStatus.active => 'Aktif',
+  UserAccessStatus.suspended => 'Nonaktif',
+};
+
+Color userAccessStatusColor(UserAccessStatus status) => switch (status) {
+  UserAccessStatus.active => AppTheme.emerald,
+  UserAccessStatus.suspended => const Color(0xFFDC2626),
 };
 
 ParkingGuardAccount? activeGuard(AppState state) {
@@ -1160,26 +1211,109 @@ class AppController extends StateNotifier<AppState> {
           request,
     ];
 
+    final notices = [
+      NoticeItem(
+        title: status == AccountStatus.verified
+            ? 'Pendaftaran disetujui'
+            : 'Pendaftaran ditolak',
+        message: selected == null
+            ? 'Permintaan pendaftaran sudah diperbarui.'
+            : '${selected.fullName} (${roleLabel(selected.role)}) telah ${status == AccountStatus.verified ? 'disetujui' : 'ditolak'}.',
+        timeLabel: 'Baru saja',
+        icon: status == AccountStatus.verified
+            ? Icons.verified_user_rounded
+            : Icons.cancel_rounded,
+        accent: status == AccountStatus.verified
+            ? AppTheme.emerald
+            : const Color(0xFFDC2626),
+      ),
+      ...state.superAdminNotifications,
+    ];
+
     state = state.copyWith(
       registrationRequests: requests,
       accountStatus: selected?.providerApplication == null
           ? state.accountStatus
           : status,
+      managedUsers: selected == null || status != AccountStatus.verified
+          ? state.managedUsers
+          : [
+              ManagedUserAccount(
+                id: 'usr-${state.managedUsers.length + 1}',
+                name: selected.fullName,
+                email: selected.email,
+                role: selected.role,
+                status: UserAccessStatus.active,
+                note: 'Akun disetujui melalui verifikasi Super Admin.',
+              ),
+              ...state.managedUsers,
+            ],
+      superAdminNotifications: notices,
+    );
+  }
+
+  void toggleManagedUserAccess(String id) {
+    ManagedUserAccount? updatedUser;
+    final users = [
+      for (final user in state.managedUsers)
+        if (user.id == id)
+          updatedUser = user.copyWith(
+            status: user.status == UserAccessStatus.active
+                ? UserAccessStatus.suspended
+                : UserAccessStatus.active,
+            note: user.status == UserAccessStatus.active
+                ? 'Dinonaktifkan oleh Super Admin untuk pemeriksaan.'
+                : 'Diaktifkan kembali oleh Super Admin.',
+          )
+        else
+          user,
+    ];
+    if (updatedUser == null) {
+      return;
+    }
+
+    state = state.copyWith(
+      managedUsers: users,
       superAdminNotifications: [
         NoticeItem(
-          title: status == AccountStatus.verified
-              ? 'Pendaftaran disetujui'
-              : 'Pendaftaran ditolak',
-          message: selected == null
-              ? 'Permintaan pendaftaran sudah diperbarui.'
-              : '${selected.fullName} (${roleLabel(selected.role)}) telah ${status == AccountStatus.verified ? 'disetujui' : 'ditolak'}.',
+          title: updatedUser.status == UserAccessStatus.suspended
+              ? 'Akun dinonaktifkan'
+              : 'Akun diaktifkan',
+          message:
+              '${updatedUser.name} (${roleLabel(updatedUser.role)}) sekarang ${userAccessStatusLabel(updatedUser.status).toLowerCase()}.',
           timeLabel: 'Baru saja',
-          icon: status == AccountStatus.verified
-              ? Icons.verified_user_rounded
-              : Icons.cancel_rounded,
-          accent: status == AccountStatus.verified
-              ? AppTheme.emerald
-              : const Color(0xFFDC2626),
+          icon: updatedUser.status == UserAccessStatus.suspended
+              ? Icons.block_rounded
+              : Icons.check_circle_rounded,
+          accent: userAccessStatusColor(updatedUser.status),
+        ),
+        ...state.superAdminNotifications,
+      ],
+    );
+  }
+
+  void suspendFirstActiveManagedUser() {
+    final activeUsers = state.managedUsers.where(
+      (user) => user.status == UserAccessStatus.active,
+    );
+    if (activeUsers.isEmpty) {
+      return;
+    }
+    toggleManagedUserAccess(activeUsers.first.id);
+  }
+
+  void prepareSuperAdminReport(String format) {
+    state = state.copyWith(
+      superAdminNotifications: [
+        NoticeItem(
+          title: 'Laporan $format siap',
+          message:
+              'Rekap ${state.history.length} transaksi dan ${state.lots.length} lokasi berhasil disiapkan.',
+          timeLabel: 'Baru saja',
+          icon: format == 'PDF'
+              ? Icons.picture_as_pdf_rounded
+              : Icons.table_view_rounded,
+          accent: format == 'PDF' ? AppTheme.blue : AppTheme.emerald,
         ),
         ...state.superAdminNotifications,
       ],
@@ -2871,6 +3005,9 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
     final waitingComplaints = state.complaints
         .where((complaint) => complaint.status == ComplaintStatus.waiting)
         .length;
+    final suspendedUsers = state.managedUsers
+        .where((user) => user.status == UserAccessStatus.suspended)
+        .length;
     return SuperAdminShell(
       currentIndex: 0,
       child: ListView(
@@ -2888,20 +3025,22 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
             children: [
               StatCard(
                 label: 'Pelanggan',
-                value: '${state.vehicles.length + 124}',
+                value:
+                    '${state.managedUsers.where((user) => user.role == AccountMode.customer).length}',
                 accent: AppTheme.blue,
                 icon: Icons.groups_rounded,
               ),
               StatCard(
                 label: 'Penyedia',
                 value:
-                    '${state.lots.map((lot) => lot.providerId).toSet().length}',
+                    '${state.managedUsers.where((user) => user.role == AccountMode.provider).length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
               ),
               StatCard(
                 label: 'Penjaga',
-                value: '${state.parkingGuards.length}',
+                value:
+                    '${state.managedUsers.where((user) => user.role == AccountMode.parkingGuard).length}',
                 accent: const Color(0xFFD97706),
                 icon: Icons.security_rounded,
               ),
@@ -2912,9 +3051,15 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                 icon: Icons.verified_user_rounded,
               ),
               StatCard(
+                label: 'Akun nonaktif',
+                value: '$suspendedUsers',
+                accent: const Color(0xFFD97706),
+                icon: Icons.block_rounded,
+              ),
+              StatCard(
                 label: 'Komplain menunggu',
                 value: '$waitingComplaints',
-                accent: const Color(0xFFD97706),
+                accent: AppTheme.blue,
                 icon: Icons.mark_chat_unread_rounded,
               ),
             ],
@@ -2994,9 +3139,20 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                 icon: Icons.block_rounded,
                 accent: AppTheme.blueSoft,
                 onTap: () {
+                  final hasActiveUser = ref
+                      .read(appControllerProvider)
+                      .managedUsers
+                      .any((user) => user.status == UserAccessStatus.active);
+                  ref
+                      .read(appControllerProvider.notifier)
+                      .suspendFirstActiveManagedUser();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Akun bermasalah ditandai untuk review.'),
+                    SnackBar(
+                      content: Text(
+                        hasActiveUser
+                            ? 'Akun aktif pertama berhasil dinonaktifkan.'
+                            : 'Tidak ada akun aktif yang bisa dinonaktifkan.',
+                      ),
                     ),
                   );
                 },
@@ -3043,6 +3199,15 @@ class SuperAdminUsersScreen extends ConsumerWidget {
               ),
             ),
           const SizedBox(height: 18),
+          SectionTitle(title: 'Kelola akses akun'),
+          const SizedBox(height: 12),
+          ...state.managedUsers.map(
+            (user) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ManagedUserAccountCard(user: user),
+            ),
+          ),
+          const SizedBox(height: 18),
           SectionTitle(title: 'Ringkasan role'),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -3050,7 +3215,7 @@ class SuperAdminUsersScreen extends ConsumerWidget {
             iconColor: AppTheme.emerald,
             title: 'Penyedia Parkir',
             subtitle:
-                '${state.lots.length} lokasi, status ${roleLabel(AccountMode.provider)} aktif',
+                '${state.managedUsers.where((user) => user.role == AccountMode.provider && user.status == UserAccessStatus.active).length} akun aktif',
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -3058,15 +3223,15 @@ class SuperAdminUsersScreen extends ConsumerWidget {
             iconColor: const Color(0xFFD97706),
             title: 'Penjaga Parkir',
             subtitle:
-                '${state.parkingGuards.length} akun terdaftar dari penyedia',
+                '${state.managedUsers.where((user) => user.role == AccountMode.parkingGuard && user.status == UserAccessStatus.active).length} akun aktif',
           ),
           const SizedBox(height: 12),
-          const MiniInfoTile(
+          MiniInfoTile(
             icon: Icons.person_rounded,
             iconColor: AppTheme.blue,
             title: 'Pelanggan',
             subtitle:
-                'Register, login, kendaraan, tiket, dan rating/review terpantau.',
+                '${state.managedUsers.where((user) => user.role == AccountMode.customer && user.status == UserAccessStatus.active).length} akun aktif',
           ),
         ],
       ),
@@ -3091,6 +3256,44 @@ class SuperAdminReportsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 18),
           PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  onPressed: () {
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .prepareSuperAdminReport('PDF');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Laporan PDF Super Admin siap.'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Export Excel',
+                  icon: Icons.table_view_rounded,
+                  onPressed: () {
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .prepareSuperAdminReport('Excel');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Laporan Excel Super Admin siap.'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 18),
           ...state.history.map(
             (item) => Padding(
@@ -3253,6 +3456,93 @@ class RegistrationRequestCard extends ConsumerWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class ManagedUserAccountCard extends ConsumerWidget {
+  const ManagedUserAccountCard({super.key, required this.user});
+
+  final ManagedUserAccount user;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isSuspended = user.status == UserAccessStatus.suspended;
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: roleAccent(user.role).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(roleIcon(user.role), color: roleAccent(user.role)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${roleLabel(user.role)} - ${user.email}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.slate,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              StatusBadge(
+                label: userAccessStatusLabel(user.status),
+                color: userAccessStatusColor(user.status),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            user.note,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppTheme.slate,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          PrimaryButton(
+            label: isSuspended ? 'Aktifkan akun' : 'Nonaktifkan akun',
+            icon: isSuspended
+                ? Icons.check_circle_rounded
+                : Icons.block_rounded,
+            color: isSuspended ? AppTheme.emerald : const Color(0xFFDC2626),
+            onPressed: () {
+              ref
+                  .read(appControllerProvider.notifier)
+                  .toggleManagedUserAccess(user.id);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    isSuspended
+                        ? 'Akun berhasil diaktifkan kembali.'
+                        : 'Akun berhasil dinonaktifkan.',
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -3662,7 +3952,8 @@ class CustomerMapScreen extends ConsumerWidget {
           ParkingMapCard(
             lots: state.lots,
             selected: state.selectedLot,
-            onSelect: (lot) => ref.read(appControllerProvider.notifier).selectLot(lot),
+            onSelect: (lot) =>
+                ref.read(appControllerProvider.notifier).selectLot(lot),
           ),
           const SizedBox(height: 20),
           SectionTitle(title: 'Daftar lokasi parkir'),
@@ -3670,11 +3961,9 @@ class CustomerMapScreen extends ConsumerWidget {
           ...state.lots.map(
             (lot) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: MiniInfoTile(
-                icon: Icons.near_me_rounded,
-                iconColor: lot.accent,
-                title: '${lot.name} • ${lot.distanceKm} km',
-                subtitle: 'ETA ${lot.etaMinutes} menit • ${lot.availableSlots}/${lot.totalSlots} slot',
+              child: _CustomerMapLotCard(
+                lot: lot,
+                selected: lot.id == selectedLot.id,
                 onTap: () {
                   ref.read(appControllerProvider.notifier).selectLot(lot);
                 },
@@ -3835,9 +4124,9 @@ class ParkingDetailScreen extends ConsumerWidget {
                       const SizedBox(height: 8),
                       Text(
                         lot.address,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.slate,
-                            ),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                       ),
                       const SizedBox(height: 18),
                       Wrap(
@@ -4206,7 +4495,8 @@ class CustomerTicketScreen extends ConsumerWidget {
           if (booking == null || !booking.canShowTicket)
             EmptyStateCard(
               title: 'Belum ada tiket aktif',
-              body: 'Mulai booking dari dashboard atau peta untuk membuat karcis digital.',
+              body:
+                  'Mulai booking dari dashboard atau peta untuk membuat karcis digital.',
               actionLabel: 'Booking sekarang',
               onPressed: () => context.push('/customer/booking'),
             )
@@ -4263,7 +4553,9 @@ class CustomerTicketScreen extends ConsumerWidget {
                   SummaryRow(
                     label: 'Status pembayaran',
                     value: booking.isPaid ? 'Lunas' : 'Menunggu',
-                    valueColor: booking.isPaid ? AppTheme.emerald : AppTheme.blue,
+                    valueColor: booking.isPaid
+                        ? AppTheme.emerald
+                        : AppTheme.blue,
                   ),
                   const SizedBox(height: 22),
                   PrimaryButton(
@@ -4523,15 +4815,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       : (_) {},
                 ),
                 const SizedBox(height: 20),
-                SummaryRow(label: 'Ringkasan biaya', value: booking.locationName),
+                SummaryRow(
+                  label: 'Ringkasan biaya',
+                  value: booking.locationName,
+                ),
                 SummaryRow(label: 'Nomor tiket', value: booking.ticketNumber),
-                SummaryRow(label: 'Total pembayaran', value: formatCurrency(booking.estimatedCost)),
+                SummaryRow(
+                  label: 'Total pembayaran',
+                  value: formatCurrency(booking.estimatedCost),
+                ),
                 const SizedBox(height: 22),
                 PrimaryButton(
                   label: 'Bayar sekarang',
                   icon: Icons.lock_rounded,
                   onPressed: () {
-                    ref.read(appControllerProvider.notifier).payBooking(_method);
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .payBooking(_method);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Pembayaran berhasil')),
                     );
@@ -5376,21 +5676,25 @@ class CustomerProfileScreen extends ConsumerWidget {
                 CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.blueSoft,
-                  child: Icon(Icons.person_rounded, size: 40, color: AppTheme.blue),
+                  child: Icon(
+                    Icons.person_rounded,
+                    size: 40,
+                    color: AppTheme.blue,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
                   state.userName,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   state.email,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.slate,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
                 ),
               ],
             ),
@@ -6230,7 +6534,8 @@ class AdminMapScreen extends ConsumerWidget {
           ParkingMapCard(
             lots: lots,
             selected: state.selectedLot,
-            onSelect: (lot) => ref.read(appControllerProvider.notifier).selectLot(lot),
+            onSelect: (lot) =>
+                ref.read(appControllerProvider.notifier).selectLot(lot),
           ),
           const SizedBox(height: 18),
           ...lots.map(
@@ -6973,64 +7278,136 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 2),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: const Icon(
-                        Icons.qr_code_scanner_rounded,
-                        color: Colors.white,
-                        size: 60,
+                    child: Center(
+                      child: Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white, width: 2),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: const Icon(
+                          Icons.qr_code_scanner_rounded,
+                          color: Colors.white,
+                          size: 60,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  booking == null
-                      ? 'Tidak ada tiket aktif saat ini.'
-                      : 'Tiket aktif ${booking.ticketNumber}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                ),
-                const SizedBox(height: 18),
-                PrimaryButton(
-                  label: 'Verifikasi kendaraan',
-                  icon: Icons.verified_user_rounded,
-                  onPressed: booking == null
-                      ? null
-                      : () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Tiket valid dan pembayaran terkonfirmasi'),
-                            ),
-                          );
-                        },
-                ),
-                const SizedBox(height: 12),
-                SecondaryButton(
-                  label: 'Konfirmasi kendaraan keluar',
-                  icon: Icons.exit_to_app_rounded,
-                  onPressed: booking == null
-                      ? null
-                      : () {
-                          ref.read(appControllerProvider.notifier).markVehicleExit();
-                          final mode = ref.read(appControllerProvider).currentMode;
-                          context.go(
-                            mode == AccountMode.parkingGuard
-                                ? '/guard/dashboard'
-                                : '/provider/dashboard',
-                          );
-                        },
-                ),
-              ],
+                  const SizedBox(height: 18),
+                  Text(
+                    booking == null
+                        ? 'Tidak ada tiket aktif saat ini.'
+                        : 'Tiket aktif ${booking.ticketNumber}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  PrimaryButton(
+                    label: 'Verifikasi kendaraan',
+                    icon: Icons.verified_user_rounded,
+                    onPressed: booking == null
+                        ? null
+                        : () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Tiket valid dan pembayaran terkonfirmasi',
+                                ),
+                              ),
+                            );
+                          },
+                  ),
+                  const SizedBox(height: 12),
+                  SecondaryButton(
+                    label: 'Konfirmasi kendaraan keluar',
+                    icon: Icons.exit_to_app_rounded,
+                    onPressed: booking == null
+                        ? null
+                        : () {
+                            ref
+                                .read(appControllerProvider.notifier)
+                                .markVehicleExit();
+                            final mode = ref
+                                .read(appControllerProvider)
+                                .currentMode;
+                            context.go(
+                              mode == AccountMode.parkingGuard
+                                  ? '/guard/dashboard'
+                                  : '/provider/dashboard',
+                            );
+                          },
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannedTicketCard extends StatelessWidget {
+  const _ScannedTicketCard({required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppTheme.blue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.confirmation_number_rounded,
+                  color: AppTheme.blue,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      booking.ticketNumber,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _bookingStatusLabel(booking.status),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SummaryRow(label: 'Lokasi', value: booking.locationName),
+          SummaryRow(label: 'Slot', value: booking.slotCode),
+          SummaryRow(label: 'Plat nomor', value: booking.plateNumber),
+          SummaryRow(
+            label: 'Metode',
+            value: _paymentMethodLabel(booking.paymentMethod),
+          ),
+          SummaryRow(
+            label: 'Estimasi biaya',
+            value: formatCurrency(booking.estimatedCost),
           ),
         ],
       ),
@@ -7491,7 +7868,8 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
                 icon: Icons.local_parking_rounded,
                 iconColor: lot.accent,
                 title: lot.name,
-                subtitle: '${lot.availableSlots}/${lot.totalSlots} slot tersedia',
+                subtitle:
+                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia',
               ),
             ),
           ),
@@ -8118,7 +8496,8 @@ class GuardVehiclesScreen extends ConsumerWidget {
         children: [
           HeaderSection(
             title: 'Kendaraan aktif',
-            subtitle: 'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
+            subtitle:
+                'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
           ),
           const SizedBox(height: 18),
           if (booking == null)
@@ -8903,11 +9282,31 @@ class CustomerShell extends StatelessWidget {
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
       destinations: const [
-        ShellDestination(label: 'Home', icon: Icons.home_rounded, route: '/customer/home'),
-        ShellDestination(label: 'Map', icon: Icons.map_rounded, route: '/customer/map'),
-        ShellDestination(label: 'Tiket', icon: Icons.confirmation_num_rounded, route: '/customer/tickets'),
-        ShellDestination(label: 'Notifikasi', icon: Icons.notifications_rounded, route: '/customer/notifications'),
-        ShellDestination(label: 'Profil', icon: Icons.person_rounded, route: '/customer/profile'),
+        ShellDestination(
+          label: 'Home',
+          icon: Icons.home_rounded,
+          route: '/customer/home',
+        ),
+        ShellDestination(
+          label: 'Map',
+          icon: Icons.map_rounded,
+          route: '/customer/map',
+        ),
+        ShellDestination(
+          label: 'Tiket',
+          icon: Icons.confirmation_num_rounded,
+          route: '/customer/tickets',
+        ),
+        ShellDestination(
+          label: 'Notifikasi',
+          icon: Icons.notifications_rounded,
+          route: '/customer/notifications',
+        ),
+        ShellDestination(
+          label: 'Profil',
+          icon: Icons.person_rounded,
+          route: '/customer/profile',
+        ),
       ],
       child: child,
     );
@@ -9608,7 +10007,7 @@ class AiRecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 52) / 2;
-    return SizedBox(
+    return Container(
       width: math.max(150, width),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -9623,25 +10022,25 @@ class AiRecommendationCard extends StatelessWidget {
           Text(
             title,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTheme.slate,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: AppTheme.slate,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           Text(
             detail,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.slate,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -9688,15 +10087,15 @@ class ParkingLotCard extends StatelessWidget {
                     Text(
                       lot.name,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       lot.address,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTheme.slate,
-                          ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                     ),
                   ],
                 ),
@@ -9704,7 +10103,9 @@ class ParkingLotCard extends StatelessWidget {
               IconButton(
                 onPressed: onToggleFavorite,
                 icon: Icon(
-                  isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                  isFavorite
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
                   color: isFavorite ? const Color(0xFFDC2626) : AppTheme.slate,
                 ),
               ),
@@ -10518,7 +10919,7 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 54) / 2;
-    return SizedBox(
+    return Container(
       width: math.max(150, width),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -10541,17 +10942,17 @@ class StatCard extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTheme.slate,
-                  height: 1.45,
-                ),
+              color: AppTheme.slate,
+              height: 1.45,
+            ),
           ),
         ],
       ),
