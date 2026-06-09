@@ -5071,7 +5071,7 @@ class CustomerTicketScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(28),
                     ),
                     child: QrImageView(
-                      data: booking.ticketNumber,
+                      data: 'PARKIRCEPAT|ENTRY_EXIT|${booking.ticketNumber}',
                       size: 210,
                       eyeStyle: const QrEyeStyle(
                         eyeShape: QrEyeShape.square,
@@ -5255,6 +5255,19 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     });
   }
 
+  Future<void> _handlePayPressed(Booking booking) async {
+    switch (_method) {
+      case PaymentMethod.qris:
+      case PaymentMethod.cash:
+        setState(() => _paymentError = null);
+        await _completePayment(booking);
+      case PaymentMethod.ewallet:
+        await _payWithEWallet(booking);
+      case PaymentMethod.card:
+        await _payWithCard(booking);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
@@ -5374,6 +5387,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       : (_) {},
                 ),
                 const SizedBox(height: 20),
+                _PaymentInstructionCard(
+                  method: _method,
+                  booking: booking,
+                  wallet: _wallet,
+                  walletPhoneController: _walletPhoneController,
+                  cardNumberController: _cardNumberController,
+                  cardNameController: _cardNameController,
+                  cardExpiryController: _cardExpiryController,
+                  cardCvvController: _cardCvvController,
+                  onWalletChanged: (value) => setState(() => _wallet = value),
+                  onUseDemoCard: _useDemoCard,
+                ),
+                if (_paymentError != null) ...[
+                  const SizedBox(height: 12),
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFDC2626),
+                    message: _paymentError!,
+                  ),
+                ],
+                const SizedBox(height: 20),
                 SummaryRow(
                   label: 'Ringkasan biaya',
                   value: booking.locationName,
@@ -5387,15 +5421,9 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 PrimaryButton(
                   label: 'Bayar sekarang',
                   icon: Icons.lock_rounded,
-                  onPressed: () {
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .payBooking(_method);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Pembayaran berhasil')),
-                    );
-                    context.go('/customer/tickets');
-                  },
+                  onPressed: isPayable
+                      ? () => _handlePayPressed(booking)
+                      : null,
                 ),
               ],
             ),
@@ -5418,6 +5446,217 @@ int _hourlyRateFor(AppState state, Booking booking) {
 int _durationHoursFor(AppState state, Booking booking) {
   final rate = math.max(1, _hourlyRateFor(state, booking));
   return math.max(1, booking.estimatedCost ~/ rate);
+}
+
+class _PaymentInstructionCard extends StatelessWidget {
+  const _PaymentInstructionCard({
+    required this.method,
+    required this.booking,
+    required this.wallet,
+    required this.walletPhoneController,
+    required this.cardNumberController,
+    required this.cardNameController,
+    required this.cardExpiryController,
+    required this.cardCvvController,
+    required this.onWalletChanged,
+    required this.onUseDemoCard,
+  });
+
+  final PaymentMethod method;
+  final Booking booking;
+  final String wallet;
+  final TextEditingController walletPhoneController;
+  final TextEditingController cardNumberController;
+  final TextEditingController cardNameController;
+  final TextEditingController cardExpiryController;
+  final TextEditingController cardCvvController;
+  final ValueChanged<String> onWalletChanged;
+  final VoidCallback onUseDemoCard;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: switch (method) {
+        PaymentMethod.qris => _PaymentMethodBox(
+          key: const ValueKey('qris'),
+          icon: Icons.qr_code_2_rounded,
+          title: 'Scan QRIS',
+          subtitle:
+              'Scan kode ini dari aplikasi bank atau e-wallet. Setelah berhasil, tiket QR masuk/keluar akan aktif.',
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: QrImageView(
+                data:
+                    'PARKIRCEPAT-PAY|${booking.ticketNumber}|${booking.estimatedCost}',
+                size: 150,
+                eyeStyle: const QrEyeStyle(color: AppTheme.blue),
+              ),
+            ),
+          ),
+        ),
+        PaymentMethod.ewallet => _PaymentMethodBox(
+          key: const ValueKey('ewallet'),
+          icon: Icons.account_balance_wallet_rounded,
+          title: 'Bayar dengan E-Wallet',
+          subtitle:
+              'Pilih dompet digital dan masukkan nomor HP. Simulasi OTP akan langsung menyelesaikan pembayaran.',
+          child: Column(
+            children: [
+              SegmentedChoice<String>(
+                items: const [
+                  ChoiceItem(
+                    value: 'GoPay',
+                    label: 'GoPay',
+                    icon: Icons.wallet,
+                  ),
+                  ChoiceItem(value: 'OVO', label: 'OVO', icon: Icons.wallet),
+                  ChoiceItem(value: 'DANA', label: 'DANA', icon: Icons.wallet),
+                ],
+                value: wallet,
+                onChanged: onWalletChanged,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: walletPhoneController,
+                keyboardType: TextInputType.phone,
+                decoration: InputDecoration(
+                  labelText: 'Nomor HP $wallet',
+                  prefixIcon: const Icon(Icons.phone_iphone_rounded),
+                ),
+              ),
+            ],
+          ),
+        ),
+        PaymentMethod.cash => _PaymentMethodBox(
+          key: const ValueKey('cash'),
+          icon: Icons.payments_rounded,
+          title: 'Bayar Tunai di Loket',
+          subtitle:
+              'Serahkan uang tunai ke petugas. Pada prototipe ini tombol bayar mensimulasikan petugas mengonfirmasi tunai.',
+          child: const InlineNotice(
+            icon: Icons.support_agent_rounded,
+            accent: AppTheme.emerald,
+            message:
+                'Setelah petugas menerima tunai, tiket QR akan aktif untuk masuk dan keluar.',
+          ),
+        ),
+        PaymentMethod.card => _PaymentMethodBox(
+          key: const ValueKey('card'),
+          icon: Icons.credit_card_rounded,
+          title: 'Debit/Kredit',
+          subtitle:
+              'Masukkan data kartu. Gunakan kartu demo bila ingin langsung menguji alur pembayaran.',
+          child: Column(
+            children: [
+              TextField(
+                controller: cardNumberController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Nomor kartu',
+                  prefixIcon: Icon(Icons.credit_card_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: cardNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nama di kartu',
+                  prefixIcon: Icon(Icons.person_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: cardExpiryController,
+                      decoration: const InputDecoration(labelText: 'MM/YY'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: cardCvvController,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'CVV'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SecondaryButton(
+                label: 'Gunakan kartu demo',
+                icon: Icons.auto_fix_high_rounded,
+                onPressed: onUseDemoCard,
+              ),
+            ],
+          ),
+        ),
+      },
+    );
+  }
+}
+
+class _PaymentMethodBox extends StatelessWidget {
+  const _PaymentMethodBox({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.blueSoft,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppTheme.blue),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppTheme.slate,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
 }
 
 class _PaymentSuccessDialog extends StatelessWidget {
@@ -5463,6 +5702,24 @@ class _PaymentSuccessDialog extends StatelessWidget {
           SummaryRow(label: 'Nomor tiket', value: ticketNumber),
           SummaryRow(label: 'Total bayar', value: formatCurrency(total)),
           SummaryRow(label: 'Metode', value: _paymentMethodLabel(method)),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.blueSoft,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: QrImageView(
+              data: 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber',
+              size: 150,
+              eyeStyle: const QrEyeStyle(color: AppTheme.blue),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'QR ini dipakai untuk scan masuk dan keluar oleh penjaga parkir.',
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
       actions: [
@@ -8183,22 +8440,83 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(28),
-                    child: Center(
-                      child: Container(
-                        width: 180,
-                        height: 180,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white, width: 2),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: const Icon(
-                          Icons.qr_code_scanner_rounded,
-                          color: Colors.white,
-                          size: 60,
-                        ),
+                    child: SizedBox(
+                      height: 320,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          MobileScanner(
+                            controller: _scannerController,
+                            onDetect: _onDetect,
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: AppTheme.blue.withValues(alpha: 0.24),
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(28),
+                            ),
+                          ),
+                          Center(
+                            child: Container(
+                              width: 190,
+                              height: 190,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 3,
+                                ),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 16,
+                            right: 16,
+                            bottom: 16,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: SecondaryButton(
+                                    label: 'Input manual',
+                                    icon: Icons.keyboard_rounded,
+                                    onPressed: _showManualInputDialog,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                IconButton.filledTonal(
+                                  onPressed: _toggleTorch,
+                                  icon: const Icon(Icons.flash_on_rounded),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton.filledTonal(
+                                  onPressed: _switchCamera,
+                                  icon: const Icon(Icons.cameraswitch_rounded),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                  if (_lastScanStatus != null) ...[
+                    const SizedBox(height: 12),
+                    InlineNotice(
+                      icon: Icons.qr_code_scanner_rounded,
+                      accent: AppTheme.blue,
+                      message:
+                          '${_lastScanStatus!}${_lastScanTime == null ? '' : ' - ${formatDateTime(_lastScanTime!)}'}',
+                    ),
+                  ],
+                  if (_lastScannedTicket != null) ...[
+                    const SizedBox(height: 8),
+                    SummaryRow(
+                      label: 'Scan terakhir',
+                      value: _lastScannedTicket!,
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   Text(
                     booking == null
@@ -8212,37 +8530,13 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
                   PrimaryButton(
                     label: 'Verifikasi kendaraan',
                     icon: Icons.verified_user_rounded,
-                    onPressed: booking == null
-                        ? null
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Tiket valid dan pembayaran terkonfirmasi',
-                                ),
-                              ),
-                            );
-                          },
+                    onPressed: booking == null ? null : _verifyEntry,
                   ),
                   const SizedBox(height: 12),
                   SecondaryButton(
                     label: 'Konfirmasi kendaraan keluar',
                     icon: Icons.exit_to_app_rounded,
-                    onPressed: booking == null
-                        ? null
-                        : () {
-                            ref
-                                .read(appControllerProvider.notifier)
-                                .markVehicleExit();
-                            final mode = ref
-                                .read(appControllerProvider)
-                                .currentMode;
-                            context.go(
-                              mode == AccountMode.parkingGuard
-                                  ? '/guard/dashboard'
-                                  : '/provider/dashboard',
-                            );
-                          },
+                    onPressed: booking == null ? null : _confirmExit,
                   ),
                 ],
               ),
