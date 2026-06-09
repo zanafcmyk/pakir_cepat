@@ -2361,8 +2361,8 @@ class AppController extends StateNotifier<AppState> {
       history: [transaction, ...state.history],
       customerNotifications: [
         NoticeItem(
-          title: 'Pembayaran berhasil',
-          message: 'Tiket ${booking.ticketNumber} telah dibayar.',
+          title: 'Pembayaran demo berhasil',
+          message: 'Tiket ${booking.ticketNumber} aktif dari simulasi bayar.',
           timeLabel: 'Baru saja',
           icon: Icons.payments_rounded,
           accent: AppTheme.emerald,
@@ -2371,8 +2371,9 @@ class AppController extends StateNotifier<AppState> {
       ],
       adminNotifications: [
         NoticeItem(
-          title: 'Pembayaran berhasil',
-          message: '${booking.plateNumber} menyelesaikan pembayaran parkir.',
+          title: 'Pembayaran demo berhasil',
+          message:
+              '${booking.plateNumber} menyelesaikan simulasi pembayaran parkir.',
           timeLabel: 'Baru saja',
           icon: Icons.verified_rounded,
           accent: AppTheme.emerald,
@@ -5221,26 +5222,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _payWithEWallet(Booking booking) async {
-    final phone = _walletPhoneController.text.trim();
-    if (phone.length < 9) {
-      setState(() => _paymentError = 'Nomor HP E-Wallet minimal 9 digit.');
-      return;
-    }
     setState(() => _paymentError = null);
     await _completePayment(booking);
   }
 
   Future<void> _payWithCard(Booking booking) async {
-    final cardNumber = _cardNumberController.text.replaceAll(' ', '');
-    final isValid =
-        cardNumber.length >= 12 &&
-        _cardNameController.text.trim().isNotEmpty &&
-        _cardExpiryController.text.trim().length >= 5 &&
-        _cardCvvController.text.trim().length >= 3;
-    if (!isValid) {
-      setState(() => _paymentError = 'Lengkapi data kartu dengan benar.');
-      return;
-    }
     setState(() => _paymentError = null);
     await _completePayment(booking);
   }
@@ -5349,7 +5335,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Metode pembayaran',
+                  'Demo metode pembayaran',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -5386,6 +5372,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                         })
                       : (_) {},
                 ),
+                const SizedBox(height: 14),
+                const InlineNotice(
+                  icon: Icons.science_rounded,
+                  accent: AppTheme.blue,
+                  message:
+                      'Mode demo: tidak ada pembayaran asli, tidak terhubung bank/e-wallet, dan tidak memotong saldo.',
+                ),
                 const SizedBox(height: 20),
                 _PaymentInstructionCard(
                   method: _method,
@@ -5419,8 +5412,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
-                  label: 'Bayar sekarang',
-                  icon: Icons.lock_rounded,
+                  label: 'Simulasikan pembayaran',
+                  icon: Icons.play_circle_rounded,
                   onPressed: isPayable
                       ? () => _handlePayPressed(booking)
                       : null,
@@ -5481,9 +5474,9 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.qris => _PaymentMethodBox(
           key: const ValueKey('qris'),
           icon: Icons.qr_code_2_rounded,
-          title: 'Scan QRIS',
+          title: 'Demo QRIS',
           subtitle:
-              'Scan kode ini dari aplikasi bank atau e-wallet. Setelah berhasil, tiket QR masuk/keluar akan aktif.',
+              'QR ini hanya contoh tampilan QRIS. Tekan tombol simulasi untuk mengaktifkan tiket QR masuk/keluar.',
           child: Center(
             child: Container(
               padding: const EdgeInsets.all(14),
@@ -5493,7 +5486,7 @@ class _PaymentInstructionCard extends StatelessWidget {
               ),
               child: QrImageView(
                 data:
-                    'PARKIRCEPAT-PAY|${booking.ticketNumber}|${booking.estimatedCost}',
+                    'DEMO-PARKIRCEPAT-PAY|${booking.ticketNumber}|${booking.estimatedCost}',
                 size: 150,
                 eyeStyle: const QrEyeStyle(color: AppTheme.blue),
               ),
@@ -5503,9 +5496,9 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.ewallet => _PaymentMethodBox(
           key: const ValueKey('ewallet'),
           icon: Icons.account_balance_wallet_rounded,
-          title: 'Bayar dengan E-Wallet',
+          title: 'Demo E-Wallet',
           subtitle:
-              'Pilih dompet digital dan masukkan nomor HP. Simulasi OTP akan langsung menyelesaikan pembayaran.',
+              'Pilih dompet digital dan isi nomor HP opsional. Tidak ada OTP asli, saldo asli, atau koneksi payment gateway.',
           child: Column(
             children: [
               SegmentedChoice<String>(
@@ -5526,7 +5519,7 @@ class _PaymentInstructionCard extends StatelessWidget {
                 controller: walletPhoneController,
                 keyboardType: TextInputType.phone,
                 decoration: InputDecoration(
-                  labelText: 'Nomor HP $wallet',
+                  labelText: 'Nomor HP demo $wallet',
                   prefixIcon: const Icon(Icons.phone_iphone_rounded),
                 ),
               ),
@@ -5536,29 +5529,29 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.cash => _PaymentMethodBox(
           key: const ValueKey('cash'),
           icon: Icons.payments_rounded,
-          title: 'Bayar Tunai di Loket',
+          title: 'Demo Tunai di Loket',
           subtitle:
-              'Serahkan uang tunai ke petugas. Pada prototipe ini tombol bayar mensimulasikan petugas mengonfirmasi tunai.',
+              'Simulasikan petugas loket menerima tunai. Tidak ada pencatatan kas asli.',
           child: const InlineNotice(
             icon: Icons.support_agent_rounded,
             accent: AppTheme.emerald,
             message:
-                'Setelah petugas menerima tunai, tiket QR akan aktif untuk masuk dan keluar.',
+                'Pada demo ini, tombol simulasi langsung mengaktifkan tiket QR masuk dan keluar.',
           ),
         ),
         PaymentMethod.card => _PaymentMethodBox(
           key: const ValueKey('card'),
           icon: Icons.credit_card_rounded,
-          title: 'Debit/Kredit',
+          title: 'Demo Debit/Kredit',
           subtitle:
-              'Masukkan data kartu. Gunakan kartu demo bila ingin langsung menguji alur pembayaran.',
+              'Form ini hanya dummy. Tidak ada tokenisasi kartu, bank, atau charge sungguhan.',
           child: Column(
             children: [
               TextField(
                 controller: cardNumberController,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  labelText: 'Nomor kartu',
+                  labelText: 'Nomor kartu demo',
                   prefixIcon: Icon(Icons.credit_card_rounded),
                 ),
               ),
@@ -5566,7 +5559,7 @@ class _PaymentInstructionCard extends StatelessWidget {
               TextField(
                 controller: cardNameController,
                 decoration: const InputDecoration(
-                  labelText: 'Nama di kartu',
+                  labelText: 'Nama di kartu demo',
                   prefixIcon: Icon(Icons.person_rounded),
                 ),
               ),
@@ -5692,7 +5685,7 @@ class _PaymentSuccessDialog extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Pembayaran berhasil',
+            'Pembayaran demo berhasil',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -5717,7 +5710,7 @@ class _PaymentSuccessDialog extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const Text(
-            'QR ini dipakai untuk scan masuk dan keluar oleh penjaga parkir.',
+            'QR demo ini dipakai untuk scan masuk dan keluar oleh penjaga parkir.',
             textAlign: TextAlign.center,
           ),
         ],
