@@ -65,6 +65,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SuperAdminComplaintsScreen(),
       ),
       GoRoute(
+        path: '/super-admin/chat',
+        builder: (context, state) => const RoleChatListScreen(
+          mode: AccountMode.superAdmin,
+          title: 'Chat Super Admin',
+          subtitle: 'Hubungi customer, penyedia, dan penjaga dari satu inbox.',
+        ),
+      ),
+      GoRoute(
+        path: '/super-admin/chat-room',
+        builder: (context, state) => RoleChatRoomScreen(
+          mode: AccountMode.superAdmin,
+          roomId: state.uri.queryParameters['roomId'] ?? '',
+        ),
+      ),
+      GoRoute(
         path: '/customer/home',
         builder: (context, state) => const CustomerHomeScreen(),
       ),
@@ -145,6 +160,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/provider/profile',
         builder: (context, state) => const AdminProfileScreen(),
+      ),
+      GoRoute(
+        path: '/provider/chat',
+        builder: (context, state) => const RoleChatListScreen(
+          mode: AccountMode.provider,
+          title: 'Chat Penyedia',
+          subtitle: 'Balas customer, penjaga, dan super admin.',
+        ),
+      ),
+      GoRoute(
+        path: '/provider/chat-room',
+        builder: (context, state) => RoleChatRoomScreen(
+          mode: AccountMode.provider,
+          roomId: state.uri.queryParameters['roomId'] ?? '',
+        ),
       ),
       GoRoute(
         path: '/provider/add-lot',
@@ -336,6 +366,10 @@ class AppState {
     required this.guardChatRooms,
     required this.guardChatMessages,
     required this.guardComplaints,
+    required this.providerChatRooms,
+    required this.providerChatMessages,
+    required this.superAdminChatRooms,
+    required this.superAdminChatMessages,
     required this.superAdminNotifications,
     required this.complaints,
     required this.registrationRequests,
@@ -381,6 +415,10 @@ class AppState {
   final List<ChatRoom> guardChatRooms;
   final List<ChatMessage> guardChatMessages;
   final List<Complaint> guardComplaints;
+  final List<ChatRoom> providerChatRooms;
+  final List<ChatMessage> providerChatMessages;
+  final List<ChatRoom> superAdminChatRooms;
+  final List<ChatMessage> superAdminChatMessages;
   final List<NoticeItem> superAdminNotifications;
   final List<ComplaintItem> complaints;
   final List<RegistrationRequest> registrationRequests;
@@ -430,6 +468,10 @@ class AppState {
     List<ChatRoom>? guardChatRooms,
     List<ChatMessage>? guardChatMessages,
     List<Complaint>? guardComplaints,
+    List<ChatRoom>? providerChatRooms,
+    List<ChatMessage>? providerChatMessages,
+    List<ChatRoom>? superAdminChatRooms,
+    List<ChatMessage>? superAdminChatMessages,
     List<NoticeItem>? superAdminNotifications,
     List<ComplaintItem>? complaints,
     List<RegistrationRequest>? registrationRequests,
@@ -490,6 +532,11 @@ class AppState {
       guardChatRooms: guardChatRooms ?? this.guardChatRooms,
       guardChatMessages: guardChatMessages ?? this.guardChatMessages,
       guardComplaints: guardComplaints ?? this.guardComplaints,
+      providerChatRooms: providerChatRooms ?? this.providerChatRooms,
+      providerChatMessages: providerChatMessages ?? this.providerChatMessages,
+      superAdminChatRooms: superAdminChatRooms ?? this.superAdminChatRooms,
+      superAdminChatMessages:
+          superAdminChatMessages ?? this.superAdminChatMessages,
       superAdminNotifications:
           superAdminNotifications ?? this.superAdminNotifications,
       complaints: complaints ?? this.complaints,
@@ -927,6 +974,149 @@ class AppState {
       ),
     ];
 
+    final providerChatRooms = [
+      ChatRoom(
+        id: 'provider-customer-lot-1',
+        title: 'Chat Customer - Parkir Plaza Sudirman',
+        participantRole: 'Customer',
+        participantName: 'Dio Pratama',
+        lastMessage: 'Apakah tarif malam sama dengan siang?',
+        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 35)),
+        unreadCount: 1,
+      ),
+      ChatRoom(
+        id: 'provider-guard-main',
+        title: 'Chat Penjaga - Raka Penjaga',
+        participantRole: 'Penjaga Parkir',
+        participantName: 'Raka Penjaga',
+        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
+        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
+        unreadCount: 0,
+      ),
+      ChatRoom(
+        id: 'provider-superadmin-main',
+        title: 'Chat Super Admin',
+        participantRole: 'Super Admin',
+        participantName: 'Admin Super Parkir Cepat',
+        lastMessage: 'Koordinasikan kendala penyedia di sini.',
+        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
+        unreadCount: 0,
+      ),
+    ];
+
+    final providerChatMessages = [
+      ChatMessage(
+        id: 'msg-provider-customer-1',
+        roomId: 'provider-customer-lot-1',
+        senderRole: 'Customer',
+        senderName: 'Dio Pratama',
+        receiverRole: 'Penyedia Parkir',
+        receiverName: 'Penyedia - Parkir Plaza Sudirman',
+        message: 'Apakah tarif malam sama dengan siang?',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
+        isRead: false,
+      ),
+      ChatMessage(
+        id: 'msg-provider-customer-2',
+        roomId: 'provider-customer-lot-1',
+        senderRole: 'Penyedia Parkir',
+        senderName: 'Penyedia - Parkir Plaza Sudirman',
+        receiverRole: 'Customer',
+        receiverName: 'Dio Pratama',
+        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
+        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-provider-guard-1',
+        roomId: 'provider-guard-main',
+        senderRole: 'Penyedia Parkir',
+        senderName: 'Penyedia Parkir',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Raka Penjaga',
+        message: 'Laporkan kondisi operasional jika ada kendala.',
+        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-provider-superadmin-1',
+        roomId: 'provider-superadmin-main',
+        senderRole: 'Super Admin',
+        senderName: 'Admin Super Parkir Cepat',
+        receiverRole: 'Penyedia Parkir',
+        receiverName: 'Penyedia - Parkir Plaza Sudirman',
+        message: 'Koordinasikan kendala penyedia di sini.',
+        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
+        isRead: true,
+      ),
+    ];
+
+    final superAdminChatRooms = [
+      ChatRoom(
+        id: 'superadmin-customer-app',
+        title: 'Chat Customer - Dio Pratama',
+        participantRole: 'Customer',
+        participantName: 'Dio Pratama',
+        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
+        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
+        unreadCount: 0,
+      ),
+      ChatRoom(
+        id: 'superadmin-provider-main',
+        title: 'Chat Penyedia - Plaza Sudirman',
+        participantRole: 'Penyedia Parkir',
+        participantName: 'Penyedia - Parkir Plaza Sudirman',
+        lastMessage: 'Koordinasikan kendala penyedia di sini.',
+        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
+        unreadCount: 0,
+      ),
+      ChatRoom(
+        id: 'superadmin-guard-app',
+        title: 'Chat Penjaga - Raka Penjaga',
+        participantRole: 'Penjaga Parkir',
+        participantName: 'Raka Penjaga',
+        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
+        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
+        unreadCount: 0,
+      ),
+    ];
+
+    final superAdminChatMessages = [
+      ChatMessage(
+        id: 'msg-superadmin-customer-1',
+        roomId: 'superadmin-customer-app',
+        senderRole: 'Super Admin',
+        senderName: 'Admin Super Parkir Cepat',
+        receiverRole: 'Customer',
+        receiverName: 'Dio Pratama',
+        message: 'Laporkan kendala aplikasi lewat form komplain.',
+        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-superadmin-provider-1',
+        roomId: 'superadmin-provider-main',
+        senderRole: 'Super Admin',
+        senderName: 'Admin Super Parkir Cepat',
+        receiverRole: 'Penyedia Parkir',
+        receiverName: 'Penyedia - Parkir Plaza Sudirman',
+        message: 'Koordinasikan kendala penyedia di sini.',
+        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
+        isRead: true,
+      ),
+      ChatMessage(
+        id: 'msg-superadmin-guard-1',
+        roomId: 'superadmin-guard-app',
+        senderRole: 'Admin Aplikasi',
+        senderName: 'Admin Aplikasi',
+        receiverRole: 'Penjaga Parkir',
+        receiverName: 'Raka Penjaga',
+        message: 'Gunakan form komplain untuk masalah aplikasi.',
+        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
+        isRead: true,
+      ),
+    ];
+
     return AppState(
       onboardingIndex: 0,
       onboardingDone: false,
@@ -967,6 +1157,10 @@ class AppState {
       guardChatRooms: guardChatRooms,
       guardChatMessages: guardChatMessages,
       guardComplaints: const [],
+      providerChatRooms: providerChatRooms,
+      providerChatMessages: providerChatMessages,
+      superAdminChatRooms: superAdminChatRooms,
+      superAdminChatMessages: superAdminChatMessages,
       superAdminNotifications: superAdminNotifications,
       complaints: complaints,
       registrationRequests: registrationRequests,
@@ -1040,6 +1234,78 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.seeded());
+
+  ChatMessage _outgoingMessage({
+    required String roomId,
+    required String senderRole,
+    required String senderName,
+    required String receiverRole,
+    required String receiverName,
+    required String message,
+    required DateTime createdAt,
+  }) {
+    return ChatMessage(
+      id: 'msg-${createdAt.microsecondsSinceEpoch}-$roomId',
+      roomId: roomId,
+      senderRole: senderRole,
+      senderName: senderName,
+      receiverRole: receiverRole,
+      receiverName: receiverName,
+      message: message,
+      createdAt: createdAt,
+      isRead: true,
+    );
+  }
+
+  ChatMessage _mirrorMessage(ChatMessage message, String roomId) {
+    return message.copyWith(roomId: roomId, isRead: false);
+  }
+
+  List<ChatRoom> _touchRoom(
+    List<ChatRoom> rooms,
+    String roomId,
+    String message,
+    DateTime at, {
+    bool unread = false,
+  }) {
+    return [
+      for (final room in rooms)
+        if (room.id == roomId)
+          room.copyWith(
+            lastMessage: message,
+            lastMessageAt: at,
+            unreadCount: unread ? room.unreadCount + 1 : 0,
+          )
+        else
+          room,
+    ];
+  }
+
+  String? _mirrorRoomId(AccountMode from, String roomId) {
+    return switch ((from, roomId)) {
+      (AccountMode.customer, 'customer-guard-tkt-1002') =>
+        'guard-customer-tkt-1002',
+      (AccountMode.customer, 'customer-provider-lot-1') =>
+        'provider-customer-lot-1',
+      (AccountMode.customer, 'customer-admin-app') => 'superadmin-customer-app',
+      (AccountMode.parkingGuard, 'guard-customer-tkt-1002') =>
+        'customer-guard-tkt-1002',
+      (AccountMode.parkingGuard, 'guard-provider-main') =>
+        'provider-guard-main',
+      (AccountMode.parkingGuard, 'guard-admin-app') => 'superadmin-guard-app',
+      (AccountMode.provider, 'provider-customer-lot-1') =>
+        'customer-provider-lot-1',
+      (AccountMode.provider, 'provider-guard-main') => 'guard-provider-main',
+      (AccountMode.provider, 'provider-superadmin-main') =>
+        'superadmin-provider-main',
+      (AccountMode.superAdmin, 'superadmin-customer-app') =>
+        'customer-admin-app',
+      (AccountMode.superAdmin, 'superadmin-provider-main') =>
+        'provider-superadmin-main',
+      (AccountMode.superAdmin, 'superadmin-guard-app') => 'guard-admin-app',
+      _ => null,
+    };
+  }
 
   String landingRouteFor(AppState value) {
     if (value.currentMode == AccountMode.provider &&
@@ -1502,8 +1768,7 @@ class AppController extends StateNotifier<AppState> {
       return;
     }
     final now = DateTime.now();
-    final chatMessage = ChatMessage(
-      id: 'msg-customer-${now.microsecondsSinceEpoch}',
+    final chatMessage = _outgoingMessage(
       roomId: roomId,
       senderRole: 'Customer',
       senderName: state.customerName,
@@ -1511,21 +1776,66 @@ class AppController extends StateNotifier<AppState> {
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
-      isRead: true,
     );
+    final mirrorRoomId = _mirrorRoomId(AccountMode.customer, roomId);
     state = state.copyWith(
       customerChatMessages: [...state.customerChatMessages, chatMessage],
-      customerChatRooms: [
-        for (final item in state.customerChatRooms)
-          if (item.id == roomId)
-            item.copyWith(
-              lastMessage: trimmed,
-              lastMessageAt: now,
-              unreadCount: 0,
+      customerChatRooms: _touchRoom(
+        state.customerChatRooms,
+        roomId,
+        trimmed,
+        now,
+      ),
+      guardChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? [
+              ...state.guardChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.guardChatMessages,
+      guardChatRooms: mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? _touchRoom(
+              state.guardChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
             )
-          else
-            item,
-      ],
+          : state.guardChatRooms,
+      providerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? [
+              ...state.providerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.providerChatMessages,
+      providerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? _touchRoom(
+              state.providerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.providerChatRooms,
+      superAdminChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? [
+              ...state.superAdminChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.superAdminChatMessages,
+      superAdminChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? _touchRoom(
+              state.superAdminChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.superAdminChatRooms,
     );
   }
 
@@ -1625,8 +1935,7 @@ class AppController extends StateNotifier<AppState> {
     }
     final guard = activeGuard(state);
     final now = DateTime.now();
-    final chatMessage = ChatMessage(
-      id: 'msg-${now.microsecondsSinceEpoch}',
+    final chatMessage = _outgoingMessage(
       roomId: roomId,
       senderRole: 'Penjaga Parkir',
       senderName: guard?.name ?? 'Penjaga Parkir',
@@ -1634,21 +1943,271 @@ class AppController extends StateNotifier<AppState> {
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
-      isRead: true,
     );
+    final mirrorRoomId = _mirrorRoomId(AccountMode.parkingGuard, roomId);
     state = state.copyWith(
       guardChatMessages: [...state.guardChatMessages, chatMessage],
-      guardChatRooms: [
-        for (final item in state.guardChatRooms)
-          if (item.id == roomId)
-            item.copyWith(
-              lastMessage: trimmed,
-              lastMessageAt: now,
-              unreadCount: 0,
+      guardChatRooms: _touchRoom(state.guardChatRooms, roomId, trimmed, now),
+      customerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? [
+              ...state.customerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.customerChatMessages,
+      customerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? _touchRoom(
+              state.customerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
             )
-          else
-            item,
+          : state.customerChatRooms,
+      providerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? [
+              ...state.providerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.providerChatMessages,
+      providerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? _touchRoom(
+              state.providerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.providerChatRooms,
+      superAdminChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? [
+              ...state.superAdminChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.superAdminChatMessages,
+      superAdminChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? _touchRoom(
+              state.superAdminChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.superAdminChatRooms,
+    );
+  }
+
+  void markProviderChatAsRead(String roomId) {
+    state = state.copyWith(
+      providerChatRooms: [
+        for (final room in state.providerChatRooms)
+          if (room.id == roomId) room.copyWith(unreadCount: 0) else room,
       ],
+      providerChatMessages: [
+        for (final message in state.providerChatMessages)
+          if (message.roomId == roomId)
+            message.copyWith(isRead: true)
+          else
+            message,
+      ],
+    );
+  }
+
+  void sendProviderMessage({required String roomId, required String message}) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    ChatRoom? room;
+    for (final item in state.providerChatRooms) {
+      if (item.id == roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return;
+    }
+    final now = DateTime.now();
+    final chatMessage = _outgoingMessage(
+      roomId: roomId,
+      senderRole: 'Penyedia Parkir',
+      senderName: 'Penyedia - Parkir Plaza Sudirman',
+      receiverRole: room.participantRole,
+      receiverName: room.participantName,
+      message: trimmed,
+      createdAt: now,
+    );
+    final mirrorRoomId = _mirrorRoomId(AccountMode.provider, roomId);
+    state = state.copyWith(
+      providerChatMessages: [...state.providerChatMessages, chatMessage],
+      providerChatRooms: _touchRoom(
+        state.providerChatRooms,
+        roomId,
+        trimmed,
+        now,
+      ),
+      customerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? [
+              ...state.customerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.customerChatMessages,
+      customerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? _touchRoom(
+              state.customerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.customerChatRooms,
+      guardChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? [
+              ...state.guardChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.guardChatMessages,
+      guardChatRooms: mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? _touchRoom(
+              state.guardChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.guardChatRooms,
+      superAdminChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? [
+              ...state.superAdminChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.superAdminChatMessages,
+      superAdminChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('superadmin-')
+          ? _touchRoom(
+              state.superAdminChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.superAdminChatRooms,
+    );
+  }
+
+  void markSuperAdminChatAsRead(String roomId) {
+    state = state.copyWith(
+      superAdminChatRooms: [
+        for (final room in state.superAdminChatRooms)
+          if (room.id == roomId) room.copyWith(unreadCount: 0) else room,
+      ],
+      superAdminChatMessages: [
+        for (final message in state.superAdminChatMessages)
+          if (message.roomId == roomId)
+            message.copyWith(isRead: true)
+          else
+            message,
+      ],
+    );
+  }
+
+  void sendSuperAdminMessage({
+    required String roomId,
+    required String message,
+  }) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    ChatRoom? room;
+    for (final item in state.superAdminChatRooms) {
+      if (item.id == roomId) {
+        room = item;
+        break;
+      }
+    }
+    if (room == null) {
+      return;
+    }
+    final now = DateTime.now();
+    final chatMessage = _outgoingMessage(
+      roomId: roomId,
+      senderRole: 'Super Admin',
+      senderName: 'Admin Super Parkir Cepat',
+      receiverRole: room.participantRole,
+      receiverName: room.participantName,
+      message: trimmed,
+      createdAt: now,
+    );
+    final mirrorRoomId = _mirrorRoomId(AccountMode.superAdmin, roomId);
+    state = state.copyWith(
+      superAdminChatMessages: [...state.superAdminChatMessages, chatMessage],
+      superAdminChatRooms: _touchRoom(
+        state.superAdminChatRooms,
+        roomId,
+        trimmed,
+        now,
+      ),
+      customerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? [
+              ...state.customerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.customerChatMessages,
+      customerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('customer-')
+          ? _touchRoom(
+              state.customerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.customerChatRooms,
+      guardChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? [
+              ...state.guardChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.guardChatMessages,
+      guardChatRooms: mirrorRoomId != null && mirrorRoomId.startsWith('guard-')
+          ? _touchRoom(
+              state.guardChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.guardChatRooms,
+      providerChatMessages:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? [
+              ...state.providerChatMessages,
+              _mirrorMessage(chatMessage, mirrorRoomId),
+            ]
+          : state.providerChatMessages,
+      providerChatRooms:
+          mirrorRoomId != null && mirrorRoomId.startsWith('provider-')
+          ? _touchRoom(
+              state.providerChatRooms,
+              mirrorRoomId,
+              trimmed,
+              now,
+              unread: true,
+            )
+          : state.providerChatRooms,
     );
   }
 
@@ -5033,8 +5592,9 @@ class CustomerChatListScreen extends ConsumerWidget {
               room: adminRoom,
               icon: Icons.support_agent_rounded,
               accent: const Color(0xFFD97706),
-              actionLabel: 'Kirim komplain',
-              onTap: () => context.push('/customer/complaint'),
+              actionLabel: 'Buka chat',
+              onTap: () =>
+                  context.push('/customer/chat-room?roomId=${adminRoom.id}'),
             ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
@@ -5273,6 +5833,351 @@ class _CustomerChatRoomScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class RoleChatListScreen extends ConsumerWidget {
+  const RoleChatListScreen({
+    super.key,
+    required this.mode,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final AccountMode mode;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = switch (mode) {
+      AccountMode.provider => state.providerChatRooms,
+      AccountMode.superAdmin => state.superAdminChatRooms,
+      AccountMode.customer => state.customerChatRooms,
+      AccountMode.parkingGuard => state.guardChatRooms,
+    };
+    final routePrefix = switch (mode) {
+      AccountMode.provider => '/provider',
+      AccountMode.superAdmin => '/super-admin',
+      AccountMode.customer => '/customer',
+      AccountMode.parkingGuard => '/guard',
+    };
+    final child = ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+      children: [
+        HeaderSection(title: title, subtitle: subtitle),
+        const SizedBox(height: 18),
+        for (final room in rooms)
+          _RoleChatCard(
+            room: room,
+            onTap: () =>
+                context.push('$routePrefix/chat-room?roomId=${room.id}'),
+          ),
+      ],
+    );
+
+    return switch (mode) {
+      AccountMode.provider => AdminShell(currentIndex: 3, child: child),
+      AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
+      AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
+      AccountMode.parkingGuard => GuardShell(currentIndex: 3, child: child),
+    };
+  }
+}
+
+class RoleChatRoomScreen extends ConsumerStatefulWidget {
+  const RoleChatRoomScreen({
+    super.key,
+    required this.mode,
+    required this.roomId,
+  });
+
+  final AccountMode mode;
+  final String roomId;
+
+  @override
+  ConsumerState<RoleChatRoomScreen> createState() => _RoleChatRoomScreenState();
+}
+
+class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
+  final TextEditingController _messageController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = ref.read(appControllerProvider.notifier);
+      switch (widget.mode) {
+        case AccountMode.provider:
+          controller.markProviderChatAsRead(widget.roomId);
+        case AccountMode.superAdmin:
+          controller.markSuperAdminChatAsRead(widget.roomId);
+        case AccountMode.customer:
+          controller.markCustomerChatAsRead(widget.roomId);
+        case AccountMode.parkingGuard:
+          controller.markChatAsRead(widget.roomId);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) {
+      return;
+    }
+    final controller = ref.read(appControllerProvider.notifier);
+    switch (widget.mode) {
+      case AccountMode.provider:
+        controller.sendProviderMessage(roomId: widget.roomId, message: text);
+      case AccountMode.superAdmin:
+        controller.sendSuperAdminMessage(roomId: widget.roomId, message: text);
+      case AccountMode.customer:
+        controller.sendCustomerMessage(roomId: widget.roomId, message: text);
+      case AccountMode.parkingGuard:
+        controller.sendGuardMessage(roomId: widget.roomId, message: text);
+    }
+    _messageController.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = switch (widget.mode) {
+      AccountMode.provider => state.providerChatRooms,
+      AccountMode.superAdmin => state.superAdminChatRooms,
+      AccountMode.customer => state.customerChatRooms,
+      AccountMode.parkingGuard => state.guardChatRooms,
+    };
+    final messages = switch (widget.mode) {
+      AccountMode.provider => state.providerChatMessages,
+      AccountMode.superAdmin => state.superAdminChatMessages,
+      AccountMode.customer => state.customerChatMessages,
+      AccountMode.parkingGuard => state.guardChatMessages,
+    };
+    final room = rooms.where((room) => room.id == widget.roomId).firstOrNull;
+    final routePrefix = switch (widget.mode) {
+      AccountMode.provider => '/provider',
+      AccountMode.superAdmin => '/super-admin',
+      AccountMode.customer => '/customer',
+      AccountMode.parkingGuard => '/guard',
+    };
+    if (room == null) {
+      return _roleShell(
+        mode: widget.mode,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            EmptyStateCard(
+              title: 'Room chat tidak ditemukan',
+              body: 'Pilih room dari daftar chat.',
+              actionLabel: 'Kembali',
+              onPressed: () => context.go('$routePrefix/chat'),
+            ),
+          ],
+        ),
+      );
+    }
+    final visibleMessages =
+        messages.where((message) => message.roomId == room.id).toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return _roleShell(
+      mode: widget.mode,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Row(
+              children: [
+                IconButton(
+                  onPressed: () => context.go('$routePrefix/chat'),
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: HeaderSection(
+                    title: room.title,
+                    subtitle:
+                        '${room.participantRole} - ${room.participantName}',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+              itemCount: visibleMessages.length,
+              itemBuilder: (context, index) {
+                final message = visibleMessages[index];
+                return _RoleChatBubble(
+                  message: message,
+                  isMine: message.senderRole == roleLabel(widget.mode),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.14))],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: const InputDecoration(
+                      hintText: 'Tulis pesan...',
+                      prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.filled(
+                  onPressed: _sendMessage,
+                  icon: const Icon(Icons.send_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _roleShell({required AccountMode mode, required Widget child}) {
+    return switch (mode) {
+      AccountMode.provider => AdminShell(currentIndex: 3, child: child),
+      AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
+      AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
+      AccountMode.parkingGuard => GuardShell(currentIndex: 3, child: child),
+    };
+  }
+}
+
+class _RoleChatCard extends StatelessWidget {
+  const _RoleChatCard({required this.room, required this.onTap});
+
+  final ChatRoom room;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(28),
+        onTap: onTap,
+        child: PremiumCard(
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: _customerChatAccent(
+                    room.participantRole,
+                  ).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  _customerChatIcon(room.participantRole),
+                  color: _customerChatAccent(room.participantRole),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      room.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      room.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                  ],
+                ),
+              ),
+              if (room.unreadCount > 0)
+                StatusBadge(label: '${room.unreadCount}', color: AppTheme.blue),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, color: AppTheme.slate),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleChatBubble extends StatelessWidget {
+  const _RoleChatBubble({required this.message, required this.isMine});
+
+  final ChatMessage message;
+  final bool isMine;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: math.min(MediaQuery.sizeOf(context).width * 0.74, 520),
+        ),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isMine ? AppTheme.blue : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.08))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.senderName,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isMine ? Colors.white70 : AppTheme.slate,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message.message,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: isMine ? Colors.white : AppTheme.ink,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -9298,9 +10203,9 @@ class CustomerShell extends StatelessWidget {
           route: '/customer/tickets',
         ),
         ShellDestination(
-          label: 'Notifikasi',
-          icon: Icons.notifications_rounded,
-          route: '/customer/notifications',
+          label: 'Chat',
+          icon: Icons.chat_bubble_rounded,
+          route: '/customer/chat',
         ),
         ShellDestination(
           label: 'Profil',
@@ -9347,9 +10252,9 @@ class AdminShell extends StatelessWidget {
           route: '/provider/monitoring',
         ),
         ShellDestination(
-          label: 'Notif',
-          icon: Icons.notifications_rounded,
-          route: '/provider/notifications',
+          label: 'Chat',
+          icon: Icons.chat_bubble_rounded,
+          route: '/provider/chat',
         ),
         ShellDestination(
           label: 'Profil',
@@ -9405,6 +10310,11 @@ class SuperAdminShell extends ConsumerWidget {
           icon: Icons.support_agent_rounded,
           route: '/super-admin/complaints',
           badgeCount: waitingComplaints,
+        ),
+        const ShellDestination(
+          label: 'Chat',
+          icon: Icons.chat_bubble_rounded,
+          route: '/super-admin/chat',
         ),
       ],
       child: child,
@@ -10178,6 +11088,7 @@ class ParkingMapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activeLot = selected ?? (lots.isNotEmpty ? lots.first : null);
     final positions = <Offset>[
       const Offset(0.22, 0.28),
       const Offset(0.68, 0.42),
@@ -10191,7 +11102,17 @@ class ParkingMapCard extends StatelessWidget {
         height: 320,
         child: Stack(
           children: [
-            const Positioned.fill(child: ParkingMapBackground()),
+            Positioned.fill(
+              child: activeLot == null
+                  ? const ParkingMapBackground()
+                  : MapEmbedView(
+                      title: activeLot.name,
+                      embedUrl: activeLot.mapEmbedUrl,
+                      latitude: activeLot.latitude,
+                      longitude: activeLot.longitude,
+                      height: 320,
+                    ),
+            ),
             for (var index = 0; index < lots.length; index++)
               Positioned.fill(
                 child: LayoutBuilder(
