@@ -41,6 +41,7 @@ dependencies:
   web: ^1.1.1
   image_picker: ^1.2.2
   mobile_scanner: ^7.2.0
+  supabase_flutter: ^2.14.2
 
 dev_dependencies:
   flutter_test:
