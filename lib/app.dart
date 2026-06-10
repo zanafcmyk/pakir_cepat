@@ -3059,14 +3059,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 16),
-          TextField(
-            controller: _phoneController,
-            decoration: const InputDecoration(
-              labelText: 'Nomor HP',
-              prefixIcon: Icon(Icons.phone_iphone_rounded),
+          if (_mode != AccountMode.superAdmin) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _phoneController,
+              decoration: const InputDecoration(
+                labelText: 'Nomor HP',
+                prefixIcon: Icon(Icons.phone_iphone_rounded),
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
