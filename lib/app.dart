@@ -14,6 +14,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/app_models.dart';
 import 'widgets/map_embed_view.dart';
@@ -2902,11 +2903,23 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _passwordController;
   bool _rememberMe = true;
+  bool _isLoading = false;
   AccountMode _mode = AccountMode.customer;
 
-  void _submitLogin() {
+  Future<void> _submitLogin() async {
+    if (_isLoading) {
+      return;
+    }
+
     final controller = ref.read(appControllerProvider.notifier);
+
+    if (_mode == AccountMode.superAdmin) {
+      await _submitSuperAdminLogin(controller);
+      return;
+    }
+
     controller.login(
       mode: _mode,
       email: _emailController.text,
@@ -2916,18 +2929,93 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
   }
 
+  Future<void> _submitSuperAdminLogin(AppController controller) async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password admin wajib diisi.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showLoginMessage('Login admin gagal. Coba lagi.');
+        return;
+      }
+
+      final profile = await supabase
+          .from('profiles')
+          .select('id, email, role, account_status, access_status')
+          .eq('id', user.id)
+          .single();
+
+      if (profile['role'] != 'super_admin') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun ini bukan akun Super Admin.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun Super Admin sedang dinonaktifkan.');
+        return;
+      }
+
+      controller.login(
+        mode: AccountMode.superAdmin,
+        email: email,
+        phoneNumber: _phoneController.text,
+        rememberMe: _rememberMe,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage('Tidak bisa login ke Supabase. Cek email, password, dan koneksi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showLoginMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     final state = ref.read(appControllerProvider);
     _emailController = TextEditingController(text: state.email);
     _phoneController = TextEditingController(text: state.phoneNumber);
+    _passwordController = TextEditingController();
   }
 
   @override
   void dispose() {
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -2960,6 +3048,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
+          if (_mode == AccountMode.superAdmin) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password admin',
+                prefixIcon: Icon(Icons.lock_outline_rounded),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _phoneController,
@@ -2986,9 +3085,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           const SizedBox(height: 16),
           PrimaryButton(
-            label: 'Masuk',
+            label: _isLoading ? 'Memeriksa...' : 'Masuk',
             icon: Icons.login_rounded,
-            onPressed: _submitLogin,
+            onPressed: _isLoading ? null : _submitLogin,
           ),
           const SizedBox(height: 12),
           SecondaryButton(
