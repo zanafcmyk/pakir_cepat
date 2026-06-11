@@ -18,6 +18,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/app_models.dart';
 import 'services/supabase_chat_service.dart';
+import 'services/supabase_parking_service.dart';
 import 'widgets/map_embed_view.dart';
 
 final appControllerProvider = StateNotifierProvider<AppController, AppState>(
@@ -1260,6 +1261,7 @@ class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.seeded());
 
   final SupabaseChatService _chatService = SupabaseChatService();
+  final SupabaseParkingService _parkingService = SupabaseParkingService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1376,6 +1378,24 @@ class AppController extends StateNotifier<AppState> {
 
   void finishOnboarding() {
     state = state.copyWith(onboardingDone: true);
+  }
+
+  Future<void> loadParkingDataFromSupabase() async {
+    final data = await _parkingService.fetchParkingData();
+    if (data.lots.isEmpty) {
+      return;
+    }
+
+    final selectedLot = data.lots.firstWhere(
+      (lot) => lot.id == state.selectedLot?.id,
+      orElse: () => data.lots.first,
+    );
+
+    state = state.copyWith(
+      lots: data.lots,
+      selectedLot: selectedLot,
+      slots: data.slots.isEmpty ? state.slots : data.slots,
+    );
   }
 
   void login({
@@ -2519,6 +2539,15 @@ class AppController extends StateNotifier<AppState> {
       ]);
     }
 
+    final generatedSlots = [
+      for (var index = 1; index <= capacity; index++)
+        ParkingSlot(
+          id: '$lotId-slot-$index',
+          label: 'A${index.toString().padLeft(3, '0')}',
+          isAvailable: true,
+        ),
+    ];
+
     final lot = ParkingLot(
       id: lotId,
       providerId: providerId,
@@ -2542,7 +2571,11 @@ class AppController extends StateNotifier<AppState> {
       photoLabel: photoLabel,
       photoBytes: photoBytes,
     );
-    state = state.copyWith(lots: [lot, ...state.lots], selectedLot: lot);
+    state = state.copyWith(
+      lots: [lot, ...state.lots],
+      selectedLot: lot,
+      slots: generatedSlots,
+    );
   }
 
   String _tariffTypeToDb(ParkingTariffType type) => switch (type) {
@@ -2794,14 +2827,27 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void toggleSlot(String id) {
+    ParkingSlot? changedSlot;
     final updated = [
       for (final slot in state.slots)
         if (slot.id == id)
-          slot.copyWith(isAvailable: !slot.isAvailable)
+          changedSlot = slot.copyWith(isAvailable: !slot.isAvailable)
         else
           slot,
     ];
     state = state.copyWith(slots: updated);
+
+    if (changedSlot != null) {
+      unawaited(
+        Supabase.instance.client
+            .from('parking_slots')
+            .update({
+              'status': changedSlot.isAvailable ? 'available' : 'occupied',
+            })
+            .eq('id', changedSlot.id)
+            .catchError((_) {}),
+      );
+    }
   }
 
   void extendParkingTime(int additionalHours) {
@@ -3299,6 +3345,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         phoneNumber: _phoneController.text,
         rememberMe: _rememberMe,
       );
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -3374,6 +3421,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         providerApplication: application,
         clearProviderApplication: application == null,
       );
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
