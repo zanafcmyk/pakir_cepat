@@ -2812,11 +2812,12 @@ class AppController extends StateNotifier<AppState> {
     return remoteBooking.booking;
   }
 
-  bool verifyVehicleEntry(String ticketNumber) {
+  Future<bool> verifyVehicleEntry(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
     if (booking == null || !booking.isPaid) {
       return false;
     }
+    await _bookingService.checkInBooking(ticketNumber);
     final updatedSlots = [
       for (final slot in state.slots)
         if (slot.label == booking.slotCode)
@@ -2852,11 +2853,12 @@ class AppController extends StateNotifier<AppState> {
     return true;
   }
 
-  bool confirmVehicleExit(String ticketNumber) {
+  Future<bool> confirmVehicleExit(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
     if (booking == null || !booking.isPaid) {
       return false;
     }
+    await _bookingService.checkOutBooking(ticketNumber);
     final updatedSlots = [
       for (final slot in state.slots)
         if (slot.label == booking.slotCode)
@@ -9861,14 +9863,17 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     );
   }
 
-  void _verifyEntry() {
+  Future<void> _verifyEntry() async {
     final booking = _scannedBooking;
     if (booking == null) {
       return;
     }
-    final success = ref
+    final success = await ref
         .read(appControllerProvider.notifier)
         .verifyVehicleEntry(booking.ticketNumber);
+    if (!mounted) {
+      return;
+    }
     final updatedBooking = ref
         .read(appControllerProvider.notifier)
         .bookingByTicketNumber(booking.ticketNumber);
@@ -9890,14 +9895,17 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     );
   }
 
-  void _confirmExit() {
+  Future<void> _confirmExit() async {
     final booking = _scannedBooking;
     if (booking == null) {
       return;
     }
-    final success = ref
+    final success = await ref
         .read(appControllerProvider.notifier)
         .confirmVehicleExit(booking.ticketNumber);
+    if (!mounted) {
+      return;
+    }
     final updatedBooking = ref
         .read(appControllerProvider.notifier)
         .bookingByTicketNumber(booking.ticketNumber);

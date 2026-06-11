@@ -110,6 +110,31 @@ class SupabaseBookingService {
     return _activeBookingFromRow(row);
   }
 
+  Future<void> checkInBooking(String ticketNumber) async {
+    await _updateBookingActivity(
+      ticketNumber: ticketNumber,
+      bookingStatus: 'active',
+      slotStatus: 'occupied',
+      activityAction: 'check_in',
+      bookingTimeColumn: 'checked_in_at',
+      guardColumn: 'checked_in_by',
+      note: 'Kendaraan masuk diverifikasi dari scan QR.',
+    );
+  }
+
+  Future<void> checkOutBooking(String ticketNumber) async {
+    await _updateBookingActivity(
+      ticketNumber: ticketNumber,
+      bookingStatus: 'completed',
+      slotStatus: 'available',
+      activityAction: 'check_out',
+      bookingTimeColumn: 'checked_out_at',
+      guardColumn: 'checked_out_by',
+      note: 'Kendaraan keluar dikonfirmasi dari scan QR.',
+      setExitTime: true,
+    );
+  }
+
   Future<String> _currentCustomerId(String profileId) async {
     final row = await _client
         .from('customers')
@@ -147,6 +172,104 @@ class SupabaseBookingService {
     }
 
     return _paymentMethodFromDb((rows.first as Map)['method'] as String?);
+  }
+
+  Future<void> _updateBookingActivity({
+    required String ticketNumber,
+    required String bookingStatus,
+    required String slotStatus,
+    required String activityAction,
+    required String bookingTimeColumn,
+    required String guardColumn,
+    required String note,
+    bool setExitTime = false,
+  }) async {
+    final bookingRow = await _client
+        .from('bookings')
+        .select('id, parking_lot_id, parking_slot_id')
+        .eq('ticket_number', ticketNumber)
+        .limit(1)
+        .maybeSingle();
+    if (bookingRow == null) {
+      return;
+    }
+
+    final now = DateTime.now().toIso8601String();
+    final guardId = await _currentGuardId();
+    final bookingUpdate = <String, dynamic>{
+      'status': bookingStatus,
+      bookingTimeColumn: now,
+      guardColumn: guardId,
+    };
+    if (setExitTime) {
+      bookingUpdate['exit_time'] = now;
+    }
+
+    await _client
+        .from('bookings')
+        .update(bookingUpdate)
+        .eq('id', bookingRow['id'] as String);
+
+    final slotId = bookingRow['parking_slot_id'] as String?;
+    if (slotId != null) {
+      await _client
+          .from('parking_slots')
+          .update({'status': slotStatus})
+          .eq('id', slotId);
+    }
+
+    await _insertActivityLogIfAvailable(
+      bookingRow: bookingRow,
+      action: activityAction,
+      note: note,
+      guardId: guardId,
+    );
+  }
+
+  Future<String?> _currentGuardId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final rows = await _client
+        .from('parking_guards')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return (rows.first as Map)['id'] as String?;
+  }
+
+  Future<void> _insertActivityLogIfAvailable({
+    required Map<String, dynamic> bookingRow,
+    required String action,
+    required String note,
+    required String? guardId,
+  }) async {
+    try {
+      await _client.from('parking_activity_logs').insert({
+        'booking_id': bookingRow['id'],
+        'parking_lot_id': bookingRow['parking_lot_id'],
+        'parking_slot_id': bookingRow['parking_slot_id'],
+        'guard_id': guardId,
+        'actor_profile_id': _client.auth.currentUser?.id,
+        'action': action,
+        'note': note,
+      });
+    } on PostgrestException catch (error) {
+      if (!_isMissingActivityLogsTable(error)) {
+        rethrow;
+      }
+    }
+  }
+
+  bool _isMissingActivityLogsTable(PostgrestException error) {
+    return error.code == '42P01' ||
+        error.message.contains('parking_activity_logs');
   }
 
   Future<SupabaseActiveBooking> _activeBookingFromRow(
