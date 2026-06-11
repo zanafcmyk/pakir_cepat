@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/app_models.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_parking_service.dart';
+import 'services/supabase_vehicle_service.dart';
 import 'widgets/map_embed_view.dart';
 
 final appControllerProvider = StateNotifierProvider<AppController, AppState>(
@@ -1262,6 +1263,7 @@ class AppController extends StateNotifier<AppState> {
 
   final SupabaseChatService _chatService = SupabaseChatService();
   final SupabaseParkingService _parkingService = SupabaseParkingService();
+  final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1395,6 +1397,23 @@ class AppController extends StateNotifier<AppState> {
       lots: data.lots,
       selectedLot: selectedLot,
       slots: data.slots.isEmpty ? state.slots : data.slots,
+    );
+  }
+
+  Future<void> loadCustomerVehiclesFromSupabase() async {
+    final vehicles = await _vehicleService.fetchCurrentCustomerVehicles();
+    if (vehicles.isEmpty) {
+      return;
+    }
+
+    final selectedVehicle = vehicles.firstWhere(
+      (vehicle) => vehicle.id == state.selectedVehicle?.id,
+      orElse: () => vehicles.first,
+    );
+
+    state = state.copyWith(
+      vehicles: vehicles,
+      selectedVehicle: selectedVehicle,
     );
   }
 
@@ -2595,21 +2614,37 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(favoriteLotIds: current);
   }
 
-  void saveVehicle({
+  Future<void> saveVehicle({
     required String plateNumber,
     required VehicleKind kind,
     required int quantity,
     required int durationHours,
-  }) {
-    final vehicle = Vehicle(
-      id: 'veh-${state.vehicles.length + 1}',
-      plateNumber: plateNumber,
-      kind: kind,
-      quantity: quantity,
-      durationHours: durationHours,
-    );
+  }) async {
+    final remoteVehicle = await _vehicleService
+        .saveCurrentCustomerVehicle(
+          plateNumber: plateNumber,
+          kind: kind,
+          quantity: quantity,
+          durationHours: durationHours,
+        )
+        .catchError((_) => null);
+
+    final vehicle =
+        remoteVehicle ??
+        Vehicle(
+          id: 'veh-${state.vehicles.length + 1}',
+          plateNumber: plateNumber,
+          kind: kind,
+          quantity: quantity,
+          durationHours: durationHours,
+        );
+
+    final remainingVehicles = state.vehicles
+        .where((item) => item.plateNumber != vehicle.plateNumber)
+        .toList();
+
     state = state.copyWith(
-      vehicles: [vehicle, ...state.vehicles],
+      vehicles: [vehicle, ...remainingVehicles],
       selectedVehicle: vehicle,
     );
   }
@@ -3346,6 +3381,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         rememberMe: _rememberMe,
       );
       await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -4017,10 +4053,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             mode: AccountMode.customer,
           );
 
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
+
       if (!mounted) {
         return;
       }
-      final controller = ref.read(appControllerProvider.notifier);
       context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
     } on AuthException catch (error) {
       _showRegisterMessage(error.message);
@@ -5752,6 +5790,7 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
   VehicleKind _kind = VehicleKind.mobil;
   double _quantity = 1;
   double _duration = 2;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -5827,19 +5866,53 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
-                  label: 'Simpan kendaraan',
+                  label: _isSaving ? 'Menyimpan...' : 'Simpan kendaraan',
                   icon: Icons.save_rounded,
-                  onPressed: () {
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .saveVehicle(
-                          plateNumber: _plateController.text,
-                          kind: _kind,
-                          quantity: _quantity.toInt(),
-                          durationHours: _duration.toInt(),
-                        );
-                    context.pop();
-                  },
+                  onPressed: _isSaving
+                      ? null
+                      : () async {
+                          final plateNumber = _plateController.text.trim();
+                          if (plateNumber.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Plat nomor wajib diisi.'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setState(() => _isSaving = true);
+                          try {
+                            await ref
+                                .read(appControllerProvider.notifier)
+                                .saveVehicle(
+                                  plateNumber: plateNumber,
+                                  kind: _kind,
+                                  quantity: _quantity.toInt(),
+                                  durationHours: _duration.toInt(),
+                                );
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Kendaraan berhasil disimpan.'),
+                              ),
+                            );
+                            context.pop();
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Gagal menyimpan kendaraan ke Supabase.',
+                                ),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isSaving = false);
+                            }
+                          }
+                        },
                 ),
               ],
             ),
