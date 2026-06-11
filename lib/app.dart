@@ -2915,6 +2915,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     final controller = ref.read(appControllerProvider.notifier);
 
+    if (_mode == AccountMode.customer) {
+      await _submitCustomerLogin(controller);
+      return;
+    }
+
     if (_mode == AccountMode.superAdmin) {
       await _submitSuperAdminLogin(controller);
       return;
@@ -2927,6 +2932,70 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       rememberMe: _rememberMe,
     );
     context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+  }
+
+  Future<void> _submitCustomerLogin(AppController controller) async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password customer wajib diisi.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showLoginMessage('Login customer gagal. Coba lagi.');
+        return;
+      }
+
+      final profile = await supabase
+          .from('profiles')
+          .select('id, email, role, access_status')
+          .eq('id', user.id)
+          .single();
+
+      if (profile['role'] != 'customer') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun ini bukan akun customer.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun customer sedang dinonaktifkan.');
+        return;
+      }
+
+      controller.login(
+        mode: AccountMode.customer,
+        email: email,
+        phoneNumber: _phoneController.text,
+        rememberMe: _rememberMe,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage('Tidak bisa login customer. Cek email, password, dan koneksi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _submitSuperAdminLogin(AppController controller) async {
@@ -3048,13 +3117,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
-          if (_mode == AccountMode.superAdmin) ...[
+          if (_mode == AccountMode.customer ||
+              _mode == AccountMode.superAdmin) ...[
             const SizedBox(height: 16),
             TextField(
               controller: _passwordController,
               obscureText: true,
               decoration: const InputDecoration(
-                labelText: 'Password admin',
+                labelText: 'Password',
                 prefixIcon: Icon(Icons.lock_outline_rounded),
               ),
             ),
@@ -3131,6 +3201,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _passwordController;
+  late final TextEditingController _confirmPasswordController;
   late final TextEditingController _parkingNameController;
   late final TextEditingController _parkingAddressController;
   late final TextEditingController _parkingPhotoController;
@@ -3138,6 +3210,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _identityController;
   AccountMode _mode = AccountMode.customer;
   double _providerCapacity = 80;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -3145,6 +3218,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _nameController = TextEditingController(text: 'Dio Pratama');
     _emailController = TextEditingController(text: 'dio@parkircepat.app');
     _phoneController = TextEditingController(text: '+62 812 7788 9911');
+    _passwordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
     _parkingNameController = TextEditingController(
       text: 'Parkir Cepat Sudirman Hub',
     );
@@ -3165,12 +3240,143 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     _parkingNameController.dispose();
     _parkingAddressController.dispose();
     _parkingPhotoController.dispose();
     _locationPointController.dispose();
     _identityController.dispose();
     super.dispose();
+  }
+
+  Future<void> _submitRegister() async {
+    if (_isLoading) {
+      return;
+    }
+
+    if (_mode == AccountMode.customer) {
+      await _submitCustomerRegister();
+      return;
+    }
+
+    final providerApplication = _mode == AccountMode.provider
+        ? ProviderApplication(
+            parkingName: _parkingNameController.text,
+            address: _parkingAddressController.text,
+            photoLabel: _parkingPhotoController.text,
+            locationLabel: _locationPointController.text,
+            capacity: _providerCapacity.toInt(),
+            identityLabel: _identityController.text,
+          )
+        : null;
+    ref
+        .read(appControllerProvider.notifier)
+        .register(
+          fullName: _nameController.text,
+          email: _emailController.text,
+          phoneNumber: _phoneController.text,
+          mode: _mode,
+          providerApplication: providerApplication,
+        );
+    if (_mode == AccountMode.provider) {
+      _showRegisterMessage('Akun penyedia sedang menunggu verifikasi admin.');
+    }
+    final controller = ref.read(appControllerProvider.notifier);
+    if (!mounted) {
+      return;
+    }
+    context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+  }
+
+  Future<void> _submitCustomerRegister() async {
+    final fullName = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phoneNumber = _phoneController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (fullName.isEmpty || email.isEmpty || password.isEmpty) {
+      _showRegisterMessage('Nama, email, dan password wajib diisi.');
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showRegisterMessage('Konfirmasi password belum sama.');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showRegisterMessage('Password minimal 6 karakter.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'full_name': fullName,
+          'role': 'customer',
+        },
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showRegisterMessage('Pendaftaran customer perlu konfirmasi email terlebih dahulu.');
+        return;
+      }
+
+      await supabase.from('profiles').upsert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': email,
+        'phone_number': phoneNumber,
+        'role': 'customer',
+        'account_status': 'verified',
+        'access_status': 'active',
+        'verified_at': DateTime.now().toIso8601String(),
+      });
+
+      await supabase.from('customers').upsert({
+        'profile_id': user.id,
+      }, onConflict: 'profile_id');
+
+      ref
+          .read(appControllerProvider.notifier)
+          .register(
+            fullName: fullName,
+            email: email,
+            phoneNumber: phoneNumber,
+            mode: AccountMode.customer,
+          );
+
+      if (!mounted) {
+        return;
+      }
+      final controller = ref.read(appControllerProvider.notifier);
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showRegisterMessage(error.message);
+    } catch (_) {
+      _showRegisterMessage('Tidak bisa daftar customer. Cek koneksi dan coba lagi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _showRegisterMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -3204,17 +3410,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          const TextField(
+          TextField(
+            controller: _passwordController,
             obscureText: true,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Password',
               prefixIcon: Icon(Icons.lock_outline_rounded),
             ),
           ),
           const SizedBox(height: 16),
-          const TextField(
+          TextField(
+            controller: _confirmPasswordController,
             obscureText: true,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Konfirmasi password',
               prefixIcon: Icon(Icons.lock_reset_rounded),
             ),
@@ -3340,42 +3548,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ],
           const SizedBox(height: 20),
           PrimaryButton(
-            label: 'Daftar',
+            label: _isLoading ? 'Mendaftarkan...' : 'Daftar',
             icon: Icons.person_add_alt_1_rounded,
-            onPressed: () {
-              final providerApplication = _mode == AccountMode.provider
-                  ? ProviderApplication(
-                      parkingName: _parkingNameController.text,
-                      address: _parkingAddressController.text,
-                      photoLabel: _parkingPhotoController.text,
-                      locationLabel: _locationPointController.text,
-                      capacity: _providerCapacity.toInt(),
-                      identityLabel: _identityController.text,
-                    )
-                  : null;
-              ref
-                  .read(appControllerProvider.notifier)
-                  .register(
-                    fullName: _nameController.text,
-                    email: _emailController.text,
-                    phoneNumber: _phoneController.text,
-                    mode: _mode,
-                    providerApplication: providerApplication,
-                  );
-              if (_mode == AccountMode.provider) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Akun penyedia sedang menunggu verifikasi admin.',
-                    ),
-                  ),
-                );
-              }
-              final controller = ref.read(appControllerProvider.notifier);
-              context.go(
-                controller.landingRouteFor(ref.read(appControllerProvider)),
-              );
-            },
+            onPressed: _isLoading ? null : _submitRegister,
           ),
         ],
       ),
