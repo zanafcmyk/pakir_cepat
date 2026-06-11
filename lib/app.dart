@@ -198,6 +198,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ReceiptScreen(),
       ),
       GoRoute(
+        path: '/provider/daily-revenue',
+        builder: (context, state) => const ProviderDailyRevenueScreen(),
+      ),
+      GoRoute(
         path: '/provider/statistics',
         builder: (context, state) => const StatisticsScreen(),
       ),
@@ -564,6 +568,10 @@ class AppState {
             'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid',
         latitude: -6.208714500000001,
         longitude: 106.82248539999999,
+        tariffType: ParkingTariffType.hourly,
+        motorRate: 5000,
+        carRate: 12000,
+        truckRate: 20000,
       ),
       ParkingLot(
         id: 'lot-2',
@@ -581,6 +589,10 @@ class AppState {
             'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.021363564612!2d106.5250774!3d-6.260916!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e42077a46320d39%3A0x426b60f7dfe14e13!2sMal%20Ciputra%20Tangerang!5e0!3m2!1sid!2sid!4v1780720738829!5m2!1sid!2sid',
         latitude: -6.260916,
         longitude: 106.5250774,
+        tariffType: ParkingTariffType.flat,
+        motorRate: 6000,
+        carRate: 15000,
+        truckRate: 25000,
       ),
       ParkingLot(
         id: 'lot-3',
@@ -598,6 +610,10 @@ class AppState {
             'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15866.089919400229!2d106.8179532500215!3d-6.194579097638339!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f69e2ca1776f%3A0x729d6549e71fa7e7!2sPusat%20Bisnis%20Thamrin%20City!5e0!3m2!1sen!2sid!4v1780720526115!5m2!1sen!2sid',
         latitude: -6.194579097638339,
         longitude: 106.8179532500215,
+        tariffType: ParkingTariffType.progressive,
+        motorRate: 4000,
+        carRate: 10000,
+        truckRate: 18000,
       ),
     ];
 
@@ -1464,6 +1480,76 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(parkingGuards: [guard, ...state.parkingGuards]);
   }
 
+  void updateParkingGuard({
+    required String id,
+    required String name,
+    required String email,
+    required String phoneNumber,
+    required List<String> assignedLotIds,
+    required bool canConfirmCash,
+    required bool canManageSlots,
+  }) {
+    ParkingGuardAccount? updatedGuard;
+    final updatedGuards = [
+      for (final guard in state.parkingGuards)
+        if (guard.id == id)
+          updatedGuard = ParkingGuardAccount(
+            id: guard.id,
+            name: name,
+            email: email,
+            phoneNumber: phoneNumber,
+            providerId: guard.providerId,
+            assignedLotIds: assignedLotIds,
+            canScanQr: guard.canScanQr,
+            canConfirmCash: canConfirmCash,
+            canManageSlots: canManageSlots,
+          )
+        else
+          guard,
+    ];
+    if (updatedGuard == null) return;
+
+    state = state.copyWith(
+      parkingGuards: updatedGuards,
+      adminNotifications: [
+        NoticeItem(
+          title: 'Akun penjaga diperbarui',
+          message: 'Data dan akses ${updatedGuard.name} berhasil diperbarui.',
+          timeLabel: 'Baru saja',
+          icon: Icons.manage_accounts_rounded,
+          accent: AppTheme.blue,
+        ),
+        ...state.adminNotifications,
+      ],
+    );
+  }
+
+  void deleteParkingGuard(String id) {
+    final updatedGuards = state.parkingGuards
+        .where((guard) => guard.id != id)
+        .toList();
+    if (updatedGuards.length == state.parkingGuards.length) return;
+
+    final activeWasDeleted = state.activeGuardId == id;
+    state = state.copyWith(
+      parkingGuards: updatedGuards,
+      activeGuardId: activeWasDeleted && updatedGuards.isNotEmpty
+          ? updatedGuards.first.id
+          : state.activeGuardId,
+      clearActiveGuard: activeWasDeleted && updatedGuards.isEmpty,
+      adminNotifications: [
+        const NoticeItem(
+          title: 'Akun penjaga dihapus',
+          message: 'Akun penjaga berhasil dihapus dari penyedia.',
+          timeLabel: 'Baru saja',
+          icon: Icons.person_remove_rounded,
+          accent: Color(0xFFDC2626),
+        ),
+        ...state.adminNotifications,
+      ],
+    );
+  }
+
   void setProviderStatus(AccountStatus status) {
     state = state.copyWith(accountStatus: status);
   }
@@ -2241,6 +2327,15 @@ class AppController extends StateNotifier<AppState> {
     required String address,
     required int capacity,
     required int price,
+    required String mapEmbedUrl,
+    required double latitude,
+    required double longitude,
+    required ParkingTariffType tariffType,
+    required int motorRate,
+    required int carRate,
+    required int truckRate,
+    String? photoLabel,
+    Uint8List? photoBytes,
   }) {
     final lot = ParkingLot(
       id: 'lot-${state.lots.length + 1}',
@@ -2254,9 +2349,15 @@ class AppController extends StateNotifier<AppState> {
       openHours: '24 Jam',
       rating: 4.8,
       accent: AppTheme.emerald,
-      mapEmbedUrl: '',
-      latitude: -6.2,
-      longitude: 106.8,
+      mapEmbedUrl: mapEmbedUrl,
+      latitude: latitude,
+      longitude: longitude,
+      tariffType: tariffType,
+      motorRate: motorRate,
+      carRate: carRate,
+      truckRate: truckRate,
+      photoLabel: photoLabel,
+      photoBytes: photoBytes,
     );
     state = state.copyWith(lots: [lot, ...state.lots], selectedLot: lot);
   }
@@ -2293,7 +2394,7 @@ class AppController extends StateNotifier<AppState> {
   void createBooking({required String slotCode, required DateTime entryTime}) {
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
-    final total = lot.pricePerHour * vehicle.durationHours;
+    final total = calculateParkingCost(lot, vehicle);
     final booking = Booking(
       ticketNumber: 'TKT-${1000 + state.history.length}',
       slotCode: slotCode,
@@ -2528,12 +2629,13 @@ class AppController extends StateNotifier<AppState> {
         if (item.id == vehicle.id) updatedVehicle else item,
     ];
     final lot = state.selectedLot ?? state.lots.first;
+    final currentCost = calculateParkingCost(lot, vehicle);
+    final updatedCost = calculateParkingCost(lot, updatedVehicle);
     state = state.copyWith(
       vehicles: updatedVehicles,
       selectedVehicle: updatedVehicle,
       activeBooking: booking.copyWith(
-        estimatedCost:
-            booking.estimatedCost + (lot.pricePerHour * additionalHours),
+        estimatedCost: booking.estimatedCost + (updatedCost - currentCost),
       ),
       customerNotifications: [
         NoticeItem(
@@ -2615,6 +2717,26 @@ class AppTheme {
 }
 
 String formatCurrency(int amount) => 'Rp ${amount.toString()}';
+
+int baseRateForVehicle(ParkingLot lot, Vehicle vehicle) {
+  return switch (vehicle.kind) {
+    VehicleKind.motor => lot.motorRate ?? lot.pricePerHour,
+    VehicleKind.mobil => lot.carRate ?? lot.pricePerHour,
+    VehicleKind.truk => lot.truckRate ?? lot.pricePerHour,
+  };
+}
+
+int calculateParkingCost(ParkingLot lot, Vehicle vehicle) {
+  final rate = baseRateForVehicle(lot, vehicle);
+  final hours = math.max(1, vehicle.durationHours);
+  return switch (lot.tariffType) {
+    ParkingTariffType.hourly => rate * hours,
+    ParkingTariffType.flat => rate,
+    ParkingTariffType.daily => rate * math.max(1, (hours / 24).ceil()),
+    ParkingTariffType.progressive =>
+      rate + (math.max(0, hours - 1) * rate ~/ 2),
+  };
+}
 
 String formatDateTime(DateTime value) {
   final hour = value.hour.toString().padLeft(2, '0');
@@ -5149,7 +5271,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final state = ref.watch(appControllerProvider);
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
-    final total = lot.pricePerHour * vehicle.durationHours;
+    final total = calculateParkingCost(lot, vehicle);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Booking parkir'),
@@ -7743,13 +7865,6 @@ class AdminDashboardScreen extends ConsumerWidget {
     final occupiedSlots = state.slots.where((slot) => !slot.isAvailable).length;
     return AdminShell(
       currentIndex: 0,
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.blue,
-        foregroundColor: Colors.white,
-        onPressed: () => context.push('/provider/scan-qr'),
-        icon: const Icon(Icons.qr_code_scanner_rounded),
-        label: const Text('Scan QR'),
-      ),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -7772,12 +7887,14 @@ class AdminDashboardScreen extends ConsumerWidget {
                 value: '182',
                 accent: AppTheme.blue,
                 icon: Icons.directions_car_rounded,
+                onTap: () => context.push('/provider/transaction-detail'),
               ),
               StatCard(
                 label: 'Pendapatan hari ini',
                 value: 'Rp 8,4 jt',
                 accent: AppTheme.emerald,
                 icon: Icons.trending_up_rounded,
+                onTap: () => context.push('/provider/daily-revenue'),
               ),
               StatCard(
                 label: 'Slot tersedia',
@@ -7785,18 +7902,21 @@ class AdminDashboardScreen extends ConsumerWidget {
                     '${state.slots.where((slot) => slot.isAvailable).length}',
                 accent: AppTheme.slate,
                 icon: Icons.local_parking_rounded,
+                onTap: () => context.push('/provider/manage-slots'),
               ),
               StatCard(
                 label: 'Slot aktif',
                 value: '$occupiedSlots',
                 accent: AppTheme.blue,
                 icon: Icons.timelapse_rounded,
+                onTap: () => context.push('/provider/manage-slots'),
               ),
               StatCard(
                 label: 'Multi cabang',
                 value: '${state.lots.length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
+                onTap: () => context.push('/provider/map'),
               ),
             ],
           ),
@@ -7844,65 +7964,18 @@ class AdminDashboardScreen extends ConsumerWidget {
                 onTap: () => context.push('/provider/transaction-detail'),
               ),
               ActionCard(
-                label: 'Cetak nota',
-                icon: Icons.print_rounded,
+                label: 'Laporan keuangan',
+                icon: Icons.account_balance_wallet_rounded,
                 accent: AppTheme.emeraldSoft,
                 onTap: () => context.push('/provider/receipt'),
               ),
               ActionCard(
-                label: 'Export PDF/Excel',
+                label: 'Statistik pendapatan',
                 icon: Icons.file_download_rounded,
                 accent: AppTheme.blueSoft,
                 onTap: () => context.push('/provider/statistics'),
               ),
             ],
-          ),
-          const SizedBox(height: 20),
-          SectionTitle(title: 'CCTV monitoring section'),
-          const SizedBox(height: 12),
-          PremiumCard(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 140,
-                    decoration: BoxDecoration(
-                      color: AppTheme.ink,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.videocam_rounded,
-                        color: Colors.white,
-                        size: 44,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Preview kamera area parkir',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Gerbang masuk, area A, dan lane keluar terpantau realtime.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.slate,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: 20),
           PremiumCard(
@@ -8002,6 +8075,13 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   late final TextEditingController _addressController;
   double _capacity = 60;
   double _price = 12000;
+  ParkingTariffType _tariffType = ParkingTariffType.hourly;
+  double _motorRate = 5000;
+  double _carRate = 12000;
+  double _truckRate = 20000;
+  Uint8List? _photoBytes;
+  String? _photoLabel;
+  bool _isPickingPhoto = false;
 
   @override
   void initState() {
@@ -8019,8 +8099,49 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     super.dispose();
   }
 
+  String? _lotFormError() {
+    if (_nameController.text.trim().isEmpty) {
+      return 'Nama lokasi parkir wajib diisi.';
+    }
+    if (_addressController.text.trim().isEmpty) {
+      return 'Alamat lahan parkir wajib diisi.';
+    }
+    if (_capacity.toInt() <= 0) {
+      return 'Kapasitas kendaraan harus lebih dari 0.';
+    }
+    if (_motorRate.toInt() <= 0 ||
+        _carRate.toInt() <= 0 ||
+        _truckRate.toInt() <= 0) {
+      return 'Tarif motor, mobil, dan truk harus lebih dari 0.';
+    }
+    if (_photoBytes == null) {
+      return 'Foto lahan parkir wajib diupload.';
+    }
+    return null;
+  }
+
+  Future<void> _pickPhoto() async {
+    setState(() => _isPickingPhoto = true);
+    try {
+      final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _photoBytes = bytes;
+        _photoLabel = file.name;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingPhoto = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    const plazaSudirmanMapEmbedUrl =
+        'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid';
     return Scaffold(
       appBar: AppBar(title: const Text('Tambah lahan parkir')),
       body: ListView(
@@ -8045,8 +8166,19 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const ParkingMapPlaceholder(
-                  title: 'Pilih titik lokasi pada map',
+                const MapEmbedView(
+                  title: 'Plaza Sudirman',
+                  embedUrl: plazaSudirmanMapEmbedUrl,
+                  latitude: -6.2087145,
+                  longitude: 106.8224854,
+                  height: 320,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Titik lokasi dipilih: Plaza Sudirman',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 18),
                 LabeledSlider(
@@ -8068,25 +8200,103 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   display: formatCurrency(_price.toInt()),
                   onChanged: (value) => setState(() => _price = value),
                 ),
+                const SizedBox(height: 16),
+                SegmentedChoice<ParkingTariffType>(
+                  items: const [
+                    ChoiceItem(
+                      value: ParkingTariffType.hourly,
+                      label: 'Per jam',
+                      icon: Icons.schedule_rounded,
+                    ),
+                    ChoiceItem(
+                      value: ParkingTariffType.flat,
+                      label: 'Flat',
+                      icon: Icons.payments_rounded,
+                    ),
+                    ChoiceItem(
+                      value: ParkingTariffType.daily,
+                      label: 'Harian',
+                      icon: Icons.calendar_today_rounded,
+                    ),
+                    ChoiceItem(
+                      value: ParkingTariffType.progressive,
+                      label: 'Progresif',
+                      icon: Icons.trending_up_rounded,
+                    ),
+                  ],
+                  value: _tariffType,
+                  onChanged: (value) => setState(() => _tariffType = value),
+                ),
+                const SizedBox(height: 16),
+                LabeledSlider(
+                  label: 'Tarif motor',
+                  value: _motorRate,
+                  min: 2000,
+                  max: 20000,
+                  divisions: 18,
+                  display: formatCurrency(_motorRate.toInt()),
+                  onChanged: (value) => setState(() => _motorRate = value),
+                ),
+                const SizedBox(height: 16),
+                LabeledSlider(
+                  label: 'Tarif mobil',
+                  value: _carRate,
+                  min: 5000,
+                  max: 40000,
+                  divisions: 35,
+                  display: formatCurrency(_carRate.toInt()),
+                  onChanged: (value) => setState(() => _carRate = value),
+                ),
+                const SizedBox(height: 16),
+                LabeledSlider(
+                  label: 'Tarif truk',
+                  value: _truckRate,
+                  min: 10000,
+                  max: 60000,
+                  divisions: 50,
+                  display: formatCurrency(_truckRate.toInt()),
+                  onChanged: (value) => setState(() => _truckRate = value),
+                ),
                 const SizedBox(height: 18),
-                const MiniInfoTile(
+                MiniInfoTile(
                   icon: Icons.add_photo_alternate_rounded,
                   iconColor: AppTheme.blue,
-                  title: 'Upload foto lahan',
-                  subtitle: 'Placeholder galeri untuk desain prototipe.',
+                  title: _photoLabel == null
+                      ? 'Upload foto lahan'
+                      : 'Foto: $_photoLabel',
+                  subtitle: _photoBytes == null
+                      ? 'Pilih foto lahan parkir dari galeri.'
+                      : 'Foto lahan berhasil dipilih.',
+                  onTap: _isPickingPhoto ? null : _pickPhoto,
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
                   label: 'Simpan lahan',
                   icon: Icons.save_rounded,
                   onPressed: () {
+                    final error = _lotFormError();
+                    if (error != null) {
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(error)));
+                      return;
+                    }
                     ref
                         .read(appControllerProvider.notifier)
                         .addLot(
-                          name: _nameController.text,
-                          address: _addressController.text,
+                          name: _nameController.text.trim(),
+                          address: _addressController.text.trim(),
                           capacity: _capacity.toInt(),
                           price: _price.toInt(),
+                          mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                          latitude: -6.2087145,
+                          longitude: 106.8224854,
+                          tariffType: _tariffType,
+                          motorRate: _motorRate.toInt(),
+                          carRate: _carRate.toInt(),
+                          truckRate: _truckRate.toInt(),
+                          photoLabel: _photoLabel,
+                          photoBytes: _photoBytes,
                         );
                     context.pop();
                   },
@@ -8114,9 +8324,9 @@ class _ParkingGuardManagementScreenState
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
   final Set<String> _selectedLotIds = {};
-  bool _canScanQr = true;
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
+  String? _editingGuardId;
 
   @override
   void initState() {
@@ -8140,6 +8350,136 @@ class _ParkingGuardManagementScreenState
     super.dispose();
   }
 
+  String? _guardFormError(List<ParkingLot> lots) {
+    if (_nameController.text.trim().isEmpty) {
+      return 'Nama penjaga wajib diisi.';
+    }
+    if (_emailController.text.trim().isEmpty ||
+        !_emailController.text.contains('@')) {
+      return 'Email login penjaga harus valid.';
+    }
+    if (_phoneController.text.trim().isEmpty) {
+      return 'Nomor HP penjaga wajib diisi.';
+    }
+    if (lots.isEmpty) {
+      return 'Tambahkan lahan parkir terlebih dahulu.';
+    }
+    if (_selectedLotIds.isEmpty) {
+      return 'Pilih minimal satu lokasi untuk penjaga.';
+    }
+    return null;
+  }
+
+  void _resetGuardForm(List<ParkingLot> lots) {
+    _nameController.clear();
+    _emailController.clear();
+    _phoneController.clear();
+    setState(() {
+      _editingGuardId = null;
+      _selectedLotIds
+        ..clear()
+        ..addAll(lots.isEmpty ? const [] : [lots.first.id]);
+      _canConfirmCash = true;
+      _canManageSlots = true;
+    });
+  }
+
+  String _assignedLotNames(ParkingGuardAccount guard, List<ParkingLot> lots) {
+    final names = [
+      for (final lot in lots)
+        if (guard.assignedLotIds.contains(lot.id)) lot.name,
+    ];
+    if (names.isEmpty) return 'Belum ada lokasi aktif';
+    return names.join(', ');
+  }
+
+  void _startEditGuard(ParkingGuardAccount guard) {
+    _nameController.text = guard.name;
+    _emailController.text = guard.email;
+    _phoneController.text = guard.phoneNumber;
+    setState(() {
+      _editingGuardId = guard.id;
+      _selectedLotIds
+        ..clear()
+        ..addAll(guard.assignedLotIds);
+      _canConfirmCash = guard.canConfirmCash;
+      _canManageSlots = guard.canManageSlots;
+    });
+  }
+
+  void _saveGuard(List<ParkingLot> lots) {
+    final error = _guardFormError(lots);
+    if (error != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+
+    final controller = ref.read(appControllerProvider.notifier);
+    final editingGuardId = _editingGuardId;
+    if (editingGuardId == null) {
+      controller.createParkingGuard(
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        phoneNumber: _phoneController.text.trim(),
+        assignedLotIds: _selectedLotIds.toList(),
+        canScanQr: false,
+        canConfirmCash: _canConfirmCash,
+        canManageSlots: _canManageSlots,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akun penjaga berhasil dibuat.')),
+      );
+    } else {
+      controller.updateParkingGuard(
+        id: editingGuardId,
+        name: _nameController.text.trim(),
+        email: _emailController.text.trim(),
+        phoneNumber: _phoneController.text.trim(),
+        assignedLotIds: _selectedLotIds.toList(),
+        canConfirmCash: _canConfirmCash,
+        canManageSlots: _canManageSlots,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Akun penjaga berhasil diperbarui.')),
+      );
+    }
+    _resetGuardForm(lots);
+  }
+
+  Future<void> _confirmDeleteGuard(ParkingGuardAccount guard) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus akun penjaga?'),
+        content: Text(
+          '${guard.name} akan dihapus dari daftar akun penjaga penyedia.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    ref.read(appControllerProvider.notifier).deleteParkingGuard(guard.id);
+    if (_editingGuardId == guard.id) {
+      _resetGuardForm(visibleLotsFor(ref.read(appControllerProvider)));
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Akun ${guard.name} berhasil dihapus.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
@@ -8152,6 +8492,18 @@ class _ParkingGuardManagementScreenState
           PremiumCard(
             child: Column(
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _editingGuardId == null
+                        ? 'Tambah akun penjaga'
+                        : 'Edit akun penjaga',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 TextField(
                   controller: _nameController,
                   decoration: const InputDecoration(
@@ -8162,6 +8514,7 @@ class _ParkingGuardManagementScreenState
                 const SizedBox(height: 16),
                 TextField(
                   controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email login penjaga',
                     prefixIcon: Icon(Icons.email_outlined),
@@ -8170,6 +8523,7 @@ class _ParkingGuardManagementScreenState
                 const SizedBox(height: 16),
                 TextField(
                   controller: _phoneController,
+                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
                     labelText: 'Nomor HP',
                     prefixIcon: Icon(Icons.phone_iphone_rounded),
@@ -8186,28 +8540,31 @@ class _ParkingGuardManagementScreenState
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (final lot in lots)
-                  CheckboxListTile(
-                    value: _selectedLotIds.contains(lot.id),
-                    title: Text(lot.name),
-                    subtitle: Text(lot.address),
-                    activeColor: AppTheme.emerald,
-                    onChanged: (value) {
-                      setState(() {
-                        if (value ?? false) {
-                          _selectedLotIds.add(lot.id);
-                        } else {
-                          _selectedLotIds.remove(lot.id);
-                        }
-                      });
-                    },
-                  ),
+                if (lots.isEmpty)
+                  const InlineNotice(
+                    icon: Icons.info_outline_rounded,
+                    accent: Color(0xFFD97706),
+                    message:
+                        'Belum ada lahan aktif. Tambahkan lahan parkir sebelum membuat akun penjaga.',
+                  )
+                else
+                  for (final lot in lots)
+                    CheckboxListTile(
+                      value: _selectedLotIds.contains(lot.id),
+                      title: Text(lot.name),
+                      subtitle: Text(lot.address),
+                      activeColor: AppTheme.emerald,
+                      onChanged: (value) {
+                        setState(() {
+                          if (value ?? false) {
+                            _selectedLotIds.add(lot.id);
+                          } else {
+                            _selectedLotIds.remove(lot.id);
+                          }
+                        });
+                      },
+                    ),
                 const SizedBox(height: 12),
-                SwitchListTile(
-                  value: _canScanQr,
-                  title: const Text('Scan QR tiket pelanggan'),
-                  onChanged: (value) => setState(() => _canScanQr = value),
-                ),
                 SwitchListTile(
                   value: _canConfirmCash,
                   title: const Text('Konfirmasi pembayaran tunai'),
@@ -8220,46 +8577,159 @@ class _ParkingGuardManagementScreenState
                 ),
                 const SizedBox(height: 18),
                 PrimaryButton(
-                  label: 'Buat akun penjaga',
-                  icon: Icons.person_add_alt_1_rounded,
-                  onPressed: _selectedLotIds.isEmpty
-                      ? null
-                      : () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .createParkingGuard(
-                                name: _nameController.text,
-                                email: _emailController.text,
-                                phoneNumber: _phoneController.text,
-                                assignedLotIds: _selectedLotIds.toList(),
-                                canScanQr: _canScanQr,
-                                canConfirmCash: _canConfirmCash,
-                                canManageSlots: _canManageSlots,
-                              );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Akun penjaga berhasil dibuat.'),
-                            ),
-                          );
-                        },
+                  label: _editingGuardId == null
+                      ? 'Buat akun penjaga'
+                      : 'Simpan perubahan',
+                  icon: _editingGuardId == null
+                      ? Icons.person_add_alt_1_rounded
+                      : Icons.save_rounded,
+                  onPressed: () => _saveGuard(lots),
                 ),
+                if (_editingGuardId != null) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _resetGuardForm(lots),
+                      icon: const Icon(Icons.close_rounded),
+                      label: const Text('Batal edit'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(height: 20),
           SectionTitle(title: 'Penjaga aktif'),
           const SizedBox(height: 12),
-          ...state.parkingGuards.map(
-            (guard) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: MiniInfoTile(
-                icon: Icons.security_rounded,
-                iconColor: const Color(0xFFD97706),
-                title: guard.name,
-                subtitle:
-                    '${guard.assignedLotIds.length} lokasi - QR ${guard.canScanQr ? 'aktif' : 'nonaktif'}',
+          if (state.parkingGuards.isEmpty)
+            const EmptyStateCard(
+              title: 'Belum ada penjaga',
+              body:
+                  'Akun penjaga yang dibuat penyedia akan tampil di daftar ini.',
+              actionLabel: 'Isi data penjaga',
+              onPressed: _noop,
+            )
+          else
+            ...state.parkingGuards.map(
+              (guard) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ParkingGuardAccountCard(
+                  guard: guard,
+                  assignedLots: _assignedLotNames(guard, state.lots),
+                  onEdit: () => _startEditGuard(guard),
+                  onDelete: () => _confirmDeleteGuard(guard),
+                ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+void _noop() {}
+
+class ParkingGuardAccountCard extends StatelessWidget {
+  const ParkingGuardAccountCard({
+    super.key,
+    required this.guard,
+    required this.assignedLots,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final ParkingGuardAccount guard;
+  final String assignedLots;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD97706).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.security_rounded,
+                  color: Color(0xFFD97706),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      guard.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${guard.email} - ${guard.phoneNumber}',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          InlineNotice(
+            icon: Icons.location_on_rounded,
+            accent: AppTheme.emerald,
+            message: 'Lokasi ditugaskan: $assignedLots',
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              InfoChip(
+                icon: Icons.payments_rounded,
+                label: guard.canConfirmCash ? 'Tunai aktif' : 'Tunai nonaktif',
+              ),
+              InfoChip(
+                icon: Icons.grid_view_rounded,
+                label: guard.canManageSlots
+                    ? 'Kelola slot aktif'
+                    : 'Kelola slot nonaktif',
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_rounded),
+                label: const Text('Edit'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Hapus akun'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -8888,7 +9358,12 @@ class TransactionDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final transaction = ref.watch(appControllerProvider).history.first;
+    final state = ref.watch(appControllerProvider);
+    if (state.currentMode == AccountMode.provider) {
+      return const ProviderFinancialReportScreen();
+    }
+
+    final transaction = state.history.first;
     return Scaffold(
       appBar: AppBar(title: const Text('Detail transaksi')),
       body: ListView(
@@ -8968,6 +9443,232 @@ class ReceiptScreen extends ConsumerWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class ProviderFinancialReportScreen extends ConsumerWidget {
+  const ProviderFinancialReportScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(appControllerProvider).history;
+    final revenue = history.fold<int>(0, (total, item) => total + item.total);
+    final estimatedExpense = (revenue * 0.3).round();
+    final netIncome = revenue - estimatedExpense;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Laporan keuangan')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Ringkasan pendapatan',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SummaryRow(
+                  label: 'Total pendapatan',
+                  value: formatCurrency(revenue),
+                  valueColor: AppTheme.emerald,
+                ),
+                SummaryRow(
+                  label: 'Estimasi pengeluaran',
+                  value: formatCurrency(estimatedExpense),
+                  valueColor: const Color(0xFFDC2626),
+                ),
+                SummaryRow(
+                  label: 'Laba bersih estimasi',
+                  value: formatCurrency(netIncome),
+                  valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Jumlah transaksi',
+                  value: '${history.length} transaksi',
+                ),
+                const SizedBox(height: 20),
+                PrimaryButton(
+                  label: 'Download laporan PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Laporan PDF siap diunduh')),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SectionTitle(title: 'Transaksi terbaru'),
+          const SizedBox(height: 12),
+          ...history
+              .take(5)
+              .map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: PremiumCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.locationName,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        SummaryRow(label: 'Transaksi', value: item.id),
+                        SummaryRow(label: 'Kendaraan', value: item.plateNumber),
+                        SummaryRow(
+                          label: 'Pendapatan',
+                          value: formatCurrency(item.total),
+                          valueColor: AppTheme.emerald,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class ProviderDailyRevenueScreen extends ConsumerWidget {
+  const ProviderDailyRevenueScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(appControllerProvider).history;
+    final todayTransactions = history
+        .where((item) => item.timeLabel.toLowerCase().contains('hari ini'))
+        .toList();
+    final dailyRevenue = todayTransactions.fold<int>(
+      0,
+      (total, item) => total + item.total,
+    );
+    final averageTransaction = todayTransactions.isEmpty
+        ? 0
+        : (dailyRevenue / todayTransactions.length).round();
+    final highestTransaction = todayTransactions.isEmpty
+        ? 0
+        : todayTransactions
+              .map((item) => item.total)
+              .reduce((value, item) => math.max(value, item));
+    final qrisEstimate = (dailyRevenue * 0.65).round();
+    final cashEstimate = dailyRevenue - qrisEstimate;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pendapatan hari ini')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  formatCurrency(dailyRevenue),
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.emerald,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Total pendapatan dari transaksi hari ini.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                ),
+                const SizedBox(height: 18),
+                SummaryRow(
+                  label: 'Transaksi hari ini',
+                  value: '${todayTransactions.length} transaksi',
+                ),
+                SummaryRow(
+                  label: 'Rata-rata transaksi',
+                  value: formatCurrency(averageTransaction),
+                ),
+                SummaryRow(
+                  label: 'Transaksi terbesar',
+                  value: formatCurrency(highestTransaction),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Metode pembayaran',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SummaryRow(
+                  label: 'QRIS / digital',
+                  value: formatCurrency(qrisEstimate),
+                  valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Tunai',
+                  value: formatCurrency(cashEstimate),
+                  valueColor: AppTheme.emerald,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SectionTitle(title: 'Transaksi hari ini'),
+          const SizedBox(height: 12),
+          if (todayTransactions.isEmpty)
+            const EmptyStateCard(
+              title: 'Belum ada transaksi',
+              body: 'Transaksi yang masuk hari ini akan tampil di sini.',
+              actionLabel: 'Lihat statistik',
+              onPressed: _noop,
+            )
+          else
+            ...todayTransactions.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: PremiumCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.locationName,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      SummaryRow(label: 'ID transaksi', value: item.id),
+                      SummaryRow(label: 'Kendaraan', value: item.plateNumber),
+                      SummaryRow(label: 'Waktu', value: item.timeLabel),
+                      SummaryRow(
+                        label: 'Pendapatan',
+                        value: formatCurrency(item.total),
+                        valueColor: AppTheme.emerald,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -12405,40 +13106,52 @@ class StatCard extends StatelessWidget {
     final width = (MediaQuery.sizeOf(context).width - 54) / 2;
     return Container(
       width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.12))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          mouseCursor: onTap == null
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accent),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  value,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.slate,
+                    height: 1.45,
+                  ),
+                ),
+              ],
             ),
-            child: Icon(icon, color: accent),
           ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.slate,
-              height: 1.45,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

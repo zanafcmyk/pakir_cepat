@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 enum AccountMode { superAdmin, provider, parkingGuard, customer }
@@ -5,6 +7,8 @@ enum AccountMode { superAdmin, provider, parkingGuard, customer }
 enum AccountStatus { pending, verified, rejected }
 
 enum VehicleKind { motor, mobil, truk }
+
+enum ParkingTariffType { hourly, flat, daily, progressive }
 
 enum PaymentMethod { qris, ewallet, cash, card }
 
@@ -31,6 +35,12 @@ class ParkingLot {
     required this.mapEmbedUrl,
     required this.latitude,
     required this.longitude,
+    this.photoLabel,
+    this.photoBytes,
+    this.tariffType = ParkingTariffType.hourly,
+    this.motorRate,
+    this.carRate,
+    this.truckRate,
   });
 
   final String id;
@@ -48,6 +58,12 @@ class ParkingLot {
   final String mapEmbedUrl;
   final double latitude;
   final double longitude;
+  final String? photoLabel;
+  final Uint8List? photoBytes;
+  final ParkingTariffType tariffType;
+  final int? motorRate;
+  final int? carRate;
+  final int? truckRate;
 
   bool get isFull => availableSlots <= 0;
 
@@ -67,6 +83,12 @@ class ParkingLot {
     String? mapEmbedUrl,
     double? latitude,
     double? longitude,
+    String? photoLabel,
+    Uint8List? photoBytes,
+    ParkingTariffType? tariffType,
+    int? motorRate,
+    int? carRate,
+    int? truckRate,
   }) {
     return ParkingLot(
       id: id ?? this.id,
@@ -84,6 +106,12 @@ class ParkingLot {
       mapEmbedUrl: mapEmbedUrl ?? this.mapEmbedUrl,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      photoLabel: photoLabel ?? this.photoLabel,
+      photoBytes: photoBytes ?? this.photoBytes,
+      tariffType: tariffType ?? this.tariffType,
+      motorRate: motorRate ?? this.motorRate,
+      carRate: carRate ?? this.carRate,
+      truckRate: truckRate ?? this.truckRate,
     );
   }
 }
