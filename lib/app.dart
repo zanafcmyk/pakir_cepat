@@ -20,6 +20,7 @@ import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_parking_service.dart';
+import 'services/supabase_payment_service.dart';
 import 'services/supabase_vehicle_service.dart';
 import 'widgets/map_embed_view.dart';
 
@@ -1266,6 +1267,7 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseParkingService _parkingService = SupabaseParkingService();
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
   final SupabaseBookingService _bookingService = SupabaseBookingService();
+  final SupabasePaymentService _paymentService = SupabasePaymentService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -2723,11 +2725,15 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void payBooking(PaymentMethod method) {
+  Future<void> payBooking(PaymentMethod method) async {
     final booking = state.activeBooking;
     if (booking == null) {
       return;
     }
+    await _paymentService.payCurrentCustomerBooking(
+      booking: booking,
+      method: method,
+    );
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
       status: BookingStatus.paid,
@@ -6318,7 +6324,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _completePayment(Booking booking) async {
-    ref.read(appControllerProvider.notifier).payBooking(_method);
+    await ref.read(appControllerProvider.notifier).payBooking(_method);
+    if (!mounted) {
+      return;
+    }
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -11447,8 +11456,8 @@ class GuardVehiclesScreen extends ConsumerWidget {
                     icon: Icons.payments_rounded,
                     onPressed: booking.isPaid
                         ? null
-                        : () {
-                            ref
+                        : () async {
+                            await ref
                                 .read(appControllerProvider.notifier)
                                 .payBooking(PaymentMethod.cash);
                           },
