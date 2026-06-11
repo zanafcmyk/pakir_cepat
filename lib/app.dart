@@ -1377,12 +1377,15 @@ class AppController extends StateNotifier<AppState> {
     required String email,
     required String phoneNumber,
     required bool rememberMe,
+    AccountStatus? accountStatusOverride,
+    ProviderApplication? providerApplication,
+    bool clearProviderApplication = false,
   }) {
-    final accountStatus = mode == AccountMode.provider
+    final accountStatus = accountStatusOverride ?? (mode == AccountMode.provider
         ? (state.providerApplication == null
               ? AccountStatus.verified
               : state.accountStatus)
-        : AccountStatus.verified;
+        : AccountStatus.verified);
     final guardId = mode == AccountMode.parkingGuard
         ? (state.activeGuardId ?? state.parkingGuards.first.id)
         : null;
@@ -1401,6 +1404,8 @@ class AppController extends StateNotifier<AppState> {
       rememberMe: rememberMe,
       activeGuardId: guardId,
       clearActiveGuard: mode != AccountMode.parkingGuard,
+      providerApplication: providerApplication,
+      clearProviderApplication: clearProviderApplication,
     );
   }
 
@@ -3105,6 +3110,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    if (_mode == AccountMode.provider) {
+      await _submitProviderLogin(controller);
+      return;
+    }
+
     if (_mode == AccountMode.superAdmin) {
       await _submitSuperAdminLogin(controller);
       return;
@@ -3176,6 +3186,81 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _showLoginMessage(error.message);
     } catch (_) {
       _showLoginMessage('Tidak bisa login customer. Cek email, password, dan koneksi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _submitProviderLogin(AppController controller) async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password penyedia wajib diisi.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showLoginMessage('Login penyedia gagal. Coba lagi.');
+        return;
+      }
+
+      final profile = await supabase
+          .from('profiles')
+          .select('id, email, role, access_status')
+          .eq('id', user.id)
+          .single();
+
+      if (profile['role'] != 'provider') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun ini bukan akun penyedia.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun penyedia sedang dinonaktifkan.');
+        return;
+      }
+
+      final provider = await supabase
+          .from('providers')
+          .select('status, business_name, business_address')
+          .eq('profile_id', user.id)
+          .single();
+      final status = _accountStatusFromDb(provider['status'] as String?);
+      final application = await _providerApplicationForLogin(user.id);
+
+      controller.login(
+        mode: AccountMode.provider,
+        email: email,
+        phoneNumber: _phoneController.text,
+        rememberMe: _rememberMe,
+        accountStatusOverride: status,
+        providerApplication: application,
+        clearProviderApplication: application == null,
+      );
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage('Tidak bisa login penyedia. Cek email, password, dan koneksi.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -3256,6 +3341,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  Future<ProviderApplication?> _providerApplicationForLogin(
+    String profileId,
+  ) async {
+    final rows = await Supabase.instance.client
+        .from('provider_applications')
+        .select(
+          'parking_name, address, photo_url, location_label, capacity, identity_document_url',
+        )
+        .eq('profile_id', profileId)
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final row = rows.first;
+    return ProviderApplication(
+      parkingName: (row['parking_name'] as String?) ?? 'Lahan parkir',
+      address: (row['address'] as String?) ?? '-',
+      photoLabel: (row['photo_url'] as String?) ?? '-',
+      locationLabel: (row['location_label'] as String?) ?? '-',
+      capacity: (row['capacity'] as num?)?.toInt() ?? 0,
+      identityLabel: (row['identity_document_url'] as String?) ?? '-',
+    );
+  }
+
+  AccountStatus _accountStatusFromDb(String? value) => switch (value) {
+    'verified' => AccountStatus.verified,
+    'rejected' => AccountStatus.rejected,
+    _ => AccountStatus.pending,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -3303,6 +3421,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           if (_mode == AccountMode.customer ||
+              _mode == AccountMode.provider ||
               _mode == AccountMode.superAdmin) ...[
             const SizedBox(height: 16),
             TextField(
@@ -3314,7 +3433,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
           ],
-          if (_mode != AccountMode.superAdmin) ...[
+          if (_mode == AccountMode.parkingGuard) ...[
             const SizedBox(height: 16),
             TextField(
               controller: _phoneController,
@@ -3445,6 +3564,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
 
+    if (_mode == AccountMode.provider) {
+      await _submitProviderRegister();
+      return;
+    }
+
     final providerApplication = _mode == AccountMode.provider
         ? ProviderApplication(
             parkingName: _parkingNameController.text,
@@ -3472,6 +3596,131 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       return;
     }
     context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+  }
+
+  Future<void> _submitProviderRegister() async {
+    final fullName = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phoneNumber = _phoneController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+    final parkingName = _parkingNameController.text.trim();
+    final parkingAddress = _parkingAddressController.text.trim();
+    final photoLabel = _parkingPhotoController.text.trim();
+    final locationLabel = _locationPointController.text.trim();
+    final identityLabel = _identityController.text.trim();
+
+    if (fullName.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        parkingName.isEmpty ||
+        parkingAddress.isEmpty) {
+      _showRegisterMessage(
+        'Nama, email, password, nama tempat, dan alamat wajib diisi.',
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showRegisterMessage('Konfirmasi password belum sama.');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showRegisterMessage('Password minimal 6 karakter.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'full_name': fullName,
+          'role': 'provider',
+        },
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showRegisterMessage('Pendaftaran penyedia perlu konfirmasi email terlebih dahulu.');
+        return;
+      }
+
+      await supabase.from('profiles').upsert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': email,
+        'phone_number': phoneNumber,
+        'role': 'provider',
+        'account_status': 'pending',
+        'access_status': 'active',
+      });
+
+      final provider = await supabase
+          .from('providers')
+          .upsert({
+            'profile_id': user.id,
+            'business_name': parkingName,
+            'business_address': parkingAddress,
+            'identity_document_url': identityLabel.isEmpty
+                ? null
+                : identityLabel,
+            'status': 'pending',
+          }, onConflict: 'profile_id')
+          .select('id')
+          .single();
+
+      final providerApplication = ProviderApplication(
+        parkingName: parkingName,
+        address: parkingAddress,
+        photoLabel: photoLabel,
+        locationLabel: locationLabel,
+        capacity: _providerCapacity.toInt(),
+        identityLabel: identityLabel,
+      );
+
+      await supabase.from('provider_applications').insert({
+        'provider_id': provider['id'],
+        'profile_id': user.id,
+        'parking_name': parkingName,
+        'address': parkingAddress,
+        'photo_url': photoLabel.isEmpty ? null : photoLabel,
+        'location_label': locationLabel.isEmpty ? null : locationLabel,
+        'capacity': _providerCapacity.toInt(),
+        'identity_document_url': identityLabel.isEmpty ? null : identityLabel,
+        'status': 'pending',
+      });
+
+      ref
+          .read(appControllerProvider.notifier)
+          .register(
+            fullName: fullName,
+            email: email,
+            phoneNumber: phoneNumber,
+            mode: AccountMode.provider,
+            providerApplication: providerApplication,
+          );
+
+      _showRegisterMessage('Akun penyedia sedang menunggu verifikasi admin.');
+
+      if (!mounted) {
+        return;
+      }
+      final controller = ref.read(appControllerProvider.notifier);
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showRegisterMessage(error.message);
+    } catch (_) {
+      _showRegisterMessage('Tidak bisa daftar penyedia. Cek koneksi dan coba lagi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _submitCustomerRegister() async {
