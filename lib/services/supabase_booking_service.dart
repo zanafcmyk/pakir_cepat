@@ -110,6 +110,29 @@ class SupabaseBookingService {
     return _activeBookingFromRow(row);
   }
 
+  Future<List<TransactionRecord>> fetchCurrentCustomerHistory() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    final customerId = await _currentCustomerId(user.id);
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, entry_time, exit_time, estimated_cost, final_cost, status, '
+          'parking_lots(name), vehicles(plate_number)',
+        )
+        .eq('customer_id', customerId)
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    return [
+      for (final row in rows)
+        _transactionRecordFromRow(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
   Future<void> checkInBooking(String ticketNumber) async {
     await _updateBookingActivity(
       ticketNumber: ticketNumber,
@@ -293,6 +316,44 @@ class SupabaseBookingService {
       ),
       slotId: row['parking_slot_id'] as String?,
     );
+  }
+
+  TransactionRecord _transactionRecordFromRow(Map<String, dynamic> row) {
+    final status = _bookingStatusFromDb(row['status'] as String?);
+    final timeText =
+        row['exit_time'] as String? ??
+        row['entry_time'] as String? ??
+        DateTime.now().toIso8601String();
+    final time = DateTime.tryParse(timeText) ?? DateTime.now();
+
+    return TransactionRecord(
+      id: row['ticket_number'] as String? ?? '-',
+      locationName: _nestedValue(row, 'parking_lots', 'name') ?? '-',
+      plateNumber: _nestedValue(row, 'vehicles', 'plate_number') ?? '-',
+      status: _historyStatusLabel(status),
+      total:
+          (row['final_cost'] as num?)?.toInt() ??
+          (row['estimated_cost'] as num?)?.toInt() ??
+          0,
+      timeLabel: _formatDateTime(time),
+    );
+  }
+
+  String _historyStatusLabel(BookingStatus status) => switch (status) {
+    BookingStatus.completed => 'Selesai',
+    BookingStatus.active => 'Sedang parkir',
+    BookingStatus.paid => 'Lunas',
+    BookingStatus.cancelled => 'Dibatalkan',
+    BookingStatus.pendingPayment => 'Menunggu bayar',
+  };
+
+  String _formatDateTime(DateTime value) {
+    final date =
+        '${value.day.toString().padLeft(2, '0')}/'
+        '${value.month.toString().padLeft(2, '0')}/${value.year}';
+    final time =
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    return '$date, $time';
   }
 
   String? _nestedValue(Map<String, dynamic> row, String table, String column) {

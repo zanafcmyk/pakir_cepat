@@ -1432,6 +1432,11 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(activeBooking: activeBooking.booking);
   }
 
+  Future<void> loadCustomerHistoryFromSupabase() async {
+    final history = await _bookingService.fetchCurrentCustomerHistory();
+    state = state.copyWith(history: history);
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -3446,6 +3451,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
+      await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -4120,6 +4126,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final controller = ref.read(appControllerProvider.notifier);
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
+      await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -6888,11 +6895,28 @@ String _paymentMethodLabel(PaymentMethod method) => switch (method) {
   PaymentMethod.card => 'Debit/Kredit',
 };
 
-class ParkingHistoryScreen extends ConsumerWidget {
+class ParkingHistoryScreen extends ConsumerStatefulWidget {
   const ParkingHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ParkingHistoryScreen> createState() =>
+      _ParkingHistoryScreenState();
+}
+
+class _ParkingHistoryScreenState extends ConsumerState<ParkingHistoryScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadCustomerHistoryFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final history = ref.watch(appControllerProvider).history;
     return Scaffold(
       appBar: AppBar(title: const Text('Riwayat parkir')),
