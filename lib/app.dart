@@ -17,6 +17,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/app_models.dart';
+import 'services/supabase_chat_service.dart';
 import 'widgets/map_embed_view.dart';
 
 final appControllerProvider = StateNotifierProvider<AppController, AppState>(
@@ -1252,6 +1253,8 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.seeded());
 
+  final SupabaseChatService _chatService = SupabaseChatService();
+
   ChatMessage _outgoingMessage({
     required String roomId,
     required String senderRole,
@@ -1276,6 +1279,30 @@ class AppController extends StateNotifier<AppState> {
 
   ChatMessage _mirrorMessage(ChatMessage message, String roomId) {
     return message.copyWith(roomId: roomId, isRead: false);
+  }
+
+  void _syncChatMessage({
+    required String localRoomId,
+    required String title,
+    required AccountMode senderMode,
+    required String senderName,
+    required String participantRole,
+    required String participantName,
+    required String message,
+  }) {
+    unawaited(
+      _chatService
+          .sendMessage(
+            localRoomId: localRoomId,
+            title: title,
+            senderMode: senderMode,
+            senderName: senderName,
+            participantRole: participantRole,
+            participantName: participantName,
+            message: message,
+          )
+          .catchError((_) {}),
+    );
   }
 
   List<ChatRoom> _touchRoom(
@@ -1864,6 +1891,15 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
+    _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.customer,
+      senderName: state.customerName,
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
+    );
     final mirrorRoomId = _mirrorRoomId(AccountMode.customer, roomId);
     state = state.copyWith(
       customerChatMessages: [...state.customerChatMessages, chatMessage],
@@ -2031,6 +2067,15 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
+    _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.parkingGuard,
+      senderName: guard?.name ?? 'Penjaga Parkir',
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
+    );
     final mirrorRoomId = _mirrorRoomId(AccountMode.parkingGuard, roomId);
     state = state.copyWith(
       guardChatMessages: [...state.guardChatMessages, chatMessage],
@@ -2129,6 +2174,15 @@ class AppController extends StateNotifier<AppState> {
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
+    );
+    _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.provider,
+      senderName: 'Penyedia - Parkir Plaza Sudirman',
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.provider, roomId);
     state = state.copyWith(
@@ -2235,6 +2289,15 @@ class AppController extends StateNotifier<AppState> {
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
+    );
+    _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.superAdmin,
+      senderName: 'Admin Super Parkir Cepat',
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.superAdmin, roomId);
     state = state.copyWith(
