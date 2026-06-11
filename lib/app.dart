@@ -2459,7 +2459,7 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void addLot({
+  Future<void> addLot({
     required String name,
     required String address,
     required int capacity,
@@ -2473,9 +2473,55 @@ class AppController extends StateNotifier<AppState> {
     required int truckRate,
     String? photoLabel,
     Uint8List? photoBytes,
-  }) {
+  }) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    String lotId = 'lot-${state.lots.length + 1}';
+    String providerId = 'provider-main';
+
+    if (user != null) {
+      final provider = await Supabase.instance.client
+          .from('providers')
+          .select('id')
+          .eq('profile_id', user.id)
+          .single();
+      providerId = provider['id'] as String;
+
+      final insertedLot = await Supabase.instance.client
+          .from('parking_lots')
+          .insert({
+            'provider_id': providerId,
+            'name': name,
+            'address': address,
+            'price_per_hour': price,
+            'total_slots': capacity,
+            'open_hours': '24 Jam',
+            'latitude': latitude,
+            'longitude': longitude,
+            'map_embed_url': mapEmbedUrl,
+            'photo_url': photoLabel,
+            'tariff_type': _tariffTypeToDb(tariffType),
+            'motor_rate': motorRate,
+            'car_rate': carRate,
+            'truck_rate': truckRate,
+            'is_active': true,
+          })
+          .select('id')
+          .single();
+      lotId = insertedLot['id'] as String;
+
+      await Supabase.instance.client.from('parking_slots').insert([
+        for (var index = 1; index <= capacity; index++)
+          {
+            'parking_lot_id': lotId,
+            'label': 'A${index.toString().padLeft(3, '0')}',
+            'status': 'available',
+          },
+      ]);
+    }
+
     final lot = ParkingLot(
-      id: 'lot-${state.lots.length + 1}',
+      id: lotId,
+      providerId: providerId,
       name: name,
       address: address,
       pricePerHour: price,
@@ -2498,6 +2544,13 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(lots: [lot, ...state.lots], selectedLot: lot);
   }
+
+  String _tariffTypeToDb(ParkingTariffType type) => switch (type) {
+    ParkingTariffType.hourly => 'hourly',
+    ParkingTariffType.flat => 'flat',
+    ParkingTariffType.daily => 'daily',
+    ParkingTariffType.progressive => 'progressive',
+  };
 
   void toggleFavoriteLot(String lotId) {
     final current = [...state.favoriteLotIds];
@@ -8576,6 +8629,7 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   Uint8List? _photoBytes;
   String? _photoLabel;
   bool _isPickingPhoto = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -8765,9 +8819,11 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
-                  label: 'Simpan lahan',
+                  label: _isSaving ? 'Menyimpan...' : 'Simpan lahan',
                   icon: Icons.save_rounded,
-                  onPressed: () {
+                  onPressed: _isSaving
+                      ? null
+                      : () async {
                     final error = _lotFormError();
                     if (error != null) {
                       ScaffoldMessenger.of(
@@ -8775,24 +8831,46 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                       ).showSnackBar(SnackBar(content: Text(error)));
                       return;
                     }
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .addLot(
-                          name: _nameController.text.trim(),
-                          address: _addressController.text.trim(),
-                          capacity: _capacity.toInt(),
-                          price: _price.toInt(),
-                          mapEmbedUrl: plazaSudirmanMapEmbedUrl,
-                          latitude: -6.2087145,
-                          longitude: 106.8224854,
-                          tariffType: _tariffType,
-                          motorRate: _motorRate.toInt(),
-                          carRate: _carRate.toInt(),
-                          truckRate: _truckRate.toInt(),
-                          photoLabel: _photoLabel,
-                          photoBytes: _photoBytes,
-                        );
-                    context.pop();
+                    setState(() => _isSaving = true);
+                    try {
+                      await ref
+                          .read(appControllerProvider.notifier)
+                          .addLot(
+                            name: _nameController.text.trim(),
+                            address: _addressController.text.trim(),
+                            capacity: _capacity.toInt(),
+                            price: _price.toInt(),
+                            mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                            latitude: -6.2087145,
+                            longitude: 106.8224854,
+                            tariffType: _tariffType,
+                            motorRate: _motorRate.toInt(),
+                            carRate: _carRate.toInt(),
+                            truckRate: _truckRate.toInt(),
+                            photoLabel: _photoLabel,
+                            photoBytes: _photoBytes,
+                          );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Lahan dan slot berhasil disimpan.'),
+                        ),
+                      );
+                      context.pop();
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Gagal menyimpan lahan ke Supabase.',
+                          ),
+                        ),
+                      );
+                    } finally {
+                      if (mounted) {
+                        setState(() => _isSaving = false);
+                      }
+                    }
                   },
                 ),
               ],
