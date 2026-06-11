@@ -1421,6 +1421,17 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<void> loadActiveBookingFromSupabase() async {
+    final activeBooking = await _bookingService
+        .fetchCurrentCustomerActiveBooking();
+    if (activeBooking == null) {
+      state = state.copyWith(clearBooking: true);
+      return;
+    }
+
+    state = state.copyWith(activeBooking: activeBooking.booking);
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -3413,6 +3424,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
+      await controller.loadActiveBookingFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -4086,6 +4098,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
       final controller = ref.read(appControllerProvider.notifier);
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
+      await controller.loadActiveBookingFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
