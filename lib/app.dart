@@ -17,6 +17,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/app_models.dart';
+import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_vehicle_service.dart';
@@ -1264,6 +1265,7 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseChatService _chatService = SupabaseChatService();
   final SupabaseParkingService _parkingService = SupabaseParkingService();
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
+  final SupabaseBookingService _bookingService = SupabaseBookingService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -2649,12 +2651,35 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void createBooking({required String slotCode, required DateTime entryTime}) {
+  Future<void> createBooking({
+    required String slotCode,
+    required DateTime entryTime,
+  }) async {
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
+    final selectedSlot = state.slots.firstWhere(
+      (slot) => slot.label == slotCode,
+      orElse: () => ParkingSlot(
+        id: 'slot-${slotCode.toLowerCase()}',
+        label: slotCode,
+        isAvailable: true,
+      ),
+    );
     final total = calculateParkingCost(lot, vehicle);
+    final remoteBooking = await _bookingService
+        .createCurrentCustomerBooking(
+          lot: lot,
+          slot: selectedSlot,
+          vehicle: vehicle,
+          entryTime: entryTime,
+          estimatedCost: total,
+        )
+        .catchError((_) => null);
+    final ticketNumber =
+        remoteBooking?.ticketNumber ?? 'TKT-${1000 + state.history.length}';
+
     final booking = Booking(
-      ticketNumber: 'TKT-${1000 + state.history.length}',
+      ticketNumber: ticketNumber,
       slotCode: slotCode,
       locationName: lot.name,
       plateNumber: vehicle.plateNumber,
@@ -5933,6 +5958,7 @@ class BookingScreen extends ConsumerStatefulWidget {
 class _BookingScreenState extends ConsumerState<BookingScreen> {
   String? _selectedSlot;
   DateTime _entryTime = DateTime.now().add(const Duration(minutes: 15));
+  bool _isBooking = false;
 
   @override
   Widget build(BuildContext context) {
@@ -6074,18 +6100,35 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
-                  label: 'Konfirmasi booking',
+                  label: _isBooking ? 'Membuat booking...' : 'Konfirmasi booking',
                   icon: Icons.check_circle_rounded,
-                  onPressed: _selectedSlot == null
+                  onPressed: _selectedSlot == null || _isBooking
                       ? null
-                      : () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .createBooking(
-                                slotCode: _selectedSlot!,
-                                entryTime: _entryTime,
-                              );
-                          context.go('/customer/payment');
+                      : () async {
+                          setState(() => _isBooking = true);
+                          try {
+                            await ref
+                                .read(appControllerProvider.notifier)
+                                .createBooking(
+                                  slotCode: _selectedSlot!,
+                                  entryTime: _entryTime,
+                                );
+                            if (!context.mounted) return;
+                            context.go('/customer/payment');
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Gagal membuat booking ke Supabase.',
+                                ),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isBooking = false);
+                            }
+                          }
                         },
                 ),
               ],
