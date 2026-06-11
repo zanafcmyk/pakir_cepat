@@ -86,24 +86,28 @@ class SupabaseBookingService {
     }
 
     final row = Map<String, dynamic>.from(rows.first as Map);
-    final paymentMethod = await _latestPaymentMethod(row['id'] as String);
+    return _activeBookingFromRow(row);
+  }
 
-    return SupabaseActiveBooking(
-      booking: Booking(
-        ticketNumber: row['ticket_number'] as String? ?? '-',
-        slotCode: _nestedValue(row, 'parking_slots', 'label') ?? '-',
-        locationName: _nestedValue(row, 'parking_lots', 'name') ?? '-',
-        plateNumber: _nestedValue(row, 'vehicles', 'plate_number') ?? '-',
-        vehicleLabel: _vehicleLabel(_nestedValue(row, 'vehicles', 'kind')),
-        entryTime:
-            DateTime.tryParse(row['entry_time'] as String? ?? '') ??
-            DateTime.now(),
-        estimatedCost: (row['estimated_cost'] as num?)?.toInt() ?? 0,
-        paymentMethod: paymentMethod,
-        status: _bookingStatusFromDb(row['status'] as String?),
-      ),
-      slotId: row['parking_slot_id'] as String?,
-    );
+  Future<SupabaseActiveBooking?> fetchBookingByTicketNumber(
+    String ticketNumber,
+  ) async {
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'id, ticket_number, entry_time, estimated_cost, status, '
+          'parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind)',
+        )
+        .eq('ticket_number', ticketNumber)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    return _activeBookingFromRow(row);
   }
 
   Future<String> _currentCustomerId(String profileId) async {
@@ -143,6 +147,29 @@ class SupabaseBookingService {
     }
 
     return _paymentMethodFromDb((rows.first as Map)['method'] as String?);
+  }
+
+  Future<SupabaseActiveBooking> _activeBookingFromRow(
+    Map<String, dynamic> row,
+  ) async {
+    final paymentMethod = await _latestPaymentMethod(row['id'] as String);
+
+    return SupabaseActiveBooking(
+      booking: Booking(
+        ticketNumber: row['ticket_number'] as String? ?? '-',
+        slotCode: _nestedValue(row, 'parking_slots', 'label') ?? '-',
+        locationName: _nestedValue(row, 'parking_lots', 'name') ?? '-',
+        plateNumber: _nestedValue(row, 'vehicles', 'plate_number') ?? '-',
+        vehicleLabel: _vehicleLabel(_nestedValue(row, 'vehicles', 'kind')),
+        entryTime:
+            DateTime.tryParse(row['entry_time'] as String? ?? '') ??
+            DateTime.now(),
+        estimatedCost: (row['estimated_cost'] as num?)?.toInt() ?? 0,
+        paymentMethod: paymentMethod,
+        status: _bookingStatusFromDb(row['status'] as String?),
+      ),
+      slotId: row['parking_slot_id'] as String?,
+    );
   }
 
   String? _nestedValue(Map<String, dynamic> row, String table, String column) {

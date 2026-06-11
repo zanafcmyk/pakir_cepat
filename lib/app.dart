@@ -2793,6 +2793,25 @@ class AppController extends StateNotifier<AppState> {
     return booking;
   }
 
+  Future<Booking?> loadBookingByTicketNumberFromSupabase(
+    String ticketNumber,
+  ) async {
+    final localBooking = bookingByTicketNumber(ticketNumber);
+    if (localBooking != null) {
+      return localBooking;
+    }
+
+    final remoteBooking = await _bookingService.fetchBookingByTicketNumber(
+      ticketNumber,
+    );
+    if (remoteBooking == null) {
+      return null;
+    }
+
+    state = state.copyWith(activeBooking: remoteBooking.booking);
+    return remoteBooking.booking;
+  }
+
   bool verifyVehicleEntry(String ticketNumber) {
     final booking = bookingByTicketNumber(ticketNumber);
     if (booking == null || !booking.isPaid) {
@@ -9682,9 +9701,12 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     if (!mounted) {
       return;
     }
-    final booking = ref
+    final booking = await ref
         .read(appControllerProvider.notifier)
-        .bookingByTicketNumber(ticketNumber);
+        .loadBookingByTicketNumberFromSupabase(ticketNumber);
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _lastScannedTicket = ticketNumber;
       _lastScanTime = DateTime.now();
