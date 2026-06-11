@@ -86,10 +86,11 @@ class SupabaseChatService {
     required Map<String, dynamic>? targetProfile,
     required String participantName,
   }) async {
+    final roomKey = _canonicalRoomKey(localRoomId);
     final existingRooms = await _client
         .from('chat_rooms')
         .select('id')
-        .eq('room_key', localRoomId)
+        .eq('room_key', roomKey)
         .limit(1);
 
     if (existingRooms.isNotEmpty) {
@@ -99,8 +100,8 @@ class SupabaseChatService {
     final insertedRoom = await _client
         .from('chat_rooms')
         .insert({
-          'room_key': localRoomId,
-          'room_type': _roomTypeFromKey(localRoomId),
+          'room_key': roomKey,
+          'room_type': _roomTypeFromKey(roomKey),
           'title': title,
           'created_by': senderProfile['id'],
           'last_message': 'Room chat siap digunakan.',
@@ -158,18 +159,37 @@ class SupabaseChatService {
   };
 
   String _roomTypeFromKey(String roomKey) {
-    if (roomKey.contains('customer-provider')) return 'customer_provider';
-    if (roomKey.contains('provider-customer')) return 'customer_provider';
-    if (roomKey.contains('customer-guard')) return 'customer_guard';
-    if (roomKey.contains('guard-customer')) return 'customer_guard';
-    if (roomKey.contains('customer-admin')) return 'customer_admin';
-    if (roomKey.contains('superadmin-customer')) return 'customer_admin';
-    if (roomKey.contains('provider-guard')) return 'provider_guard';
-    if (roomKey.contains('guard-provider')) return 'provider_guard';
-    if (roomKey.contains('provider-superadmin')) return 'provider_admin';
-    if (roomKey.contains('superadmin-provider')) return 'provider_admin';
-    if (roomKey.contains('guard-admin')) return 'guard_admin';
-    if (roomKey.contains('superadmin-guard')) return 'guard_admin';
+    if (roomKey.startsWith('customer_provider:')) return 'customer_provider';
+    if (roomKey.startsWith('customer_guard:')) return 'customer_guard';
+    if (roomKey.startsWith('customer_admin:')) return 'customer_admin';
+    if (roomKey.startsWith('provider_guard:')) return 'provider_guard';
+    if (roomKey.startsWith('provider_admin:')) return 'provider_admin';
+    if (roomKey.startsWith('guard_admin:')) return 'guard_admin';
     return 'group';
+  }
+
+  String _canonicalRoomKey(String localRoomId) {
+    const prefixes = [
+      ('customer-provider-', 'customer_provider:'),
+      ('provider-customer-', 'customer_provider:'),
+      ('customer-guard-', 'customer_guard:'),
+      ('guard-customer-', 'customer_guard:'),
+      ('customer-admin-', 'customer_admin:'),
+      ('superadmin-customer-', 'customer_admin:'),
+      ('provider-guard-', 'provider_guard:'),
+      ('guard-provider-', 'provider_guard:'),
+      ('provider-superadmin-', 'provider_admin:'),
+      ('superadmin-provider-', 'provider_admin:'),
+      ('guard-admin-', 'guard_admin:'),
+      ('superadmin-guard-', 'guard_admin:'),
+    ];
+
+    for (final (localPrefix, canonicalPrefix) in prefixes) {
+      if (localRoomId.startsWith(localPrefix)) {
+        return '$canonicalPrefix${localRoomId.substring(localPrefix.length)}';
+      }
+    }
+
+    return 'group:$localRoomId';
   }
 }
