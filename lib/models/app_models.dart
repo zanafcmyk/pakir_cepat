@@ -230,6 +230,58 @@ class NoticeItem {
   final Color accent;
 }
 
+class ProviderFeedback {
+  const ProviderFeedback({
+    required this.id,
+    required this.lotId,
+    required this.lotName,
+    required this.customerName,
+    required this.rating,
+    required this.review,
+    required this.timeLabel,
+    required this.isComplaint,
+    required this.status,
+    this.providerReply,
+  });
+
+  final String id;
+  final String lotId;
+  final String lotName;
+  final String customerName;
+  final double rating;
+  final String review;
+  final String timeLabel;
+  final bool isComplaint;
+  final String status;
+  final String? providerReply;
+
+  ProviderFeedback copyWith({
+    String? id,
+    String? lotId,
+    String? lotName,
+    String? customerName,
+    double? rating,
+    String? review,
+    String? timeLabel,
+    bool? isComplaint,
+    String? status,
+    String? providerReply,
+  }) {
+    return ProviderFeedback(
+      id: id ?? this.id,
+      lotId: lotId ?? this.lotId,
+      lotName: lotName ?? this.lotName,
+      customerName: customerName ?? this.customerName,
+      rating: rating ?? this.rating,
+      review: review ?? this.review,
+      timeLabel: timeLabel ?? this.timeLabel,
+      isComplaint: isComplaint ?? this.isComplaint,
+      status: status ?? this.status,
+      providerReply: providerReply ?? this.providerReply,
+    );
+  }
+}
+
 class ParkingSlot {
   const ParkingSlot({
     required this.id,

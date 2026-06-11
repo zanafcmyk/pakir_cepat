@@ -123,7 +123,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/provider/add-lot',
-        builder: (context, state) => const AddParkingLotScreen(),
+        builder: (context, state) =>
+            AddParkingLotScreen(lot: state.extra as ParkingLot?),
       ),
       GoRoute(
         path: '/provider/guards',
@@ -140,6 +141,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/provider/statistics',
         builder: (context, state) => const StatisticsScreen(),
+      ),
+      GoRoute(
+        path: '/provider/feedback',
+        builder: (context, state) => const ProviderFeedbackScreen(),
       ),
       GoRoute(
         path: '/provider/manage-slots',
@@ -187,7 +192,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/admin/add-lot',
-        builder: (context, state) => const AddParkingLotScreen(),
+        builder: (context, state) =>
+            AddParkingLotScreen(lot: state.extra as ParkingLot?),
       ),
       GoRoute(
         path: '/admin/scan-qr',
@@ -254,6 +260,7 @@ class AppState {
     required this.history,
     required this.customerNotifications,
     required this.adminNotifications,
+    required this.providerFeedback,
   });
 
   final int onboardingIndex;
@@ -280,6 +287,7 @@ class AppState {
   final List<TransactionRecord> history;
   final List<NoticeItem> customerNotifications;
   final List<NoticeItem> adminNotifications;
+  final List<ProviderFeedback> providerFeedback;
 
   AppState copyWith({
     int? onboardingIndex,
@@ -309,6 +317,7 @@ class AppState {
     List<TransactionRecord>? history,
     List<NoticeItem>? customerNotifications,
     List<NoticeItem>? adminNotifications,
+    List<ProviderFeedback>? providerFeedback,
   }) {
     return AppState(
       onboardingIndex: onboardingIndex ?? this.onboardingIndex,
@@ -344,6 +353,7 @@ class AppState {
       customerNotifications:
           customerNotifications ?? this.customerNotifications,
       adminNotifications: adminNotifications ?? this.adminNotifications,
+      providerFeedback: providerFeedback ?? this.providerFeedback,
     );
   }
 
@@ -490,6 +500,60 @@ class AppState {
       ),
     ];
 
+    const providerFeedback = [
+      ProviderFeedback(
+        id: 'fb-1',
+        lotId: 'lot-1',
+        lotName: 'Parkir Plaza Sudirman',
+        customerName: 'Nadia Putri',
+        rating: 5,
+        review:
+            'Lokasi mudah ditemukan, penjaga responsif, dan slot sesuai tiket.',
+        timeLabel: 'Hari ini, 10:20',
+        isComplaint: false,
+        status: 'Puas',
+      ),
+      ProviderFeedback(
+        id: 'fb-2',
+        lotId: 'lot-2',
+        lotName: 'Emerald Smart Parking',
+        customerName: 'Bima Arya',
+        rating: 4,
+        review:
+            'Pembayaran lancar, tapi marka slot dekat pintu masuk perlu diperjelas.',
+        timeLabel: 'Kemarin, 18:40',
+        isComplaint: false,
+        status: 'Perlu tindak lanjut ringan',
+        providerReply:
+            'Terima kasih, tim sudah menjadwalkan pengecatan ulang marka.',
+      ),
+      ProviderFeedback(
+        id: 'fb-3',
+        lotId: 'lot-1',
+        lotName: 'Parkir Plaza Sudirman',
+        customerName: 'Rafi Mahendra',
+        rating: 2,
+        review:
+            'Saya sudah booking, tetapi sempat diarahkan ke slot yang penuh.',
+        timeLabel: '2 hari lalu',
+        isComplaint: true,
+        status: 'Menunggu balasan',
+      ),
+      ProviderFeedback(
+        id: 'fb-4',
+        lotId: 'lot-3',
+        lotName: 'Citra Mall Parking Hub',
+        customerName: 'Salsa Amira',
+        rating: 3,
+        review: 'Antrean keluar cukup lama saat jam pulang kantor.',
+        timeLabel: '3 hari lalu',
+        isComplaint: true,
+        status: 'Dibalas',
+        providerReply:
+            'Kami sudah menambah penjaga di pintu keluar saat jam sibuk.',
+      ),
+    ];
+
     return AppState(
       onboardingIndex: 0,
       onboardingDone: false,
@@ -515,6 +579,7 @@ class AppState {
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
+      providerFeedback: providerFeedback,
     );
   }
 }
@@ -551,6 +616,65 @@ List<ParkingLot> visibleLotsFor(AppState state) {
       state.lots.where((lot) => lot.providerId == 'provider-main').toList(),
     _ => state.lots,
   };
+}
+
+List<ProviderFeedback> providerFeedbackFor(AppState state) {
+  final providerLotIds = state.lots
+      .where((lot) => lot.providerId == 'provider-main')
+      .map((lot) => lot.id)
+      .toSet();
+  return state.providerFeedback
+      .where((item) => providerLotIds.contains(item.lotId))
+      .toList();
+}
+
+double averageFeedbackRating(List<ProviderFeedback> feedback) {
+  if (feedback.isEmpty) return 0;
+  final total = feedback.fold<double>(0, (sum, item) => sum + item.rating);
+  return total / feedback.length;
+}
+
+int satisfactionScore(List<ProviderFeedback> feedback) {
+  if (feedback.isEmpty) return 0;
+  final satisfied = feedback.where((item) => item.rating >= 4).length;
+  return ((satisfied / feedback.length) * 100).round();
+}
+
+int tariffRateForVehicle(ParkingLot lot, VehicleKind kind) {
+  return switch (kind) {
+    VehicleKind.motor => lot.motorRate ?? lot.pricePerHour,
+    VehicleKind.mobil => lot.carRate ?? lot.pricePerHour,
+    VehicleKind.truk => lot.truckRate ?? lot.pricePerHour,
+  };
+}
+
+int calculateParkingCost(ParkingLot lot, Vehicle vehicle) {
+  final rate = tariffRateForVehicle(lot, vehicle.kind);
+  final duration = math.max(1, vehicle.durationHours);
+  return switch (lot.tariffType) {
+    ParkingTariffType.hourly => rate * duration,
+    ParkingTariffType.flat => rate,
+    ParkingTariffType.daily => rate * math.max(1, (duration / 24).ceil()),
+    ParkingTariffType.progressive =>
+      rate + ((duration - 1) * (rate * 0.5)).round(),
+  };
+}
+
+String tariffTypeLabel(ParkingTariffType type) => switch (type) {
+  ParkingTariffType.hourly => 'Per jam',
+  ParkingTariffType.flat => 'Flat',
+  ParkingTariffType.daily => 'Harian',
+  ParkingTariffType.progressive => 'Progresif',
+};
+
+String parkingLotTariffSummary(ParkingLot lot) {
+  final suffix = switch (lot.tariffType) {
+    ParkingTariffType.hourly => '/jam',
+    ParkingTariffType.flat => ' flat',
+    ParkingTariffType.daily => '/hari',
+    ParkingTariffType.progressive => ' progresif',
+  };
+  return 'Motor ${formatCurrency(lot.motorRate ?? lot.pricePerHour)}$suffix';
 }
 
 class AppController extends StateNotifier<AppState> {
@@ -722,6 +846,89 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(lots: [lot, ...state.lots], selectedLot: lot);
   }
 
+  void updateLot({
+    required String id,
+    required String name,
+    required String address,
+    required int capacity,
+    required int price,
+    required String mapEmbedUrl,
+    required double latitude,
+    required double longitude,
+    required ParkingTariffType tariffType,
+    required int motorRate,
+    required int carRate,
+    required int truckRate,
+    String? photoLabel,
+    Uint8List? photoBytes,
+  }) {
+    ParkingLot? updatedLot;
+    final updatedLots = [
+      for (final lot in state.lots)
+        if (lot.id == id)
+          updatedLot = lot.copyWith(
+            name: name,
+            address: address,
+            pricePerHour: price,
+            availableSlots: math.min(lot.availableSlots, capacity),
+            totalSlots: capacity,
+            mapEmbedUrl: mapEmbedUrl,
+            latitude: latitude,
+            longitude: longitude,
+            tariffType: tariffType,
+            motorRate: motorRate,
+            carRate: carRate,
+            truckRate: truckRate,
+            photoLabel: photoLabel,
+            photoBytes: photoBytes,
+          )
+        else
+          lot,
+    ];
+    if (updatedLot == null) return;
+
+    state = state.copyWith(
+      lots: updatedLots,
+      selectedLot: state.selectedLot?.id == id ? updatedLot : state.selectedLot,
+    );
+  }
+
+  void deleteLot(String id) {
+    if (state.lots.length <= 1) return;
+    final updatedLots = state.lots.where((lot) => lot.id != id).toList();
+    if (updatedLots.length == state.lots.length) return;
+
+    final updatedFavorites = state.favoriteLotIds
+        .where((lotId) => lotId != id)
+        .toList();
+    final updatedGuards = [
+      for (final guard in state.parkingGuards)
+        ParkingGuardAccount(
+          id: guard.id,
+          name: guard.name,
+          email: guard.email,
+          phoneNumber: guard.phoneNumber,
+          providerId: guard.providerId,
+          assignedLotIds: guard.assignedLotIds
+              .where((lotId) => lotId != id)
+              .toList(),
+          canScanQr: guard.canScanQr,
+          canConfirmCash: guard.canConfirmCash,
+          canManageSlots: guard.canManageSlots,
+        ),
+    ];
+    final selectedLot = state.selectedLot?.id == id
+        ? updatedLots.first
+        : state.selectedLot;
+
+    state = state.copyWith(
+      lots: updatedLots,
+      selectedLot: selectedLot,
+      favoriteLotIds: updatedFavorites,
+      parkingGuards: updatedGuards,
+    );
+  }
+
   void toggleFavoriteLot(String lotId) {
     final current = [...state.favoriteLotIds];
     if (current.contains(lotId)) {
@@ -754,7 +961,7 @@ class AppController extends StateNotifier<AppState> {
   void createBooking({required String slotCode, required DateTime entryTime}) {
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
-    final total = lot.pricePerHour * vehicle.durationHours;
+    final total = calculateParkingCost(lot, vehicle);
     final booking = Booking(
       ticketNumber: 'TKT-${1000 + state.history.length}',
       slotCode: slotCode,
@@ -883,6 +1090,34 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(slots: updated);
   }
 
+  void replyToProviderFeedback({
+    required String feedbackId,
+    required String reply,
+  }) {
+    final cleanReply = reply.trim();
+    if (cleanReply.isEmpty) return;
+
+    state = state.copyWith(
+      providerFeedback: [
+        for (final item in state.providerFeedback)
+          if (item.id == feedbackId)
+            item.copyWith(providerReply: cleanReply, status: 'Dibalas')
+          else
+            item,
+      ],
+      adminNotifications: [
+        const NoticeItem(
+          title: 'Komplain dibalas',
+          message: 'Balasan penyedia sudah tersimpan di pusat ulasan.',
+          timeLabel: 'Baru saja',
+          icon: Icons.forum_rounded,
+          accent: AppTheme.emerald,
+        ),
+        ...state.adminNotifications,
+      ],
+    );
+  }
+
   void extendParkingTime(int additionalHours) {
     final vehicle = state.selectedVehicle;
     final booking = state.activeBooking;
@@ -902,8 +1137,7 @@ class AppController extends StateNotifier<AppState> {
       vehicles: updatedVehicles,
       selectedVehicle: updatedVehicle,
       activeBooking: booking.copyWith(
-        estimatedCost:
-            booking.estimatedCost + (lot.pricePerHour * additionalHours),
+        estimatedCost: calculateParkingCost(lot, updatedVehicle),
       ),
       customerNotifications: [
         NoticeItem(
@@ -2504,7 +2738,7 @@ class ParkingDetailScreen extends ConsumerWidget {
                         children: [
                           InfoChip(
                             icon: Icons.payments_rounded,
-                            label: '${formatCurrency(lot.pricePerHour)}/jam',
+                            label: parkingLotTariffSummary(lot),
                           ),
                           InfoChip(
                             icon: Icons.local_parking_rounded,
@@ -2664,7 +2898,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     final state = ref.watch(appControllerProvider);
     final lot = state.selectedLot ?? state.lots.first;
     final vehicle = state.selectedVehicle ?? state.vehicles.first;
-    final total = lot.pricePerHour * vehicle.durationHours;
+    final total = calculateParkingCost(lot, vehicle);
+    final vehicleRate = tariffRateForVehicle(lot, vehicle.kind);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Booking parkir'),
@@ -2786,6 +3021,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 SummaryRow(
                   label: 'Estimasi biaya',
                   value: formatCurrency(total),
+                ),
+                const SizedBox(height: 8),
+                SummaryRow(
+                  label: 'Tarif ${vehicle.label.toLowerCase()}',
+                  value:
+                      '${formatCurrency(vehicleRate)} - ${tariffTypeLabel(lot.tariffType)}',
                 ),
                 const SizedBox(height: 8),
                 SummaryRow(
@@ -3224,6 +3465,8 @@ class AdminDashboardScreen extends ConsumerWidget {
         state.currentMode == AccountMode.provider ||
         GoRouterState.of(context).uri.path.startsWith('/provider');
     final occupiedSlots = state.slots.where((slot) => !slot.isAvailable).length;
+    final feedback = providerFeedbackFor(state);
+    final complaints = feedback.where((item) => item.isComplaint).length;
     return AdminShell(
       currentIndex: 0,
       floatingActionButton: isProvider
@@ -3283,6 +3526,20 @@ class AdminDashboardScreen extends ConsumerWidget {
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
               ),
+              if (isProvider)
+                StatCard(
+                  label: 'Kepuasan pelanggan',
+                  value: '${satisfactionScore(feedback)}%',
+                  accent: AppTheme.blue,
+                  icon: Icons.favorite_rounded,
+                ),
+              if (isProvider)
+                StatCard(
+                  label: 'Komplain masuk',
+                  value: '$complaints',
+                  accent: AppTheme.emerald,
+                  icon: Icons.forum_rounded,
+                ),
             ],
           ),
           if (!isProvider) ...[
@@ -3324,6 +3581,13 @@ class AdminDashboardScreen extends ConsumerWidget {
                 accent: AppTheme.emeraldSoft,
                 onTap: () => context.push('/provider/guards'),
               ),
+              if (isProvider)
+                ActionCard(
+                  label: 'Komplain & rating',
+                  icon: Icons.reviews_rounded,
+                  accent: AppTheme.blueSoft,
+                  onTap: () => context.push('/provider/feedback'),
+                ),
               ActionCard(
                 label: 'Detail transaksi',
                 icon: Icons.receipt_long_rounded,
@@ -3380,6 +3644,9 @@ class AdminMapScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
     final lots = visibleLotsFor(state);
+    final isProvider =
+        state.currentMode == AccountMode.provider ||
+        GoRouterState.of(context).uri.path.startsWith('/provider');
     return AdminShell(
       currentIndex: 1,
       child: ListView(
@@ -3400,16 +3667,179 @@ class AdminMapScreen extends ConsumerWidget {
           ...lots.map(
             (lot) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: MiniInfoTile(
-                icon: Icons.domain_add_rounded,
-                iconColor: lot.accent,
-                title: lot.name,
-                subtitle:
-                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}',
-                onTap: () =>
-                    ref.read(appControllerProvider.notifier).selectLot(lot),
-              ),
+              child: isProvider
+                  ? ProviderLotManagementCard(
+                      lot: lot,
+                      canDelete: lots.length > 1,
+                      onSelect: () => ref
+                          .read(appControllerProvider.notifier)
+                          .selectLot(lot),
+                      onEdit: () {
+                        ref.read(appControllerProvider.notifier).selectLot(lot);
+                        context.push('/provider/add-lot', extra: lot);
+                      },
+                      onDelete: () => _confirmDeleteLot(context, ref, lot),
+                    )
+                  : MiniInfoTile(
+                      icon: Icons.domain_add_rounded,
+                      iconColor: lot.accent,
+                      title: lot.name,
+                      subtitle:
+                          '${lot.availableSlots}/${lot.totalSlots} slot tersedia - ${lot.address}',
+                      onTap: () => ref
+                          .read(appControllerProvider.notifier)
+                          .selectLot(lot),
+                    ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteLot(
+    BuildContext context,
+    WidgetRef ref,
+    ParkingLot lot,
+  ) async {
+    final state = ref.read(appControllerProvider);
+    if (visibleLotsFor(state).length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Minimal harus ada satu lahan parkir.')),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus lahan parkir?'),
+        content: Text('${lot.name} akan dihapus dari data penyedia.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    ref.read(appControllerProvider.notifier).deleteLot(lot.id);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${lot.name} berhasil dihapus.')));
+  }
+}
+
+class ProviderLotManagementCard extends StatelessWidget {
+  const ProviderLotManagementCard({
+    super.key,
+    required this.lot,
+    required this.canDelete,
+    required this.onSelect,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final ParkingLot lot;
+  final bool canDelete;
+  final VoidCallback onSelect;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: lot.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(Icons.domain_add_rounded, color: lot.accent),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lot.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${lot.availableSlots}/${lot.totalSlots} slot tersedia - ${lot.address}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.slate,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              InfoChip(
+                icon: Icons.price_change_rounded,
+                label: tariffTypeLabel(lot.tariffType),
+              ),
+              InfoChip(
+                icon: Icons.two_wheeler_rounded,
+                label: formatCurrency(lot.motorRate ?? lot.pricePerHour),
+              ),
+              InfoChip(
+                icon: Icons.directions_car_rounded,
+                label: formatCurrency(lot.carRate ?? lot.pricePerHour),
+              ),
+              InfoChip(
+                icon: Icons.local_shipping_rounded,
+                label: formatCurrency(lot.truckRate ?? lot.pricePerHour),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Pilih',
+                  icon: Icons.check_circle_outline_rounded,
+                  onPressed: onSelect,
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                onPressed: onEdit,
+                icon: const Icon(Icons.edit_rounded),
+                tooltip: 'Edit lahan',
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: canDelete ? onDelete : null,
+                icon: const Icon(Icons.delete_outline_rounded),
+                tooltip: 'Hapus lahan',
+              ),
+            ],
           ),
         ],
       ),
@@ -3418,7 +3848,9 @@ class AdminMapScreen extends ConsumerWidget {
 }
 
 class AddParkingLotScreen extends ConsumerStatefulWidget {
-  const AddParkingLotScreen({super.key});
+  const AddParkingLotScreen({super.key, this.lot});
+
+  final ParkingLot? lot;
 
   @override
   ConsumerState<AddParkingLotScreen> createState() =>
@@ -3442,10 +3874,24 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Neo Smart Parking Hub');
-    _addressController = TextEditingController(
-      text: 'Jl. Gatot Subroto Smart Gate 8',
+    final lot = widget.lot;
+    _nameController = TextEditingController(
+      text: lot?.name ?? 'Neo Smart Parking Hub',
     );
+    _addressController = TextEditingController(
+      text: lot?.address ?? 'Jl. Gatot Subroto Smart Gate 8',
+    );
+    if (lot != null) {
+      _capacity = lot.totalSlots.toDouble();
+      _price = lot.pricePerHour.toDouble();
+      _motorRate = (lot.motorRate ?? lot.pricePerHour).toDouble();
+      _carRate = (lot.carRate ?? lot.pricePerHour).toDouble();
+      _truckRate = (lot.truckRate ?? lot.pricePerHour).toDouble();
+      _tariffType = lot.tariffType;
+      _locationSelected = lot.latitude != null && lot.longitude != null;
+      _photoName = lot.photoLabel;
+      _photoBytes = lot.photoBytes;
+    }
   }
 
   @override
@@ -3491,8 +3937,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final editingLot = widget.lot;
+    final isEditing = editingLot != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Tambah lahan parkir')),
+      appBar: AppBar(
+        title: Text(isEditing ? 'Edit lahan parkir' : 'Tambah lahan parkir'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -3562,26 +4012,44 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
-                  label: 'Simpan lahan',
+                  label: isEditing ? 'Update lahan' : 'Simpan lahan',
                   icon: Icons.save_rounded,
                   onPressed: () {
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .addLot(
-                          name: _nameController.text,
-                          address: _addressController.text,
-                          capacity: _capacity.toInt(),
-                          price: _price.toInt(),
-                          mapEmbedUrl: plazaSudirmanMapEmbedUrl,
-                          latitude: plazaSudirmanLatitude,
-                          longitude: plazaSudirmanLongitude,
-                          tariffType: _tariffType,
-                          motorRate: _motorRate.toInt(),
-                          carRate: _carRate.toInt(),
-                          truckRate: _truckRate.toInt(),
-                          photoLabel: _photoName,
-                          photoBytes: _photoBytes,
-                        );
+                    final controller = ref.read(appControllerProvider.notifier);
+                    if (isEditing) {
+                      controller.updateLot(
+                        id: editingLot.id,
+                        name: _nameController.text,
+                        address: _addressController.text,
+                        capacity: _capacity.toInt(),
+                        price: _price.toInt(),
+                        mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                        latitude: plazaSudirmanLatitude,
+                        longitude: plazaSudirmanLongitude,
+                        tariffType: _tariffType,
+                        motorRate: _motorRate.toInt(),
+                        carRate: _carRate.toInt(),
+                        truckRate: _truckRate.toInt(),
+                        photoLabel: _photoName,
+                        photoBytes: _photoBytes,
+                      );
+                    } else {
+                      controller.addLot(
+                        name: _nameController.text,
+                        address: _addressController.text,
+                        capacity: _capacity.toInt(),
+                        price: _price.toInt(),
+                        mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                        latitude: plazaSudirmanLatitude,
+                        longitude: plazaSudirmanLongitude,
+                        tariffType: _tariffType,
+                        motorRate: _motorRate.toInt(),
+                        carRate: _carRate.toInt(),
+                        truckRate: _truckRate.toInt(),
+                        photoLabel: _photoName,
+                        photoBytes: _photoBytes,
+                      );
+                    }
                     context.pop();
                   },
                 ),
@@ -3593,13 +4061,6 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     );
   }
 }
-
-String tariffTypeLabel(ParkingTariffType type) => switch (type) {
-  ParkingTariffType.hourly => 'Per jam',
-  ParkingTariffType.flat => 'Flat',
-  ParkingTariffType.daily => 'Harian',
-  ParkingTariffType.progressive => 'Progresif',
-};
 
 class ParkingTariffSettings extends StatelessWidget {
   const ParkingTariffSettings({
@@ -4268,6 +4729,172 @@ class ReceiptScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class ProviderFeedbackScreen extends ConsumerWidget {
+  const ProviderFeedbackScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    final feedback = providerFeedbackFor(state);
+    final complaints = feedback.where((item) => item.isComplaint).toList();
+    final reviews = feedback.where((item) => !item.isComplaint).toList();
+    final repliedComplaints = complaints
+        .where((item) => item.providerReply != null)
+        .length;
+    final averageRating = averageFeedbackRating(feedback);
+    final satisfaction = satisfactionScore(feedback);
+
+    return AdminShell(
+      currentIndex: 0,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Komplain dan rating',
+            subtitle:
+                'Pantau kepuasan pelanggan, baca review lokasi, dan balas komplain.',
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              StatCard(
+                label: 'Rating rata-rata',
+                value: averageRating.toStringAsFixed(1),
+                accent: AppTheme.emerald,
+                icon: Icons.star_rounded,
+              ),
+              StatCard(
+                label: 'Kepuasan pelanggan',
+                value: '$satisfaction%',
+                accent: AppTheme.blue,
+                icon: Icons.favorite_rounded,
+              ),
+              StatCard(
+                label: 'Total review',
+                value: '${feedback.length}',
+                accent: AppTheme.slate,
+                icon: Icons.rate_review_rounded,
+              ),
+              StatCard(
+                label: 'Komplain dibalas',
+                value: '$repliedComplaints/${complaints.length}',
+                accent: AppTheme.emerald,
+                icon: Icons.forum_rounded,
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Statistik kepuasan',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                LinearProgressIndicator(
+                  value: satisfaction / 100,
+                  minHeight: 10,
+                  borderRadius: BorderRadius.circular(999),
+                  backgroundColor: AppTheme.slateSoft,
+                  color: AppTheme.emerald,
+                ),
+                const SizedBox(height: 14),
+                SummaryRow(
+                  label: 'Pelanggan puas',
+                  value: '${feedback.where((item) => item.rating >= 4).length}',
+                  valueColor: AppTheme.emerald,
+                ),
+                SummaryRow(
+                  label: 'Perlu ditindaklanjuti',
+                  value: '${feedback.where((item) => item.rating < 4).length}',
+                  valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Komplain belum dibalas',
+                  value:
+                      '${complaints.where((item) => item.providerReply == null).length}',
+                  valueColor: AppTheme.slate,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          const SectionTitle(title: 'Review pelanggan'),
+          const SizedBox(height: 12),
+          ...reviews.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ProviderFeedbackCard(item: item),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const SectionTitle(title: 'Komplain pelanggan'),
+          const SizedBox(height: 12),
+          ...complaints.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ProviderFeedbackCard(
+                item: item,
+                onReply: () => _showProviderReplyDialog(context, ref, item),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showProviderReplyDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ProviderFeedback item,
+  ) async {
+    final controller = TextEditingController(text: item.providerReply ?? '');
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Balas komplain'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Tulis balasan untuk pelanggan',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Batal'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              ref
+                  .read(appControllerProvider.notifier)
+                  .replyToProviderFeedback(
+                    feedbackId: item.id,
+                    reply: controller.text,
+                  );
+              Navigator.pop(dialogContext);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Balasan komplain tersimpan')),
+              );
+            },
+            icon: const Icon(Icons.send_rounded),
+            label: const Text('Kirim'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
   }
 }
 
@@ -5612,7 +6239,7 @@ class ParkingLotCard extends StatelessWidget {
               Expanded(
                 child: MetricColumn(
                   label: 'Harga',
-                  value: '${formatCurrency(lot.pricePerHour)}/jam',
+                  value: parkingLotTariffSummary(lot),
                 ),
               ),
               Expanded(
@@ -6387,6 +7014,128 @@ class NotificationsList extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class ProviderFeedbackCard extends StatelessWidget {
+  const ProviderFeedbackCard({super.key, required this.item, this.onReply});
+
+  final ProviderFeedback item;
+  final VoidCallback? onReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final isComplaint = item.isComplaint;
+    return PremiumCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: (isComplaint ? AppTheme.blue : AppTheme.emerald)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(
+                  isComplaint
+                      ? Icons.report_problem_rounded
+                      : Icons.star_rounded,
+                  color: isComplaint ? AppTheme.blue : AppTheme.emerald,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.customerName,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      item.lotName,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              StatusBadge(
+                label: item.rating.toStringAsFixed(0),
+                color: item.rating >= 4 ? AppTheme.emerald : AppTheme.blue,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            item.review,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.ink, height: 1.45),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              InfoChip(icon: Icons.schedule_rounded, label: item.timeLabel),
+              InfoChip(icon: Icons.flag_rounded, label: item.status),
+            ],
+          ),
+          if (item.providerReply != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.emeraldSoft,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Balasan penyedia',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    item.providerReply!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.slate,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (onReply != null) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onReply,
+                icon: const Icon(Icons.reply_rounded),
+                label: Text(item.providerReply == null ? 'Balas' : 'Ubah'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
