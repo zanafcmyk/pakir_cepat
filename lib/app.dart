@@ -3612,12 +3612,14 @@ class AdminDashboardScreen extends ConsumerWidget {
                 value: '182',
                 accent: AppTheme.blue,
                 icon: Icons.directions_car_rounded,
+                onTap: () => context.push('/provider/transaction-detail'),
               ),
               StatCard(
                 label: 'Pendapatan hari ini',
                 value: 'Rp 8,4 jt',
                 accent: AppTheme.emerald,
                 icon: Icons.trending_up_rounded,
+                onTap: () => context.push('/provider/receipt'),
               ),
               StatCard(
                 label: 'Slot tersedia',
@@ -3625,18 +3627,21 @@ class AdminDashboardScreen extends ConsumerWidget {
                     '${state.slots.where((slot) => slot.isAvailable).length}',
                 accent: AppTheme.slate,
                 icon: Icons.local_parking_rounded,
+                onTap: () => context.push('/provider/manage-slots'),
               ),
               StatCard(
                 label: 'Slot aktif',
                 value: '$occupiedSlots',
                 accent: AppTheme.blue,
                 icon: Icons.timelapse_rounded,
+                onTap: () => context.push('/provider/manage-slots'),
               ),
               StatCard(
                 label: 'Multi cabang',
                 value: '${state.lots.length}',
                 accent: AppTheme.emerald,
                 icon: Icons.apartment_rounded,
+                onTap: () => context.push('/provider/map'),
               ),
               if (isProvider)
                 StatCard(
@@ -3644,6 +3649,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                   value: '${satisfactionScore(feedback)}%',
                   accent: AppTheme.blue,
                   icon: Icons.favorite_rounded,
+                  onTap: () => context.push('/provider/feedback'),
                 ),
               if (isProvider)
                 StatCard(
@@ -3651,6 +3657,7 @@ class AdminDashboardScreen extends ConsumerWidget {
                   value: '$complaints',
                   accent: AppTheme.emerald,
                   icon: Icons.forum_rounded,
+                  onTap: () => context.push('/provider/feedback'),
                 ),
             ],
           ),
@@ -7653,52 +7660,66 @@ class StatCard extends StatelessWidget {
     required this.value,
     required this.accent,
     required this.icon,
+    this.onTap,
   });
 
   final String label;
   final String value;
   final Color accent;
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 54) / 2;
     return Container(
       width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [softShadow(AppTheme.slate.withValues(alpha: 0.12))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          mouseCursor: onTap == null
+              ? SystemMouseCursors.basic
+              : SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accent),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  value,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppTheme.slate,
+                    height: 1.45,
+                  ),
+                ),
+              ],
             ),
-            child: Icon(icon, color: accent),
           ),
-          const SizedBox(height: 16),
-          Text(
-            value,
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.slate,
-              height: 1.45,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
