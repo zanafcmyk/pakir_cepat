@@ -1208,6 +1208,12 @@ Color roleAccent(AccountMode mode) => switch (mode) {
   AccountMode.customer => AppTheme.blue,
 };
 
+AccountStatus accountStatusFromDb(String? value) => switch (value) {
+  'verified' => AccountStatus.verified,
+  'rejected' => AccountStatus.rejected,
+  _ => AccountStatus.pending,
+};
+
 String complaintStatusLabel(ComplaintStatus status) => switch (status) {
   ComplaintStatus.waiting => 'Menunggu jawaban',
   ComplaintStatus.answered => 'Terjawab',
@@ -1586,7 +1592,7 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(accountStatus: status);
   }
 
-  void updateRegistrationStatus(String id, AccountStatus status) {
+  Future<void> updateRegistrationStatus(String id, AccountStatus status) async {
     RegistrationRequest? selected;
     final requests = [
       for (final request in state.registrationRequests)
@@ -1595,6 +1601,10 @@ class AppController extends StateNotifier<AppState> {
         else
           request,
     ];
+
+    if (selected != null) {
+      await _syncRegistrationStatus(selected, status);
+    }
 
     final notices = [
       NoticeItem(
@@ -1635,6 +1645,65 @@ class AppController extends StateNotifier<AppState> {
             ],
       superAdminNotifications: notices,
     );
+  }
+
+  Future<void> _syncRegistrationStatus(
+    RegistrationRequest selected,
+    AccountStatus status,
+  ) async {
+    final dbStatus = switch (status) {
+      AccountStatus.verified => 'verified',
+      AccountStatus.rejected => 'rejected',
+      AccountStatus.pending => 'pending',
+    };
+
+    final rows = await Supabase.instance.client
+        .from('profiles')
+        .select('id, role')
+        .eq('email', selected.email)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final profile = rows.first;
+    final profileId = profile['id'] as String;
+
+    await Supabase.instance.client.from('profiles').update({
+      'account_status': dbStatus,
+      'verified_at': status == AccountStatus.verified
+          ? DateTime.now().toIso8601String()
+          : null,
+    }).eq('id', profileId);
+
+    if (profile['role'] == 'provider') {
+      await Supabase.instance.client.from('providers').update({
+        'status': dbStatus,
+        'approved_by': Supabase.instance.client.auth.currentUser?.id,
+        'approved_at': status == AccountStatus.verified
+            ? DateTime.now().toIso8601String()
+            : null,
+        'rejection_reason': status == AccountStatus.rejected
+            ? 'Ditolak oleh Super Admin.'
+            : null,
+      }).eq('profile_id', profileId);
+
+      await Supabase.instance.client
+          .from('provider_applications')
+          .update({
+            'status': dbStatus,
+            'reviewed_by': Supabase.instance.client.auth.currentUser?.id,
+            'reviewed_at': DateTime.now().toIso8601String(),
+            'review_note': status == AccountStatus.verified
+                ? 'Disetujui oleh Super Admin.'
+                : status == AccountStatus.rejected
+                ? 'Ditolak oleh Super Admin.'
+                : null,
+          })
+          .eq('profile_id', profileId)
+          .eq('status', 'pending');
+    }
   }
 
   void toggleManagedUserAccess(String id) {
@@ -3368,6 +3437,65 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
+  Future<void> _syncRegistrationStatus(
+    RegistrationRequest selected,
+    AccountStatus status,
+  ) async {
+    final dbStatus = switch (status) {
+      AccountStatus.verified => 'verified',
+      AccountStatus.rejected => 'rejected',
+      AccountStatus.pending => 'pending',
+    };
+
+    final rows = await Supabase.instance.client
+        .from('profiles')
+        .select('id, role')
+        .eq('email', selected.email)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    final profile = rows.first;
+    final profileId = profile['id'] as String;
+
+    await Supabase.instance.client.from('profiles').update({
+      'account_status': dbStatus,
+      'verified_at': status == AccountStatus.verified
+          ? DateTime.now().toIso8601String()
+          : null,
+    }).eq('id', profileId);
+
+    if (profile['role'] == 'provider') {
+      await Supabase.instance.client.from('providers').update({
+        'status': dbStatus,
+        'approved_by': Supabase.instance.client.auth.currentUser?.id,
+        'approved_at': status == AccountStatus.verified
+            ? DateTime.now().toIso8601String()
+            : null,
+        'rejection_reason': status == AccountStatus.rejected
+            ? 'Ditolak oleh Super Admin.'
+            : null,
+      }).eq('profile_id', profileId);
+
+      await Supabase.instance.client
+          .from('provider_applications')
+          .update({
+            'status': dbStatus,
+            'reviewed_by': Supabase.instance.client.auth.currentUser?.id,
+            'reviewed_at': DateTime.now().toIso8601String(),
+            'review_note': status == AccountStatus.verified
+                ? 'Disetujui oleh Super Admin.'
+                : status == AccountStatus.rejected
+                ? 'Ditolak oleh Super Admin.'
+                : null,
+          })
+          .eq('profile_id', profileId)
+          .eq('status', 'pending');
+    }
+  }
+
   AccountStatus _accountStatusFromDb(String? value) => switch (value) {
     'verified' => AccountStatus.verified,
     'rejected' => AccountStatus.rejected,
@@ -4226,33 +4354,53 @@ class ProviderVerificationScreen extends ConsumerWidget {
                     onPressed: () => context.go('/register'),
                   ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Simulasi verified',
-                        icon: Icons.verified_rounded,
-                        onPressed: () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .setProviderStatus(AccountStatus.verified);
-                          context.go('/provider/dashboard');
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Simulasi rejected',
-                        icon: Icons.close_rounded,
-                        onPressed: () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .setProviderStatus(AccountStatus.rejected);
-                        },
-                      ),
-                    ),
-                  ],
+                SecondaryButton(
+                  label: 'Cek ulang status',
+                  icon: Icons.refresh_rounded,
+                  onPressed: () async {
+                    final user = Supabase.instance.client.auth.currentUser;
+                    if (user == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Silakan login ulang sebagai penyedia.'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final provider = await Supabase.instance.client
+                          .from('providers')
+                          .select('status')
+                          .eq('profile_id', user.id)
+                          .single();
+                      final updatedStatus = accountStatusFromDb(
+                        provider['status'] as String?,
+                      );
+                      ref
+                          .read(appControllerProvider.notifier)
+                          .setProviderStatus(updatedStatus);
+                      if (!context.mounted) return;
+                      if (updatedStatus == AccountStatus.verified) {
+                        context.go('/provider/dashboard');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Status penyedia sudah diperbarui.',
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Gagal mengecek status penyedia.'),
+                        ),
+                      );
+                    }
+                  },
                 ),
               ],
             ),
@@ -4698,13 +4846,30 @@ class RegistrationRequestCard extends ConsumerWidget {
                   child: SecondaryButton(
                     label: 'Tolak',
                     icon: Icons.close_rounded,
-                    onPressed: () {
-                      ref
-                          .read(appControllerProvider.notifier)
-                          .updateRegistrationStatus(
-                            request.id,
-                            AccountStatus.rejected,
-                          );
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(appControllerProvider.notifier)
+                            .updateRegistrationStatus(
+                              request.id,
+                              AccountStatus.rejected,
+                            );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Pengajuan penyedia ditolak.'),
+                          ),
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Gagal memperbarui status di Supabase.',
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
@@ -4713,13 +4878,30 @@ class RegistrationRequestCard extends ConsumerWidget {
                   child: PrimaryButton(
                     label: 'Setujui',
                     icon: Icons.verified_user_rounded,
-                    onPressed: () {
-                      ref
-                          .read(appControllerProvider.notifier)
-                          .updateRegistrationStatus(
-                            request.id,
-                            AccountStatus.verified,
-                          );
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(appControllerProvider.notifier)
+                            .updateRegistrationStatus(
+                              request.id,
+                              AccountStatus.verified,
+                            );
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Pengajuan penyedia disetujui.'),
+                          ),
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Gagal memperbarui status di Supabase.',
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
