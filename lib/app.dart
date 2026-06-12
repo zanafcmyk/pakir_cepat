@@ -1633,6 +1633,11 @@ class AppController extends StateNotifier<AppState> {
     return _paymentService.fetchLatestReceipt();
   }
 
+  Future<SupabaseProviderDashboardSummary>
+  fetchProviderDashboardSummaryFromSupabase() {
+    return _parkingService.fetchCurrentProviderDashboardSummary();
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -9792,11 +9797,29 @@ class _CustomerCompactButton extends StatelessWidget {
   }
 }
 
-class AdminDashboardScreen extends ConsumerWidget {
+class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminDashboardScreen> createState() =>
+      _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
+  late Future<SupabaseProviderDashboardSummary> _summaryFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final controller = ref.read(appControllerProvider.notifier);
+    _summaryFuture = controller.fetchProviderDashboardSummaryFromSupabase();
+    Future.microtask(
+      () => controller.loadParkingDataFromSupabase().catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final occupiedSlots = state.slots.where((slot) => !slot.isAvailable).length;
     return AdminShell(
@@ -9814,47 +9837,58 @@ class AdminDashboardScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 18),
-          Wrap(
-            spacing: 14,
-            runSpacing: 14,
-            children: [
-              StatCard(
-                label: 'Kendaraan masuk',
-                value: '182',
-                accent: AppTheme.blue,
-                icon: Icons.directions_car_rounded,
-                onTap: () => context.push('/provider/transaction-detail'),
-              ),
-              StatCard(
-                label: 'Pendapatan hari ini',
-                value: 'Rp 8,4 jt',
-                accent: AppTheme.emerald,
-                icon: Icons.trending_up_rounded,
-                onTap: () => context.push('/provider/daily-revenue'),
-              ),
-              StatCard(
-                label: 'Slot tersedia',
-                value:
-                    '${state.slots.where((slot) => slot.isAvailable).length}',
-                accent: AppTheme.slate,
-                icon: Icons.local_parking_rounded,
-                onTap: () => context.push('/provider/manage-slots'),
-              ),
-              StatCard(
-                label: 'Slot aktif',
-                value: '$occupiedSlots',
-                accent: AppTheme.blue,
-                icon: Icons.timelapse_rounded,
-                onTap: () => context.push('/provider/manage-slots'),
-              ),
-              StatCard(
-                label: 'Multi cabang',
-                value: '${state.lots.length}',
-                accent: AppTheme.emerald,
-                icon: Icons.apartment_rounded,
-                onTap: () => context.push('/provider/map'),
-              ),
-            ],
+          FutureBuilder<SupabaseProviderDashboardSummary>(
+            future: _summaryFuture,
+            builder: (context, snapshot) {
+              final summary =
+                  snapshot.data ??
+                  const SupabaseProviderDashboardSummary(
+                    vehiclesEnteredToday: 0,
+                    revenueToday: 0,
+                  );
+              return Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  StatCard(
+                    label: 'Kendaraan masuk',
+                    value: '${summary.vehiclesEnteredToday}',
+                    accent: AppTheme.blue,
+                    icon: Icons.directions_car_rounded,
+                    onTap: () => context.push('/provider/transaction-detail'),
+                  ),
+                  StatCard(
+                    label: 'Pendapatan hari ini',
+                    value: formatCurrency(summary.revenueToday),
+                    accent: AppTheme.emerald,
+                    icon: Icons.trending_up_rounded,
+                    onTap: () => context.push('/provider/daily-revenue'),
+                  ),
+                  StatCard(
+                    label: 'Slot tersedia',
+                    value:
+                        '${state.slots.where((slot) => slot.isAvailable).length}',
+                    accent: AppTheme.slate,
+                    icon: Icons.local_parking_rounded,
+                    onTap: () => context.push('/provider/manage-slots'),
+                  ),
+                  StatCard(
+                    label: 'Slot aktif',
+                    value: '$occupiedSlots',
+                    accent: AppTheme.blue,
+                    icon: Icons.timelapse_rounded,
+                    onTap: () => context.push('/provider/manage-slots'),
+                  ),
+                  StatCard(
+                    label: 'Multi cabang',
+                    value: '${state.lots.length}',
+                    accent: AppTheme.emerald,
+                    icon: Icons.apartment_rounded,
+                    onTap: () => context.push('/provider/map'),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
           SectionTitle(

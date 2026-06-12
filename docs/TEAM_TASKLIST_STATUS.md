@@ -46,10 +46,11 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Upload foto lahan parkir penyedia ke Supabase Storage.
 - [x] Onboarding tersimpan lokal permanen di device dengan `SharedPreferences`.
 - [x] Dashboard customer memuat ulang data utama dari Supabase saat dibuka.
+- [x] Dashboard penyedia membaca kendaraan masuk dan pendapatan hari ini dari Supabase.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] UI dashboard penyedia sudah ada, tetapi sebagian data statistik/laporan masih belum query Supabase penuh.
+- [ ] UI dashboard penyedia sudah ada, tetapi statistik/laporan lanjutan masih belum query Supabase penuh.
 - [ ] UI dashboard penjaga sudah ada, tetapi perlu diperketat dengan role guard dan data assignment.
 - [ ] UI dashboard super admin sudah ada, tetapi sebagian aksi user management belum tersimpan penuh ke Supabase.
 - [ ] Statistik penyedia sebagian masih pakai data lokal/state.
@@ -69,6 +70,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - Onboarding sudah tidak hanya state lokal sementara. Status selesai onboarding sekarang tersimpan di device dengan `SharedPreferences`.
 - Dashboard customer sudah refresh data utama dari Supabase saat dibuka: lokasi/slot, kendaraan, booking aktif, riwayat, favorit, dan notifikasi. Search/filter lokasi masih belum production.
+- Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini dan pendapatan hari ini. Grafik, financial report, daily revenue detail, dan provider statistics masih perlu query agregasi lanjutan.
 - Dashboard penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
 - Statistik dan laporan penyedia/super admin masih perlu query agregasi Supabase khusus.
 - Monitoring kendaraan penyedia masih perlu dipastikan memakai data booking/slot Supabase penuh.
@@ -143,6 +145,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edit profil penyedia ke Supabase.
 - [x] Avatar penyedia upload dan load dari Supabase.
 - [x] Foto lahan parkir penyedia upload ke Supabase Storage.
+- [x] Dashboard penyedia membaca ringkasan kendaraan masuk dan pendapatan hari ini dari Supabase.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 

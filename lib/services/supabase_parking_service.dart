@@ -12,6 +12,16 @@ class SupabaseParkingData {
   final List<ParkingSlot> slots;
 }
 
+class SupabaseProviderDashboardSummary {
+  const SupabaseProviderDashboardSummary({
+    required this.vehiclesEnteredToday,
+    required this.revenueToday,
+  });
+
+  final int vehiclesEnteredToday;
+  final int revenueToday;
+}
+
 class SupabaseParkingService {
   SupabaseParkingService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
@@ -89,6 +99,86 @@ class SupabaseParkingService {
     ];
 
     return SupabaseParkingData(lots: lots, slots: slots);
+  }
+
+  Future<SupabaseProviderDashboardSummary>
+  fetchCurrentProviderDashboardSummary() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const SupabaseProviderDashboardSummary(
+        vehiclesEnteredToday: 0,
+        revenueToday: 0,
+      );
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+
+    if (providerRows.isEmpty) {
+      return const SupabaseProviderDashboardSummary(
+        vehiclesEnteredToday: 0,
+        revenueToday: 0,
+      );
+    }
+
+    final providerId = providerRows.first['id'] as String?;
+    if (providerId == null) {
+      return const SupabaseProviderDashboardSummary(
+        vehiclesEnteredToday: 0,
+        revenueToday: 0,
+      );
+    }
+
+    final lotRows = await _client
+        .from('parking_lots')
+        .select('id')
+        .eq('provider_id', providerId);
+    final lotIds = [
+      for (final row in lotRows)
+        if (row['id'] != null) row['id'] as String,
+    ];
+
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderDashboardSummary(
+        vehiclesEnteredToday: 0,
+        revenueToday: 0,
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayRows = await _client
+        .from('bookings')
+        .select('status, estimated_cost, final_cost, checked_in_at')
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', todayStart.toIso8601String());
+
+    var vehiclesEnteredToday = 0;
+    var revenueToday = 0;
+
+    for (final row in todayRows) {
+      final status = row['status'] as String?;
+      if (row['checked_in_at'] != null ||
+          status == 'active' ||
+          status == 'completed') {
+        vehiclesEnteredToday++;
+      }
+
+      if (status == 'paid' || status == 'active' || status == 'completed') {
+        revenueToday +=
+            (row['final_cost'] as num?)?.toInt() ??
+            (row['estimated_cost'] as num?)?.toInt() ??
+            0;
+      }
+    }
+
+    return SupabaseProviderDashboardSummary(
+      vehiclesEnteredToday: vehiclesEnteredToday,
+      revenueToday: revenueToday,
+    );
   }
 
   ParkingLot _parkingLotFromRow(
