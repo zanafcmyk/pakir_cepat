@@ -20,6 +20,7 @@ import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_guard_service.dart';
 import 'services/supabase_notification_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
@@ -1273,6 +1274,7 @@ class AppController extends StateNotifier<AppState> {
   final SupabasePaymentService _paymentService = SupabasePaymentService();
   final SupabaseNotificationService _notificationService =
       SupabaseNotificationService();
+  final SupabaseGuardService _guardService = SupabaseGuardService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1532,6 +1534,21 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
+  Future<void> loadProviderGuardsFromSupabase() async {
+    final guards = await _guardService.fetchCurrentProviderGuards();
+    state = state.copyWith(parkingGuards: guards);
+  }
+
+  Future<void> loadCurrentGuardFromSupabase() async {
+    final guard = await _guardService.fetchCurrentGuardAccount();
+    if (guard == null) {
+      state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+      return;
+    }
+
+    state = state.copyWith(parkingGuards: [guard], activeGuardId: guard.id);
+  }
+
   Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
     return _paymentService.fetchLatestReceipt();
   }
@@ -1551,7 +1568,8 @@ class AppController extends StateNotifier<AppState> {
               : state.accountStatus)
         : AccountStatus.verified);
     final guardId = mode == AccountMode.parkingGuard
-        ? (state.activeGuardId ?? state.parkingGuards.first.id)
+        ? (state.activeGuardId ??
+              (state.parkingGuards.isEmpty ? null : state.parkingGuards.first.id))
         : null;
     state = state.copyWith(
       currentMode: mode,
@@ -1608,7 +1626,7 @@ class AppController extends StateNotifier<AppState> {
           ? AccountStatus.pending
           : AccountStatus.verified,
       activeGuardId: mode == AccountMode.parkingGuard
-          ? state.parkingGuards.first.id
+          ? (state.parkingGuards.isEmpty ? null : state.parkingGuards.first.id)
           : null,
       clearActiveGuard: mode != AccountMode.parkingGuard,
       providerApplication: providerApplication,
@@ -1647,13 +1665,14 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(
       currentMode: mode,
       activeGuardId: mode == AccountMode.parkingGuard
-          ? (state.activeGuardId ?? state.parkingGuards.first.id)
+          ? (state.activeGuardId ??
+                (state.parkingGuards.isEmpty ? null : state.parkingGuards.first.id))
           : null,
       clearActiveGuard: mode != AccountMode.parkingGuard,
     );
   }
 
-  void createParkingGuard({
+  Future<void> createParkingGuard({
     required String name,
     required String email,
     required String phoneNumber,
@@ -1661,22 +1680,26 @@ class AppController extends StateNotifier<AppState> {
     required bool canScanQr,
     required bool canConfirmCash,
     required bool canManageSlots,
-  }) {
-    final guard = ParkingGuardAccount(
-      id: 'guard-${state.parkingGuards.length + 1}',
+  }) async {
+    final guard = await _guardService.linkExistingGuard(
       name: name,
       email: email,
       phoneNumber: phoneNumber,
-      providerId: 'provider-main',
       assignedLotIds: assignedLotIds,
       canScanQr: canScanQr,
       canConfirmCash: canConfirmCash,
       canManageSlots: canManageSlots,
     );
-    state = state.copyWith(parkingGuards: [guard, ...state.parkingGuards]);
+    state = state.copyWith(
+      parkingGuards: [
+        guard,
+        for (final item in state.parkingGuards)
+          if (item.id != guard.id) item,
+      ],
+    );
   }
 
-  void updateParkingGuard({
+  Future<void> updateParkingGuard({
     required String id,
     required String name,
     required String email,
@@ -1684,29 +1707,36 @@ class AppController extends StateNotifier<AppState> {
     required List<String> assignedLotIds,
     required bool canConfirmCash,
     required bool canManageSlots,
-  }) {
-    ParkingGuardAccount? updatedGuard;
-    final updatedGuards = [
-      for (final guard in state.parkingGuards)
-        if (guard.id == id)
-          updatedGuard = ParkingGuardAccount(
-            id: guard.id,
-            name: name,
-            email: email,
-            phoneNumber: phoneNumber,
-            providerId: guard.providerId,
-            assignedLotIds: assignedLotIds,
-            canScanQr: guard.canScanQr,
-            canConfirmCash: canConfirmCash,
-            canManageSlots: canManageSlots,
-          )
-        else
-          guard,
-    ];
-    if (updatedGuard == null) return;
+  }) async {
+    final currentGuard = state.parkingGuards.firstWhere(
+      (guard) => guard.id == id,
+      orElse: () => ParkingGuardAccount(
+        id: id,
+        name: name,
+        email: email,
+        phoneNumber: phoneNumber,
+        providerId: 'provider-main',
+        assignedLotIds: assignedLotIds,
+        canScanQr: true,
+        canConfirmCash: canConfirmCash,
+        canManageSlots: canManageSlots,
+      ),
+    );
+    final updatedGuard = await _guardService.linkExistingGuard(
+      name: name,
+      email: email,
+      phoneNumber: phoneNumber,
+      assignedLotIds: assignedLotIds,
+      canScanQr: currentGuard.canScanQr,
+      canConfirmCash: canConfirmCash,
+      canManageSlots: canManageSlots,
+    );
 
     state = state.copyWith(
-      parkingGuards: updatedGuards,
+      parkingGuards: [
+        for (final guard in state.parkingGuards)
+          if (guard.id == id) updatedGuard else guard,
+      ],
       adminNotifications: [
         NoticeItem(
           title: 'Akun penjaga diperbarui',
@@ -1720,7 +1750,8 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void deleteParkingGuard(String id) {
+  Future<void> deleteParkingGuard(String id) async {
+    await _guardService.unlinkGuard(id);
     final updatedGuards = state.parkingGuards
         .where((guard) => guard.id != id)
         .toList();
@@ -3511,6 +3542,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
+    if (_mode == AccountMode.parkingGuard) {
+      await _submitGuardLogin(controller);
+      return;
+    }
+
     controller.login(
       mode: _mode,
       email: _emailController.text,
@@ -3738,6 +3774,86 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _submitGuardLogin(AppController controller) async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password penjaga wajib diisi.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showLoginMessage('Login penjaga gagal. Coba lagi.');
+        return;
+      }
+
+      final profile = await supabase
+          .from('profiles')
+          .select('id, email, role, access_status')
+          .eq('id', user.id)
+          .single();
+
+      if (profile['role'] != 'parking_guard') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun ini bukan akun penjaga.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun penjaga sedang dinonaktifkan.');
+        return;
+      }
+
+      controller.login(
+        mode: AccountMode.parkingGuard,
+        email: email,
+        phoneNumber: _phoneController.text,
+        rememberMe: _rememberMe,
+      );
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
+
+      final guard = activeGuard(ref.read(appControllerProvider));
+      if (guard == null) {
+        await supabase.auth.signOut();
+        _showLoginMessage(
+          'Akun penjaga belum dihubungkan oleh penyedia parkir.',
+        );
+        return;
+      }
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage(
+        'Tidak bisa login penjaga. Cek email, password, dan koneksi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _showLoginMessage(String message) {
     if (!mounted) {
       return;
@@ -3887,6 +4003,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           if (_mode == AccountMode.customer ||
               _mode == AccountMode.provider ||
+              _mode == AccountMode.parkingGuard ||
               _mode == AccountMode.superAdmin) ...[
             const SizedBox(height: 16),
             TextField(
@@ -3895,16 +4012,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               decoration: const InputDecoration(
                 labelText: 'Password',
                 prefixIcon: Icon(Icons.lock_outline_rounded),
-              ),
-            ),
-          ],
-          if (_mode == AccountMode.parkingGuard) ...[
-            const SizedBox(height: 16),
-            TextField(
-              controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Nomor HP',
-                prefixIcon: Icon(Icons.phone_iphone_rounded),
               ),
             ),
           ],
@@ -4031,6 +4138,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (_mode == AccountMode.provider) {
       await _submitProviderRegister();
+      return;
+    }
+
+    if (_mode == AccountMode.parkingGuard) {
+      await _submitGuardRegister();
       return;
     }
 
@@ -4276,6 +4388,87 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
+  Future<void> _submitGuardRegister() async {
+    final fullName = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phoneNumber = _phoneController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (fullName.isEmpty || email.isEmpty || password.isEmpty) {
+      _showRegisterMessage('Nama, email, dan password penjaga wajib diisi.');
+      return;
+    }
+
+    if (password != confirmPassword) {
+      _showRegisterMessage('Konfirmasi password belum sama.');
+      return;
+    }
+
+    if (password.length < 6) {
+      _showRegisterMessage('Password minimal 6 karakter.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {'full_name': fullName, 'role': 'parking_guard'},
+      );
+      final user = authResponse.user;
+
+      if (user == null) {
+        _showRegisterMessage(
+          'Pendaftaran penjaga perlu konfirmasi email terlebih dahulu.',
+        );
+        return;
+      }
+
+      await supabase.from('profiles').upsert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': email,
+        'phone_number': phoneNumber,
+        'role': 'parking_guard',
+        'account_status': 'verified',
+        'access_status': 'active',
+        'verified_at': DateTime.now().toIso8601String(),
+      });
+
+      ref
+          .read(appControllerProvider.notifier)
+          .register(
+            fullName: fullName,
+            email: email,
+            phoneNumber: phoneNumber,
+            mode: AccountMode.parkingGuard,
+          );
+
+      _showRegisterMessage(
+        'Akun penjaga dibuat. Minta penyedia menghubungkan email ini ke lokasi parkir.',
+      );
+
+      if (!mounted) {
+        return;
+      }
+      context.go('/login');
+    } on AuthException catch (error) {
+      _showRegisterMessage(error.message);
+    } catch (_) {
+      _showRegisterMessage(
+        'Tidak bisa daftar penjaga. Cek koneksi dan coba lagi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   void _showRegisterMessage(String message) {
     if (!mounted) {
       return;
@@ -4440,7 +4633,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               icon: Icons.security_rounded,
               accent: Color(0xFFD97706),
               message:
-                  'Akun penjaga dibuat oleh penyedia parkir dan hanya melihat lokasi yang ditugaskan.',
+                  'Daftar sebagai penjaga, lalu minta penyedia menghubungkan email ini ke lokasi parkir.',
             ),
           ],
           if (_mode == AccountMode.superAdmin) ...[
@@ -9368,6 +9561,7 @@ class _ParkingGuardManagementScreenState
   final Set<String> _selectedLotIds = {};
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
+  bool _isSavingGuard = false;
   String? _editingGuardId;
 
   @override
@@ -9382,6 +9576,11 @@ class _ParkingGuardManagementScreenState
     if (lots.isNotEmpty) {
       _selectedLotIds.add(lots.first.id);
     }
+    Future.microtask(() async {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+    });
   }
 
   @override
@@ -9449,7 +9648,11 @@ class _ParkingGuardManagementScreenState
     });
   }
 
-  void _saveGuard(List<ParkingLot> lots) {
+  Future<void> _saveGuard(List<ParkingLot> lots) async {
+    if (_isSavingGuard) {
+      return;
+    }
+
     final error = _guardFormError(lots);
     if (error != null) {
       ScaffoldMessenger.of(
@@ -9460,34 +9663,52 @@ class _ParkingGuardManagementScreenState
 
     final controller = ref.read(appControllerProvider.notifier);
     final editingGuardId = _editingGuardId;
-    if (editingGuardId == null) {
-      controller.createParkingGuard(
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        phoneNumber: _phoneController.text.trim(),
-        assignedLotIds: _selectedLotIds.toList(),
-        canScanQr: false,
-        canConfirmCash: _canConfirmCash,
-        canManageSlots: _canManageSlots,
-      );
+    setState(() => _isSavingGuard = true);
+    try {
+      if (editingGuardId == null) {
+        await controller.createParkingGuard(
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          phoneNumber: _phoneController.text.trim(),
+          assignedLotIds: _selectedLotIds.toList(),
+          canScanQr: true,
+          canConfirmCash: _canConfirmCash,
+          canManageSlots: _canManageSlots,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akun penjaga berhasil dihubungkan.')),
+        );
+      } else {
+        await controller.updateParkingGuard(
+          id: editingGuardId,
+          name: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          phoneNumber: _phoneController.text.trim(),
+          assignedLotIds: _selectedLotIds.toList(),
+          canConfirmCash: _canConfirmCash,
+          canManageSlots: _canManageSlots,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akun penjaga berhasil diperbarui.')),
+        );
+      }
+      _resetGuardForm(lots);
+    } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Akun penjaga berhasil dibuat.')),
+        const SnackBar(
+          content: Text(
+            'Gagal menyimpan. Pastikan penjaga sudah daftar dan SQL guard sudah dijalankan.',
+          ),
+        ),
       );
-    } else {
-      controller.updateParkingGuard(
-        id: editingGuardId,
-        name: _nameController.text.trim(),
-        email: _emailController.text.trim(),
-        phoneNumber: _phoneController.text.trim(),
-        assignedLotIds: _selectedLotIds.toList(),
-        canConfirmCash: _canConfirmCash,
-        canManageSlots: _canManageSlots,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Akun penjaga berhasil diperbarui.')),
-      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingGuard = false);
+      }
     }
-    _resetGuardForm(lots);
   }
 
   Future<void> _confirmDeleteGuard(ParkingGuardAccount guard) async {
@@ -9513,11 +9734,22 @@ class _ParkingGuardManagementScreenState
     );
     if (confirmed != true || !mounted) return;
 
-    ref.read(appControllerProvider.notifier).deleteParkingGuard(guard.id);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .deleteParkingGuard(guard.id);
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Gagal menghapus penjaga dari Supabase.')),
+      );
+      return;
+    }
     if (_editingGuardId == guard.id) {
       _resetGuardForm(visibleLotsFor(ref.read(appControllerProvider)));
     }
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(content: Text('Akun ${guard.name} berhasil dihapus.')),
     );
   }
@@ -9538,7 +9770,7 @@ class _ParkingGuardManagementScreenState
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _editingGuardId == null
-                        ? 'Tambah akun penjaga'
+                        ? 'Hubungkan akun penjaga'
                         : 'Edit akun penjaga',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -9561,6 +9793,13 @@ class _ParkingGuardManagementScreenState
                     labelText: 'Email login penjaga',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
+                ),
+                const SizedBox(height: 10),
+                const InlineNotice(
+                  icon: Icons.info_outline_rounded,
+                  accent: Color(0xFFD97706),
+                  message:
+                      'Penjaga harus daftar dulu dari halaman register. Penyedia cukup menghubungkan emailnya ke lokasi parkir.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -9619,13 +9858,15 @@ class _ParkingGuardManagementScreenState
                 ),
                 const SizedBox(height: 18),
                 PrimaryButton(
-                  label: _editingGuardId == null
-                      ? 'Buat akun penjaga'
+                  label: _isSavingGuard
+                      ? 'Menyimpan...'
+                      : _editingGuardId == null
+                      ? 'Hubungkan akun penjaga'
                       : 'Simpan perubahan',
                   icon: _editingGuardId == null
                       ? Icons.person_add_alt_1_rounded
                       : Icons.save_rounded,
-                  onPressed: () => _saveGuard(lots),
+                  onPressed: _isSavingGuard ? null : () => _saveGuard(lots),
                 ),
                 if (_editingGuardId != null) ...[
                   const SizedBox(height: 10),
