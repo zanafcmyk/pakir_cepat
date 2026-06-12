@@ -1426,6 +1426,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseReviewService _reviewService = SupabaseReviewService();
   final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
+  RealtimeChannel? _parkingSlotRealtimeChannel;
+  Timer? _parkingSlotRealtimeDebounce;
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1632,6 +1634,52 @@ class AppController extends StateNotifier<AppState> {
       selectedLot: selectedLot,
       slots: data.slots.isEmpty ? state.slots : data.slots,
     );
+    startParkingSlotRealtime();
+  }
+
+  void startParkingSlotRealtime() {
+    if (_parkingSlotRealtimeChannel != null) {
+      return;
+    }
+
+    _parkingSlotRealtimeChannel = Supabase.instance.client
+        .channel('public:parking_slots:realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'parking_slots',
+          callback: (_) => _scheduleParkingDataRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleParkingDataRealtimeRefresh() {
+    _parkingSlotRealtimeDebounce?.cancel();
+    _parkingSlotRealtimeDebounce = Timer(const Duration(milliseconds: 450), () {
+      unawaited(_refreshParkingDataFromRealtime());
+    });
+  }
+
+  Future<void> _refreshParkingDataFromRealtime() async {
+    try {
+      final data = await _parkingService.fetchParkingData();
+      if (!mounted || data.lots.isEmpty) {
+        return;
+      }
+
+      final selectedLot = data.lots.firstWhere(
+        (lot) => lot.id == state.selectedLot?.id,
+        orElse: () => data.lots.first,
+      );
+
+      state = state.copyWith(
+        lots: data.lots,
+        selectedLot: selectedLot,
+        slots: data.slots.isEmpty ? state.slots : data.slots,
+      );
+    } catch (_) {
+      // Realtime refresh is best-effort; manual reload still works.
+    }
   }
 
   Future<void> searchParkingLotsFromSupabase(String query) async {
@@ -3538,6 +3586,16 @@ class AppController extends StateNotifier<AppState> {
         ...state.customerNotifications,
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    _parkingSlotRealtimeDebounce?.cancel();
+    final channel = _parkingSlotRealtimeChannel;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+    super.dispose();
   }
 }
 

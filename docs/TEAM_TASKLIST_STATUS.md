@@ -67,11 +67,13 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Route protection dasar membatasi akses halaman berdasarkan role login.
 - [x] Pondasi payment gateway Midtrans siap lewat Edge Function.
 - [x] Pondasi push notification production siap lewat tabel token dan Edge Function FCM.
+- [x] Pondasi realtime slot siap lewat listener `parking_slots`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
 - [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
+- [ ] Realtime slot perlu SQL `docs/supabase_realtime_slots.sql` dijalankan di Supabase production.
 
 #### Catatan audit baris 48-66
 
@@ -107,7 +109,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [x] Role guard/route protection dasar.
 - [x] Middleware/auth redirect dasar.
-- [ ] Realtime slot.
+- [x] Realtime slot dari tabel `parking_slots` di aplikasi.
 - [ ] Realtime lokasi.
 - [ ] Realtime notifikasi.
 - [x] Super admin user management ke Supabase untuk lihat user dan aktif/nonaktif akun.
@@ -246,6 +248,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Policy RLS perlu dicek ulang per role sebelum production.
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
+- [ ] SQL realtime slot perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] Data demo/lokal perlu dipisah dari data production.
 - [ ] Error handling koneksi Supabase perlu dibuat lebih konsisten.
 - [ ] Route protection perlu audit production lanjutan setelah semua deep link final.
@@ -258,15 +261,16 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edge Function `midtrans-webhook` untuk menerima callback Midtrans.
 - [x] Edge Function `send-push-notification` untuk mengirim FCM HTTP v1.
 - [x] Tabel `device_push_tokens` disiapkan di `docs/supabase_push_notifications.sql`.
+- [x] SQL realtime slot disiapkan di `docs/supabase_realtime_slots.sql`.
 - [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
 - [x] Query agregasi laporan/statistik utama.
-- [ ] Realtime slot/lokasi/notifikasi penuh.
+- [ ] Realtime lokasi/notifikasi penuh.
 - [ ] Push notification provider production setelah Firebase config dipasang.
 
 ## Prioritas Aman Berikutnya
 
 1. Deploy Edge Function payment dan isi secret Midtrans.
 2. Pasang Firebase config agar token push notification bisa didaftarkan dari HP.
-3. Realtime slot/lokasi/notifikasi.
+3. Jalankan SQL realtime slot, lalu lanjut realtime lokasi/notifikasi.
 4. Audit production route protection dan deep link.
