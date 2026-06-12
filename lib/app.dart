@@ -29,6 +29,7 @@ import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
 import 'services/supabase_profile_service.dart';
 import 'services/supabase_review_service.dart';
+import 'services/supabase_super_admin_service.dart';
 import 'services/supabase_vehicle_service.dart';
 import 'widgets/map_embed_view.dart';
 
@@ -1311,6 +1312,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseFavoriteService _favoriteService = SupabaseFavoriteService();
   final SupabaseProfileService _profileService = SupabaseProfileService();
   final SupabaseReviewService _reviewService = SupabaseReviewService();
+  final SupabaseSuperAdminService _superAdminService =
+      SupabaseSuperAdminService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1645,6 +1648,19 @@ class AppController extends StateNotifier<AppState> {
   Future<SupabaseProviderFinancialReport>
   fetchProviderFinancialReportFromSupabase() {
     return _parkingService.fetchCurrentProviderFinancialReport();
+  }
+
+  Future<void> loadProviderMonitoringFromSupabase() async {
+    final report = await _parkingService.fetchCurrentProviderFinancialReport();
+    state = state.copyWith(history: report.transactions);
+  }
+
+  Future<SupabaseSuperAdminOverview> fetchSuperAdminOverviewFromSupabase() {
+    return _superAdminService.fetchOverview();
+  }
+
+  Future<SupabaseSuperAdminReport> fetchSuperAdminReportFromSupabase() {
+    return _superAdminService.fetchReport();
   }
 
   void login({
@@ -5228,173 +5244,203 @@ class ProviderVerificationScreen extends ConsumerWidget {
   }
 }
 
-class SuperAdminDashboardScreen extends ConsumerWidget {
+class SuperAdminDashboardScreen extends ConsumerStatefulWidget {
   const SuperAdminDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SuperAdminDashboardScreen> createState() =>
+      _SuperAdminDashboardScreenState();
+}
+
+class _SuperAdminDashboardScreenState
+    extends ConsumerState<SuperAdminDashboardScreen> {
+  late Future<SupabaseSuperAdminOverview> _overviewFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _overviewFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchSuperAdminOverviewFromSupabase();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadComplaintsFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final pendingVerifications = state.registrationRequests
-        .where((request) => request.status == AccountStatus.pending)
-        .length;
-    final waitingComplaints = state.complaints
-        .where((complaint) => complaint.status == ComplaintStatus.waiting)
-        .length;
-    final suspendedUsers = state.managedUsers
-        .where((user) => user.status == UserAccessStatus.suspended)
-        .length;
     return SuperAdminShell(
       currentIndex: 0,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-        children: [
-          const HeaderSection(
-            title: 'Super Admin',
-            subtitle:
-                'Pantau pengguna, verifikasi akun, laporan lintas lokasi, transaksi, dan komplain.',
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 14,
-            runSpacing: 14,
+      child: FutureBuilder<SupabaseSuperAdminOverview>(
+        future: _overviewFuture,
+        builder: (context, snapshot) {
+          final overview =
+              snapshot.data ??
+              const SupabaseSuperAdminOverview(
+                customerCount: 0,
+                providerCount: 0,
+                guardCount: 0,
+                pendingVerificationCount: 0,
+                suspendedUserCount: 0,
+                waitingComplaintCount: 0,
+                activeLotCount: 0,
+                activeVehicleCount: 0,
+                totalTransactionCount: 0,
+                totalRevenue: 0,
+              );
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
-              StatCard(
-                label: 'Pelanggan',
-                value:
-                    '${state.managedUsers.where((user) => user.role == AccountMode.customer).length}',
-                accent: AppTheme.blue,
-                icon: Icons.groups_rounded,
+              const HeaderSection(
+                title: 'Super Admin',
+                subtitle:
+                    'Pantau pengguna, verifikasi akun, laporan lintas lokasi, transaksi, dan komplain.',
               ),
-              StatCard(
-                label: 'Penyedia',
-                value:
-                    '${state.managedUsers.where((user) => user.role == AccountMode.provider).length}',
-                accent: AppTheme.emerald,
-                icon: Icons.apartment_rounded,
-              ),
-              StatCard(
-                label: 'Penjaga',
-                value:
-                    '${state.managedUsers.where((user) => user.role == AccountMode.parkingGuard).length}',
-                accent: const Color(0xFFD97706),
-                icon: Icons.security_rounded,
-              ),
-              StatCard(
-                label: 'Pending verifikasi',
-                value: '$pendingVerifications',
-                accent: AppTheme.ink,
-                icon: Icons.verified_user_rounded,
-              ),
-              StatCard(
-                label: 'Akun nonaktif',
-                value: '$suspendedUsers',
-                accent: const Color(0xFFD97706),
-                icon: Icons.block_rounded,
-              ),
-              StatCard(
-                label: 'Komplain menunggu',
-                value: '$waitingComplaints',
-                accent: AppTheme.blue,
-                icon: Icons.mark_chat_unread_rounded,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          SectionTitle(
-            title: 'Notifikasi super admin',
-            action: 'User',
-            onTap: () => context.push('/super-admin/users'),
-          ),
-          const SizedBox(height: 12),
-          ...state.superAdminNotifications
-              .take(2)
-              .map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: MiniInfoTile(
-                    icon: item.icon,
-                    iconColor: item.accent,
-                    title: item.title,
-                    subtitle: '${item.message} - ${item.timeLabel}',
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  StatCard(
+                    label: 'Pelanggan',
+                    value: '${overview.customerCount}',
+                    accent: AppTheme.blue,
+                    icon: Icons.groups_rounded,
                   ),
-                ),
-              ),
-          const SizedBox(height: 8),
-          SectionTitle(
-            title: 'Data penting ekosistem',
-            action: 'Laporan',
-            onTap: () => context.push('/super-admin/reports'),
-          ),
-          const SizedBox(height: 12),
-          PremiumCard(
-            child: Column(
-              children: [
-                SummaryRow(
-                  label: 'Total transaksi',
-                  value: '${state.history.length}',
-                ),
-                SummaryRow(
-                  label: 'Lokasi parkir aktif',
-                  value: '${state.lots.length}',
-                ),
-                SummaryRow(
-                  label: 'Kendaraan aktif',
-                  value: state.activeBooking == null ? '0' : '1',
-                ),
-                SummaryRow(
-                  label: 'Pendapatan tercatat',
-                  value: formatCurrency(
-                    state.history.fold(0, (total, item) => total + item.total),
+                  StatCard(
+                    label: 'Penyedia',
+                    value: '${overview.providerCount}',
+                    accent: AppTheme.emerald,
+                    icon: Icons.apartment_rounded,
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SectionTitle(title: 'Aksi cepat'),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              ActionCard(
-                label: 'Kelola pengguna',
-                icon: Icons.manage_accounts_rounded,
-                accent: AppTheme.blueSoft,
+                  StatCard(
+                    label: 'Penjaga',
+                    value: '${overview.guardCount}',
+                    accent: const Color(0xFFD97706),
+                    icon: Icons.security_rounded,
+                  ),
+                  StatCard(
+                    label: 'Pending verifikasi',
+                    value: '${overview.pendingVerificationCount}',
+                    accent: AppTheme.ink,
+                    icon: Icons.verified_user_rounded,
+                  ),
+                  StatCard(
+                    label: 'Akun nonaktif',
+                    value: '${overview.suspendedUserCount}',
+                    accent: const Color(0xFFD97706),
+                    icon: Icons.block_rounded,
+                  ),
+                  StatCard(
+                    label: 'Komplain menunggu',
+                    value: '${overview.waitingComplaintCount}',
+                    accent: AppTheme.blue,
+                    icon: Icons.mark_chat_unread_rounded,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SectionTitle(
+                title: 'Notifikasi super admin',
+                action: 'User',
                 onTap: () => context.push('/super-admin/users'),
               ),
-              ActionCard(
-                label: 'Komplain',
-                icon: Icons.support_agent_rounded,
-                accent: AppTheme.emeraldSoft,
-                onTap: () => context.push('/super-admin/complaints'),
-              ),
-              ActionCard(
-                label: 'Nonaktifkan akun',
-                icon: Icons.block_rounded,
-                accent: AppTheme.blueSoft,
-                onTap: () {
-                  final hasActiveUser = ref
-                      .read(appControllerProvider)
-                      .managedUsers
-                      .any((user) => user.status == UserAccessStatus.active);
-                  ref
-                      .read(appControllerProvider.notifier)
-                      .suspendFirstActiveManagedUser();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        hasActiveUser
-                            ? 'Akun aktif pertama berhasil dinonaktifkan.'
-                            : 'Tidak ada akun aktif yang bisa dinonaktifkan.',
+              const SizedBox(height: 12),
+              ...state.superAdminNotifications
+                  .take(2)
+                  .map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: MiniInfoTile(
+                        icon: item.icon,
+                        iconColor: item.accent,
+                        title: item.title,
+                        subtitle: '${item.message} - ${item.timeLabel}',
                       ),
                     ),
-                  );
-                },
+                  ),
+              const SizedBox(height: 8),
+              SectionTitle(
+                title: 'Data penting ekosistem',
+                action: 'Laporan',
+                onTap: () => context.push('/super-admin/reports'),
+              ),
+              const SizedBox(height: 12),
+              PremiumCard(
+                child: Column(
+                  children: [
+                    SummaryRow(
+                      label: 'Total transaksi',
+                      value: '${overview.totalTransactionCount}',
+                    ),
+                    SummaryRow(
+                      label: 'Lokasi parkir aktif',
+                      value: '${overview.activeLotCount}',
+                    ),
+                    SummaryRow(
+                      label: 'Kendaraan aktif',
+                      value: '${overview.activeVehicleCount}',
+                    ),
+                    SummaryRow(
+                      label: 'Pendapatan tercatat',
+                      value: formatCurrency(overview.totalRevenue),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SectionTitle(title: 'Aksi cepat'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  ActionCard(
+                    label: 'Kelola pengguna',
+                    icon: Icons.manage_accounts_rounded,
+                    accent: AppTheme.blueSoft,
+                    onTap: () => context.push('/super-admin/users'),
+                  ),
+                  ActionCard(
+                    label: 'Komplain',
+                    icon: Icons.support_agent_rounded,
+                    accent: AppTheme.emeraldSoft,
+                    onTap: () => context.push('/super-admin/complaints'),
+                  ),
+                  ActionCard(
+                    label: 'Nonaktifkan akun',
+                    icon: Icons.block_rounded,
+                    accent: AppTheme.blueSoft,
+                    onTap: () {
+                      final hasActiveUser = ref
+                          .read(appControllerProvider)
+                          .managedUsers
+                          .any(
+                            (user) => user.status == UserAccessStatus.active,
+                          );
+                      ref
+                          .read(appControllerProvider.notifier)
+                          .suspendFirstActiveManagedUser();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            hasActiveUser
+                                ? 'Akun aktif pertama berhasil dinonaktifkan.'
+                                : 'Tidak ada akun aktif yang bisa dinonaktifkan.',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -5474,75 +5520,118 @@ class SuperAdminUsersScreen extends ConsumerWidget {
   }
 }
 
-class SuperAdminReportsScreen extends ConsumerWidget {
+class SuperAdminReportsScreen extends ConsumerStatefulWidget {
   const SuperAdminReportsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
+  ConsumerState<SuperAdminReportsScreen> createState() =>
+      _SuperAdminReportsScreenState();
+}
+
+class _SuperAdminReportsScreenState
+    extends ConsumerState<SuperAdminReportsScreen> {
+  late Future<SupabaseSuperAdminReport> _reportFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchSuperAdminReportFromSupabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return SuperAdminShell(
       currentIndex: 2,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-        children: [
-          const HeaderSection(
-            title: 'Laporan semua lokasi',
-            subtitle: 'Transaksi dan performa seluruh lokasi parkir.',
-          ),
-          const SizedBox(height: 18),
-          PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
-          const SizedBox(height: 18),
-          Row(
+      child: FutureBuilder<SupabaseSuperAdminReport>(
+        future: _reportFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final report =
+              snapshot.data ??
+              const SupabaseSuperAdminReport(transactions: [], chartPoints: []);
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Export PDF',
-                  icon: Icons.picture_as_pdf_rounded,
-                  onPressed: () {
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .prepareSuperAdminReport('PDF');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Laporan PDF Super Admin siap.'),
-                      ),
-                    );
-                  },
+              const HeaderSection(
+                title: 'Laporan semua lokasi',
+                subtitle: 'Transaksi dan performa seluruh lokasi parkir.',
+              ),
+              const SizedBox(height: 18),
+              PremiumCard(
+                child: SizedBox(
+                  height: 220,
+                  child: RevenueChart(points: report.chartPoints),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Export Excel',
-                  icon: Icons.table_view_rounded,
-                  onPressed: () {
-                    ref
-                        .read(appControllerProvider.notifier)
-                        .prepareSuperAdminReport('Excel');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Laporan Excel Super Admin siap.'),
-                      ),
-                    );
-                  },
-                ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: SecondaryButton(
+                      label: 'Export PDF',
+                      icon: Icons.picture_as_pdf_rounded,
+                      onPressed: () {
+                        ref
+                            .read(appControllerProvider.notifier)
+                            .prepareSuperAdminReport('PDF');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Laporan PDF Super Admin siap.'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SecondaryButton(
+                      label: 'Export Excel',
+                      icon: Icons.table_view_rounded,
+                      onPressed: () {
+                        ref
+                            .read(appControllerProvider.notifier)
+                            .prepareSuperAdminReport('Excel');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Laporan Excel Super Admin siap.'),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 18),
+              if (report.transactions.isEmpty)
+                const EmptyStateCard(
+                  title: 'Belum ada transaksi',
+                  body:
+                      'Transaksi semua lokasi dari Supabase akan tampil di sini.',
+                  actionLabel: 'Kembali',
+                  onPressed: _noop,
+                )
+              else
+                ...report.transactions.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: MiniInfoTile(
+                      icon: Icons.receipt_long_rounded,
+                      iconColor: AppTheme.emerald,
+                      title: item.id,
+                      subtitle:
+                          '${item.locationName} - ${formatCurrency(item.total)}',
+                    ),
+                  ),
+                ),
             ],
-          ),
-          const SizedBox(height: 18),
-          ...state.history.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: MiniInfoTile(
-                icon: Icons.receipt_long_rounded,
-                iconColor: AppTheme.emerald,
-                title: item.id,
-                subtitle:
-                    '${item.locationName} - ${formatCurrency(item.total)}',
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -10789,11 +10878,29 @@ class ParkingGuardAccountCard extends StatelessWidget {
   }
 }
 
-class VehicleMonitoringScreen extends ConsumerWidget {
+class VehicleMonitoringScreen extends ConsumerStatefulWidget {
   const VehicleMonitoringScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VehicleMonitoringScreen> createState() =>
+      _VehicleMonitoringScreenState();
+}
+
+class _VehicleMonitoringScreenState
+    extends ConsumerState<VehicleMonitoringScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadProviderMonitoringFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final history = ref.watch(appControllerProvider).history;
     return AdminShell(
       currentIndex: 2,
@@ -12502,15 +12609,40 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
   }
 }
 
-class ParkingGuardDashboardScreen extends ConsumerWidget {
+class ParkingGuardDashboardScreen extends ConsumerStatefulWidget {
   const ParkingGuardDashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ParkingGuardDashboardScreen> createState() =>
+      _ParkingGuardDashboardScreenState();
+}
+
+class _ParkingGuardDashboardScreenState
+    extends ConsumerState<ParkingGuardDashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final guard = activeGuard(state);
     final lots = visibleLotsFor(state);
-    final availableSlots = state.slots.where((slot) => slot.isAvailable).length;
+    final availableSlots = lots.fold<int>(
+      0,
+      (total, lot) => total + lot.availableSlots,
+    );
+    final totalSlots = lots.fold<int>(
+      0,
+      (total, lot) => total + lot.totalSlots,
+    );
+    final occupiedSlots = math.max(0, totalSlots - availableSlots);
     return GuardShell(
       currentIndex: 0,
       floatingActionButton: FloatingActionButton.extended(
@@ -12551,7 +12683,7 @@ class ParkingGuardDashboardScreen extends ConsumerWidget {
               ),
               StatCard(
                 label: 'Slot penuh',
-                value: '${state.slots.length - availableSlots}',
+                value: '$occupiedSlots',
                 accent: const Color(0xFFD97706),
                 icon: Icons.block_rounded,
                 onTap: () => context.push('/guard/occupied-slots'),
