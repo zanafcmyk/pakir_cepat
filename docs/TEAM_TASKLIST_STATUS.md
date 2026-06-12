@@ -45,10 +45,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Forgot password mengirim link reset lewat Supabase.
 - [x] Upload foto lahan parkir penyedia ke Supabase Storage.
 - [x] Onboarding tersimpan lokal permanen di device dengan `SharedPreferences`.
+- [x] Dashboard customer memuat ulang data utama dari Supabase saat dibuka.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] UI dashboard customer sudah ada, tetapi sebagian data masih perlu dicek integrasi Supabase.
 - [ ] UI dashboard penyedia sudah ada, tetapi sebagian data statistik/laporan masih belum query Supabase penuh.
 - [ ] UI dashboard penjaga sudah ada, tetapi perlu diperketat dengan role guard dan data assignment.
 - [ ] UI dashboard super admin sudah ada, tetapi sebagian aksi user management belum tersimpan penuh ke Supabase.
@@ -68,7 +68,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Catatan audit baris 48-66
 
 - Onboarding sudah tidak hanya state lokal sementara. Status selesai onboarding sekarang tersimpan di device dengan `SharedPreferences`.
-- Dashboard customer, penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
+- Dashboard customer sudah refresh data utama dari Supabase saat dibuka: lokasi/slot, kendaraan, booking aktif, riwayat, favorit, dan notifikasi. Search/filter lokasi masih belum production.
+- Dashboard penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
 - Statistik dan laporan penyedia/super admin masih perlu query agregasi Supabase khusus.
 - Monitoring kendaraan penyedia masih perlu dipastikan memakai data booking/slot Supabase penuh.
 - Forgot password sudah diganti dari simulasi OTP menjadi pengiriman link reset lewat Supabase. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
@@ -207,10 +208,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pengaturan akun customer tersimpan ke Supabase.
 - [x] Forgot password mengirim link reset lewat Supabase.
 - [x] Onboarding tersimpan di device dan tidak muncul ulang setelah selesai.
+- [x] Dashboard customer memuat data utama dari Supabase saat halaman dibuka.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Dashboard customer sebagian perlu dicek integrasi datanya.
 - [ ] Delete account masih reset state lokal.
 - [ ] Payment masih demo.
 - [ ] Nota/receipt print/export masih UI/demo.

@@ -5983,11 +5983,45 @@ Future<void> _showComplaintReplyDialog(
   }
 }
 
-class CustomerHomeScreen extends ConsumerWidget {
+class CustomerHomeScreen extends ConsumerStatefulWidget {
   const CustomerHomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
+  bool _isRefreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_refreshDashboardData);
+  }
+
+  Future<void> _refreshDashboardData() async {
+    if (_isRefreshing) {
+      return;
+    }
+
+    setState(() => _isRefreshing = true);
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadParkingDataFromSupabase().catchError((_) {});
+    await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
+    await controller.loadActiveBookingFromSupabase().catchError((_) {});
+    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+    await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
+    await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+      (_) {},
+    );
+
+    if (mounted) {
+      setState(() => _isRefreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     void openLotDetail(ParkingLot lot) {
       ref.read(appControllerProvider.notifier).selectLot(lot);
@@ -5997,6 +6031,47 @@ class CustomerHomeScreen extends ConsumerWidget {
     void startBooking(ParkingLot lot) {
       ref.read(appControllerProvider.notifier).selectLot(lot);
       context.push('/customer/booking');
+    }
+
+    final lots = state.lots;
+    final activeBooking = state.activeBooking;
+    final totalAvailableSlots = lots.fold<int>(
+      0,
+      (total, lot) => total + lot.availableSlots,
+    );
+    final customerFirstName = state.customerName.trim().isEmpty
+        ? state.userName.split(' ').first
+        : state.customerName.trim().split(' ').first;
+
+    if (lots.isEmpty) {
+      return CustomerShell(
+        currentIndex: 0,
+        child: RefreshIndicator(
+          onRefresh: _refreshDashboardData,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+            children: [
+              HeaderSection(
+                title: 'Halo, $customerFirstName',
+                subtitle: _isRefreshing
+                    ? 'Memuat lokasi parkir dari Supabase...'
+                    : 'Data lokasi parkir belum tersedia.',
+                trailing: _CustomerDashboardAvatar(
+                  bytes: state.customerAvatarBytes,
+                ),
+              ),
+              const SizedBox(height: 18),
+              EmptyStateCard(
+                title: 'Belum ada lokasi parkir',
+                body:
+                    'Lokasi parkir akan tampil di sini setelah data Supabase tersedia.',
+                actionLabel: 'Muat ulang',
+                onPressed: _refreshDashboardData,
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     final cheapestLot = state.lots.reduce(
@@ -6023,15 +6098,60 @@ class CustomerHomeScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
           HeaderSection(
-            title: 'Halo, ${state.userName.split(' ').first}',
-            subtitle: 'Lokasi Anda saat ini: Jakarta Pusat',
-            trailing: const CircleAvatar(
-              radius: 26,
-              backgroundColor: AppTheme.blueSoft,
-              child: Icon(Icons.person_rounded, color: AppTheme.blue),
+            title: 'Halo, $customerFirstName',
+            subtitle: _isRefreshing
+                ? 'Menyinkronkan dashboard dari Supabase...'
+                : '$totalAvailableSlots slot tersedia dari ${lots.length} lokasi',
+            trailing: _CustomerDashboardAvatar(
+              bytes: state.customerAvatarBytes,
             ),
           ),
           const SizedBox(height: 18),
+          if (activeBooking != null) ...[
+            PremiumCard(
+              accent: AppTheme.blueSoft,
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: AppTheme.blue.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.confirmation_number_rounded,
+                      color: AppTheme.blue,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Booking aktif ${activeBooking.ticketNumber}',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${activeBooking.locationName} • ${activeBooking.slotCode}',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppTheme.slate),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push('/customer/tickets'),
+                    child: const Text('Lihat'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           const SearchField(label: 'Cari lokasi parkir, mall, kantor'),
           const SizedBox(height: 18),
           HeroBanner(
@@ -6253,6 +6373,24 @@ class CustomerMapScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CustomerDashboardAvatar extends StatelessWidget {
+  const _CustomerDashboardAvatar({required this.bytes});
+
+  final Uint8List? bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: 26,
+      backgroundColor: AppTheme.blueSoft,
+      backgroundImage: bytes == null ? null : MemoryImage(bytes!),
+      child: bytes == null
+          ? const Icon(Icons.person_rounded, color: AppTheme.blue)
+          : null,
     );
   }
 }
