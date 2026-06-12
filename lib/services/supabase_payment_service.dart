@@ -24,11 +24,54 @@ class SupabaseReceiptRecord {
   final DateTime issuedAt;
 }
 
+class SupabaseGatewayPaymentResult {
+  const SupabaseGatewayPaymentResult({
+    required this.paymentId,
+    required this.orderId,
+    required this.redirectUrl,
+  });
+
+  final String paymentId;
+  final String orderId;
+  final String redirectUrl;
+}
+
 class SupabasePaymentService {
   SupabasePaymentService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  Future<SupabaseGatewayPaymentResult?> createMidtransPayment({
+    required Booking booking,
+    required PaymentMethod method,
+  }) async {
+    final response = await _client.functions.invoke(
+      'create-midtrans-payment',
+      body: {
+        'ticketNumber': booking.ticketNumber,
+        'method': _methodToDb(method),
+      },
+    );
+
+    final data = response.data;
+    if (data is! Map) {
+      return null;
+    }
+
+    final paymentId = data['paymentId'] as String?;
+    final orderId = data['orderId'] as String?;
+    final redirectUrl = data['redirectUrl'] as String?;
+    if (paymentId == null || orderId == null || redirectUrl == null) {
+      return null;
+    }
+
+    return SupabaseGatewayPaymentResult(
+      paymentId: paymentId,
+      orderId: orderId,
+      redirectUrl: redirectUrl,
+    );
+  }
 
   Future<void> payCurrentCustomerBooking({
     required Booking booking,

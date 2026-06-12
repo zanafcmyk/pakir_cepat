@@ -65,11 +65,13 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Nota/receipt bisa dicetak dan diexport sebagai PDF.
 - [x] Penyedia membuat akun penjaga langsung lewat Edge Function `create-guard-account`.
 - [x] Route protection dasar membatasi akses halaman berdasarkan role login.
+- [x] Pondasi payment gateway Midtrans siap lewat Edge Function.
+- [x] Pondasi push notification production siap lewat tabel token dan Edge Function FCM.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] Payment masih demo, belum gateway pembayaran asli.
-- [ ] Notifikasi in-app sudah ada, tetapi push notification asli ke HP belum production.
+- [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
+- [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 
 #### Catatan audit baris 48-66
 
@@ -87,13 +89,13 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Dashboard penyedia dan penjaga masih perlu audit data per kartu/section sebelum ditandai production.
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
 - Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SUPABASE_SERVICE_ROLE_KEY`.
-- Payment gateway asli belum dikerjakan karena membutuhkan pilihan provider pembayaran, credential, webhook, dan environment production.
+- Payment gateway Midtrans sudah disiapkan di kode dan Edge Function, tetapi belum production penuh sampai secret `MIDTRANS_SERVER_KEY`, deploy function, dan webhook Midtrans aktif.
 - Receipt sudah baca Supabase dan tombol cetak/export sekarang menghasilkan PDF.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
 - Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
-- Push notification asli belum dikerjakan karena membutuhkan FCM/APNs, device token, permission, dan backend trigger.
+- Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
 
 ### Belum Ada atau Belum Production
 
@@ -102,7 +104,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Search/filter lokasi sungguhan dari database.
 - [ ] Laporan pendapatan dari query Supabase.
 - [ ] Statistik dari query Supabase.
-- [ ] Push notification asli ke HP.
+- [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [x] Role guard/route protection dasar.
 - [x] Middleware/auth redirect dasar.
 - [ ] Realtime slot.
@@ -133,7 +135,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] User management super admin untuk hapus akun Auth sungguhan perlu Edge Function.
 - [ ] Role guard dan route protection ketat.
 - [ ] Middleware/auth protection penuh.
-- [ ] Push notification asli ke HP.
+- [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [ ] Review final sebelum merge ke `development` atau `master`.
 
 ### maulana-bintang - Penyedia Parkir
@@ -223,7 +225,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Reset password Supabase punya halaman set password baru dari link email.
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
 - [x] Search/filter lokasi sungguhan dari database.
-- [ ] Push notification booking/payment ke HP.
+- [ ] Push notification booking/payment ke HP setelah Firebase config dipasang.
 
 ### Backend/Supabase Bersama
 
@@ -249,15 +251,19 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] Edge Function untuk membuat akun penjaga.
 - [x] Edge Function/admin flow untuk hapus akun sungguhan.
+- [x] Edge Function `create-midtrans-payment` untuk membuat transaksi Midtrans Snap.
+- [x] Edge Function `midtrans-webhook` untuk menerima callback Midtrans.
+- [x] Edge Function `send-push-notification` untuk mengirim FCM HTTP v1.
+- [x] Tabel `device_push_tokens` disiapkan di `docs/supabase_push_notifications.sql`.
 - [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
 - [ ] Query agregasi laporan/statistik.
 - [ ] Realtime slot/lokasi/notifikasi penuh.
-- [ ] Push notification provider production.
+- [ ] Push notification provider production setelah Firebase config dipasang.
 
 ## Prioritas Aman Berikutnya
 
-1. Payment gateway asli.
-2. Push notification production.
+1. Deploy Edge Function payment dan isi secret Midtrans.
+2. Pasang Firebase config agar token push notification bisa didaftarkan dari HP.
 3. Realtime slot/lokasi/notifikasi.
 4. Audit production route protection dan deep link.

@@ -19,6 +19,7 @@ import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
@@ -3324,6 +3325,20 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     _syncCurrentUserNotification(customerNotice, type: 'payment');
+  }
+
+  Future<SupabaseGatewayPaymentResult?> createGatewayPayment(
+    PaymentMethod method,
+  ) async {
+    final booking = state.activeBooking;
+    if (booking == null) {
+      return null;
+    }
+
+    return _paymentService.createMidtransPayment(
+      booking: booking,
+      method: method,
+    );
   }
 
   Booking? bookingByTicketNumber(String ticketNumber) {
@@ -7616,6 +7631,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   late final TextEditingController _cardExpiryController;
   late final TextEditingController _cardCvvController;
   String? _paymentError;
+  bool _isStartingGateway = false;
 
   @override
   void initState() {
@@ -7653,14 +7669,65 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     );
   }
 
-  Future<void> _payWithEWallet(Booking booking) async {
+  Future<void> _payWithEWallet(Booking _) async {
     setState(() => _paymentError = null);
-    await _completePayment(booking);
+    await _startGatewayPayment();
   }
 
-  Future<void> _payWithCard(Booking booking) async {
+  Future<void> _payWithCard(Booking _) async {
     setState(() => _paymentError = null);
-    await _completePayment(booking);
+    await _startGatewayPayment();
+  }
+
+  Future<void> _startGatewayPayment() async {
+    if (_isStartingGateway) {
+      return;
+    }
+
+    setState(() {
+      _isStartingGateway = true;
+      _paymentError = null;
+    });
+
+    try {
+      final result = await ref
+          .read(appControllerProvider.notifier)
+          .createGatewayPayment(_method);
+      if (!mounted) {
+        return;
+      }
+      final redirectUrl = result?.redirectUrl;
+      if (redirectUrl == null || redirectUrl.isEmpty) {
+        setState(
+          () => _paymentError =
+              'Payment gateway belum aktif. Deploy Edge Function dan isi secret Midtrans dulu.',
+        );
+        return;
+      }
+
+      final opened = await launchUrl(
+        Uri.parse(redirectUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened && mounted) {
+        setState(
+          () => _paymentError =
+              'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.',
+        );
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _paymentError =
+            'Payment gateway belum siap atau koneksi bermasalah. Detail: $error',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isStartingGateway = false);
+      }
+    }
   }
 
   void _useDemoCard() {
@@ -7676,6 +7743,8 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   Future<void> _handlePayPressed(Booking booking) async {
     switch (_method) {
       case PaymentMethod.qris:
+        setState(() => _paymentError = null);
+        await _startGatewayPayment();
       case PaymentMethod.cash:
         setState(() => _paymentError = null);
         await _completePayment(booking);
@@ -7767,7 +7836,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Demo metode pembayaran',
+                  'Metode pembayaran',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -7806,10 +7875,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ),
                 const SizedBox(height: 14),
                 const InlineNotice(
-                  icon: Icons.science_rounded,
+                  icon: Icons.lock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'Mode demo: tidak ada pembayaran asli, tidak terhubung bank/e-wallet, dan tidak memotong saldo.',
+                      'QRIS, e-wallet, dan kartu memakai payment gateway setelah Edge Function Midtrans dideploy. Tunai tetap dikonfirmasi penjaga.',
                 ),
                 const SizedBox(height: 20),
                 _PaymentInstructionCard(
@@ -7844,10 +7913,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
-                  label: 'Simulasikan pembayaran',
-                  icon: Icons.play_circle_rounded,
+                  label: _isStartingGateway
+                      ? 'Membuka gateway...'
+                      : _method == PaymentMethod.cash
+                      ? 'Konfirmasi tunai'
+                      : 'Bayar lewat gateway',
+                  icon: _method == PaymentMethod.cash
+                      ? Icons.payments_rounded
+                      : Icons.open_in_new_rounded,
                   onPressed: isPayable
-                      ? () => _handlePayPressed(booking)
+                      ? _isStartingGateway
+                            ? null
+                            : () => _handlePayPressed(booking)
                       : null,
                 ),
               ],
@@ -7906,9 +7983,9 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.qris => _PaymentMethodBox(
           key: const ValueKey('qris'),
           icon: Icons.qr_code_2_rounded,
-          title: 'Demo QRIS',
+          title: 'QRIS Gateway',
           subtitle:
-              'QR ini hanya contoh tampilan QRIS. Tekan tombol simulasi untuk mengaktifkan tiket QR masuk/keluar.',
+              'Tekan tombol bayar untuk membuka halaman Midtrans. Status tiket aktif setelah webhook pembayaran diterima.',
           child: Center(
             child: Container(
               padding: const EdgeInsets.all(14),
@@ -7928,9 +8005,9 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.ewallet => _PaymentMethodBox(
           key: const ValueKey('ewallet'),
           icon: Icons.account_balance_wallet_rounded,
-          title: 'Demo E-Wallet',
+          title: 'E-Wallet Gateway',
           subtitle:
-              'Pilih dompet digital dan isi nomor HP opsional. Tidak ada OTP asli, saldo asli, atau koneksi payment gateway.',
+              'Pilih dompet digital untuk catatan metode, lalu lanjutkan pembayaran di halaman Midtrans.',
           child: Column(
             children: [
               SegmentedChoice<String>(
@@ -7961,22 +8038,22 @@ class _PaymentInstructionCard extends StatelessWidget {
         PaymentMethod.cash => _PaymentMethodBox(
           key: const ValueKey('cash'),
           icon: Icons.payments_rounded,
-          title: 'Demo Tunai di Loket',
+          title: 'Tunai di Loket',
           subtitle:
-              'Simulasikan petugas loket menerima tunai. Tidak ada pencatatan kas asli.',
+              'Pembayaran tunai perlu dikonfirmasi penjaga di lokasi. Flow ini masih manual sampai kas production dibuat.',
           child: const InlineNotice(
             icon: Icons.support_agent_rounded,
             accent: AppTheme.emerald,
             message:
-                'Pada demo ini, tombol simulasi langsung mengaktifkan tiket QR masuk dan keluar.',
+                'Untuk production, gunakan hak penjaga agar konfirmasi tunai tidak bisa dilakukan customer sendiri.',
           ),
         ),
         PaymentMethod.card => _PaymentMethodBox(
           key: const ValueKey('card'),
           icon: Icons.credit_card_rounded,
-          title: 'Demo Debit/Kredit',
+          title: 'Debit/Kredit Gateway',
           subtitle:
-              'Form ini hanya dummy. Tidak ada tokenisasi kartu, bank, atau charge sungguhan.',
+              'Data kartu asli tidak disimpan aplikasi. Pembayaran kartu diproses di halaman gateway.',
           child: Column(
             children: [
               TextField(
