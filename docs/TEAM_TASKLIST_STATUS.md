@@ -63,6 +63,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Reset password dari link email diarahkan ke halaman set password baru.
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
 - [x] Nota/receipt bisa dicetak dan diexport sebagai PDF.
+- [x] Penyedia membuat akun penjaga langsung lewat Edge Function `create-guard-account`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -90,11 +91,11 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
+- Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
 - Push notification asli belum dikerjakan karena membutuhkan FCM/APNs, device token, permission, dan backend trigger.
 
 ### Belum Ada atau Belum Production
 
-- [ ] Penyedia membuat akun penjaga langsung lewat sistem aman menggunakan Edge Function.
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [x] Upload dokumen identitas penyedia ke Supabase Storage (kode dan SQL setup siap).
 - [x] Search/filter lokasi sungguhan dari database.
@@ -152,6 +153,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Provider statistics dan grafik revenue membaca agregasi Supabase.
 - [x] Settings penyedia tersimpan ke Supabase lewat `profile_settings`.
 - [x] Upload dokumen identitas penyedia tersimpan ke Supabase Storage saat registrasi.
+- [x] Penyedia membuat akun login penjaga langsung lewat Edge Function.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -162,7 +164,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [x] Upload dokumen identitas penyedia ke Supabase Storage (kode dan SQL setup siap).
 - [x] Search/filter data lokasi dari database.
-- [ ] Edge Function untuk membuat akun penjaga secara aman.
+- [x] Edge Function untuk membuat akun penjaga secara aman.
 
 ### ethunder243-droid - Penjaga Parkir
 
@@ -243,7 +245,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Edge Function untuk membuat akun penjaga.
+- [x] Edge Function untuk membuat akun penjaga.
 - [x] Edge Function/admin flow untuk hapus akun sungguhan.
 - [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
@@ -255,6 +257,5 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 1. Payment gateway asli.
 2. Push notification production.
-3. Edge Function untuk membuat akun penjaga.
-4. Route protection dan middleware auth.
-5. Realtime slot/lokasi/notifikasi.
+3. Route protection dan middleware auth.
+4. Realtime slot/lokasi/notifikasi.

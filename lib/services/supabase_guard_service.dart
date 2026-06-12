@@ -53,6 +53,38 @@ class SupabaseGuardService {
     return _guardFromRow(Map<String, dynamic>.from(rows.first));
   }
 
+  Future<ParkingGuardAccount> createGuardAccount({
+    required String name,
+    required String email,
+    required String phoneNumber,
+    required String password,
+    required List<String> assignedLotIds,
+    required bool canScanQr,
+    required bool canConfirmCash,
+    required bool canManageSlots,
+  }) async {
+    final response = await _client.functions.invoke(
+      'create-guard-account',
+      body: {
+        'name': name,
+        'email': email,
+        'phoneNumber': phoneNumber,
+        'password': password,
+        'assignedLotIds': assignedLotIds,
+        'canScanQr': canScanQr,
+        'canConfirmCash': canConfirmCash,
+        'canManageSlots': canManageSlots,
+      },
+    );
+
+    final data = response.data;
+    if (data is! Map || data['guard'] is! Map) {
+      throw const AuthException('Akun penjaga gagal dibuat.');
+    }
+
+    return _guardFromRow(Map<String, dynamic>.from(data['guard'] as Map));
+  }
+
   Future<void> unlinkGuard(String id) async {
     await _client.rpc('unlink_parking_guard', params: {'p_guard_id': id});
   }

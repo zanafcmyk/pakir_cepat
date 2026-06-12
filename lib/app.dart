@@ -1846,15 +1846,17 @@ class AppController extends StateNotifier<AppState> {
     required String name,
     required String email,
     required String phoneNumber,
+    required String password,
     required List<String> assignedLotIds,
     required bool canScanQr,
     required bool canConfirmCash,
     required bool canManageSlots,
   }) async {
-    final guard = await _guardService.linkExistingGuard(
+    final guard = await _guardService.createGuardAccount(
       name: name,
       email: email,
       phoneNumber: phoneNumber,
+      password: password,
       assignedLotIds: assignedLotIds,
       canScanQr: canScanQr,
       canConfirmCash: canConfirmCash,
@@ -10988,6 +10990,7 @@ class _ParkingGuardManagementScreenState
   late final TextEditingController _nameController;
   late final TextEditingController _emailController;
   late final TextEditingController _phoneController;
+  late final TextEditingController _passwordController;
   final Set<String> _selectedLotIds = {};
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
@@ -11002,6 +11005,7 @@ class _ParkingGuardManagementScreenState
       text: 'sinta.guard@parkircepat.app',
     );
     _phoneController = TextEditingController(text: '+62 812 4455 6677');
+    _passwordController = TextEditingController();
     final lots = visibleLotsFor(ref.read(appControllerProvider));
     if (lots.isNotEmpty) {
       _selectedLotIds.add(lots.first.id);
@@ -11018,6 +11022,7 @@ class _ParkingGuardManagementScreenState
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -11032,6 +11037,9 @@ class _ParkingGuardManagementScreenState
     if (_phoneController.text.trim().isEmpty) {
       return 'Nomor HP penjaga wajib diisi.';
     }
+    if (_editingGuardId == null && _passwordController.text.length < 6) {
+      return 'Password awal penjaga minimal 6 karakter.';
+    }
     if (lots.isEmpty) {
       return 'Tambahkan lahan parkir terlebih dahulu.';
     }
@@ -11045,6 +11053,7 @@ class _ParkingGuardManagementScreenState
     _nameController.clear();
     _emailController.clear();
     _phoneController.clear();
+    _passwordController.clear();
     setState(() {
       _editingGuardId = null;
       _selectedLotIds
@@ -11100,6 +11109,7 @@ class _ParkingGuardManagementScreenState
           name: _nameController.text.trim(),
           email: _emailController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
+          password: _passwordController.text,
           assignedLotIds: _selectedLotIds.toList(),
           canScanQr: true,
           canConfirmCash: _canConfirmCash,
@@ -11130,7 +11140,7 @@ class _ParkingGuardManagementScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Gagal menyimpan. Pastikan penjaga sudah daftar dan SQL guard sudah dijalankan.',
+            'Gagal menyimpan. Pastikan Edge Function create-guard-account dan SQL guard sudah dijalankan.',
           ),
         ),
       );
@@ -11229,7 +11239,7 @@ class _ParkingGuardManagementScreenState
                   icon: Icons.info_outline_rounded,
                   accent: Color(0xFFD97706),
                   message:
-                      'Penjaga harus daftar dulu dari halaman register. Penyedia cukup menghubungkan emailnya ke lokasi parkir.',
+                      'Penyedia bisa membuat akun login penjaga langsung, lalu memberikan email dan password awal ke penjaga.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -11240,6 +11250,17 @@ class _ParkingGuardManagementScreenState
                     prefixIcon: Icon(Icons.phone_iphone_rounded),
                   ),
                 ),
+                if (_editingGuardId == null) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Password awal penjaga',
+                      prefixIcon: Icon(Icons.lock_outline_rounded),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerLeft,
