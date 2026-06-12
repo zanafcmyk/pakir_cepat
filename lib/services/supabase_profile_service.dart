@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabaseProfileService {
@@ -26,6 +27,35 @@ class SupabaseProfileService {
         .from('profiles')
         .update({'full_name': name, 'email': email, 'phone_number': phone})
         .eq('id', user.id);
+  }
+
+  Future<Uint8List?> fetchCurrentUserAvatarBytes() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final rows = await _client
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', user.id)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final avatarUrl = rows.first['avatar_url'] as String?;
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      return null;
+    }
+
+    final response = await http.get(Uri.parse(avatarUrl));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return null;
+    }
+
+    return response.bodyBytes;
   }
 
   Future<String?> uploadCurrentUserAvatar(Uint8List bytes) async {

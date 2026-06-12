@@ -2169,6 +2169,24 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(removeRoleAvatar: true);
   }
 
+  Future<void> loadCurrentUserAvatarFromSupabase({
+    required bool forCustomer,
+  }) async {
+    final bytes = await _profileService.fetchCurrentUserAvatarBytes();
+    if (forCustomer) {
+      state = state.copyWith(
+        customerAvatarBytes: bytes,
+        removeCustomerAvatar: bytes == null,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      roleAvatarBytes: bytes,
+      removeRoleAvatar: bytes == null,
+    );
+  }
+
   String createCustomerChatRoom({
     required String id,
     required String title,
@@ -3721,6 +3739,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         phoneNumber: _phoneController.text,
         rememberMe: _rememberMe,
       );
+      await controller
+          .loadCurrentUserAvatarFromSupabase(forCustomer: true)
+          .catchError((_) {});
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
@@ -3804,6 +3825,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         providerApplication: application,
         clearProviderApplication: application == null,
       );
+      await controller
+          .loadCurrentUserAvatarFromSupabase(forCustomer: false)
+          .catchError((_) {});
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
@@ -3872,6 +3896,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         phoneNumber: _phoneController.text,
         rememberMe: _rememberMe,
       );
+      await controller
+          .loadCurrentUserAvatarFromSupabase(forCustomer: false)
+          .catchError((_) {});
       await controller.loadComplaintsFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
@@ -3940,6 +3967,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         phoneNumber: _phoneController.text,
         rememberMe: _rememberMe,
       );
+      await controller
+          .loadCurrentUserAvatarFromSupabase(forCustomer: false)
+          .catchError((_) {});
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCurrentGuardFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
