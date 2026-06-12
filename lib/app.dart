@@ -1437,6 +1437,10 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(history: history);
   }
 
+  Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
+    return _paymentService.fetchLatestReceipt();
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -10207,55 +10211,101 @@ class TransactionDetailScreen extends ConsumerWidget {
   }
 }
 
-class ReceiptScreen extends ConsumerWidget {
+class ReceiptScreen extends ConsumerStatefulWidget {
   const ReceiptScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final transaction = ref.watch(appControllerProvider).history.first;
+  ConsumerState<ReceiptScreen> createState() => _ReceiptScreenState();
+}
+
+class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
+  late final Future<SupabaseReceiptRecord?> _receiptFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _receiptFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchLatestReceiptFromSupabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final history = ref.watch(appControllerProvider).history;
     return Scaffold(
       appBar: AppBar(title: const Text('Cetak nota parkir')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          PremiumCard(
-            child: Column(
-              children: [
-                Text(
-                  'Nota Digital',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      body: FutureBuilder<SupabaseReceiptRecord?>(
+        future: _receiptFuture,
+        builder: (context, snapshot) {
+          final receipt = snapshot.data;
+          final fallbackTransaction = history.isEmpty ? null : history.first;
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              fallbackTransaction == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (receipt == null && fallbackTransaction == null) {
+            return const Center(child: Text('Belum ada nota parkir.'));
+          }
+
+          final receiptNumber =
+              receipt?.receiptNumber ?? 'RCT-${fallbackTransaction!.id}';
+          final ticketNumber = receipt?.ticketNumber ?? fallbackTransaction!.id;
+          final locationName =
+              receipt?.locationName ?? fallbackTransaction!.locationName;
+          final plateNumber =
+              receipt?.plateNumber ?? fallbackTransaction!.plateNumber;
+          final paymentStatus =
+              receipt?.paymentStatus ?? fallbackTransaction!.status;
+          final paymentMethod = receipt?.paymentMethod ?? '-';
+          final amount = receipt?.amount ?? fallbackTransaction!.total;
+          final issuedAt = receipt == null
+              ? fallbackTransaction!.timeLabel
+              : formatDateTime(receipt.issuedAt);
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              PremiumCard(
+                child: Column(
+                  children: [
+                    Text(
+                      'Nota Digital',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 16),
+                    QrImageView(
+                      data: receiptNumber,
+                      size: 150,
+                      eyeStyle: const QrEyeStyle(color: AppTheme.emerald),
+                    ),
+                    const SizedBox(height: 18),
+                    SummaryRow(label: 'Nomor nota', value: receiptNumber),
+                    SummaryRow(label: 'Nomor tiket', value: ticketNumber),
+                    SummaryRow(label: 'Lokasi', value: locationName),
+                    SummaryRow(label: 'Kendaraan', value: plateNumber),
+                    SummaryRow(label: 'Pembayaran', value: paymentStatus),
+                    SummaryRow(label: 'Metode', value: paymentMethod),
+                    SummaryRow(label: 'Diterbitkan', value: issuedAt),
+                    SummaryRow(label: 'Total', value: formatCurrency(amount)),
+                    const SizedBox(height: 20),
+                    PrimaryButton(
+                      label: 'Cetak nota',
+                      icon: Icons.print_rounded,
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Preview nota siap dicetak'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                QrImageView(
-                  data: transaction.id,
-                  size: 150,
-                  eyeStyle: const QrEyeStyle(color: AppTheme.emerald),
-                ),
-                const SizedBox(height: 18),
-                SummaryRow(label: 'Transaksi', value: transaction.id),
-                SummaryRow(label: 'Pembayaran', value: transaction.status),
-                SummaryRow(
-                  label: 'Total',
-                  value: formatCurrency(transaction.total),
-                ),
-                const SizedBox(height: 20),
-                PrimaryButton(
-                  label: 'Cetak nota',
-                  icon: Icons.print_rounded,
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Preview nota siap dicetak'),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
