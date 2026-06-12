@@ -176,7 +176,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Realtime status slot/lokasi untuk penjaga.
 - [ ] Push notification tugas/booking untuk penjaga.
 
-### Customer Flow - Pelanggan
+### Customer Flow - Pelanggan Bersama
 
 #### Sudah Berjalan
 
