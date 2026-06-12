@@ -75,7 +75,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Settings customer ke tabel `customer_settings`.
 - [ ] Settings penyedia.
 - [ ] Settings penjaga.
-- [ ] Upload foto lahan parkir ke Supabase Storage.
+- [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [ ] Upload dokumen identitas penyedia ke Supabase Storage.
 - [ ] Search/filter lokasi sungguhan dari database.
 - [ ] Laporan pendapatan dari query Supabase.
@@ -143,7 +143,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Upload foto lahan parkir ke Supabase Storage.
+- [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [ ] Upload dokumen identitas penyedia ke Supabase Storage.
 - [ ] Settings penyedia.
 - [ ] Search/filter data lokasi dari database.
@@ -234,7 +234,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Edge Function untuk membuat akun penjaga.
 - [ ] Edge Function/admin flow untuk hapus akun sungguhan.
-- [ ] Storage bucket foto lahan.
+- [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [ ] Storage bucket dokumen identitas penyedia.
 - [ ] Query agregasi laporan/statistik.
 - [ ] Realtime slot/lokasi/notifikasi penuh.

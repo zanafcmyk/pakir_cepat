@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,6 +17,33 @@ class SupabaseParkingService {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  Future<String?> uploadCurrentProviderLotPhoto({
+    required String lotId,
+    required Uint8List bytes,
+    String? fileName,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final extension = _fileExtension(fileName);
+    final path =
+        '${user.id}/$lotId/lot-${DateTime.now().millisecondsSinceEpoch}.$extension';
+    await _client.storage
+        .from('parking-lot-photos')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            contentType: _contentType(extension),
+            upsert: true,
+          ),
+        );
+
+    return _client.storage.from('parking-lot-photos').getPublicUrl(path);
+  }
 
   Future<SupabaseParkingData> fetchParkingData() async {
     final lotRows = await _client
@@ -98,5 +127,21 @@ class SupabaseParkingService {
     'daily' => ParkingTariffType.daily,
     'progressive' => ParkingTariffType.progressive,
     _ => ParkingTariffType.hourly,
+  };
+
+  String _fileExtension(String? fileName) {
+    final extension = fileName?.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'png',
+      'webp' => 'webp',
+      'jpg' || 'jpeg' => 'jpg',
+      _ => 'jpg',
+    };
+  }
+
+  String _contentType(String extension) => switch (extension) {
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => 'image/jpeg',
   };
 }

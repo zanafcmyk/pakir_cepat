@@ -1608,14 +1608,18 @@ class AppController extends StateNotifier<AppState> {
     ProviderApplication? providerApplication,
     bool clearProviderApplication = false,
   }) {
-    final accountStatus = accountStatusOverride ?? (mode == AccountMode.provider
-        ? (state.providerApplication == null
-              ? AccountStatus.verified
-              : state.accountStatus)
-        : AccountStatus.verified);
+    final accountStatus =
+        accountStatusOverride ??
+        (mode == AccountMode.provider
+            ? (state.providerApplication == null
+                  ? AccountStatus.verified
+                  : state.accountStatus)
+            : AccountStatus.verified);
     final guardId = mode == AccountMode.parkingGuard
         ? (state.activeGuardId ??
-              (state.parkingGuards.isEmpty ? null : state.parkingGuards.first.id))
+              (state.parkingGuards.isEmpty
+                  ? null
+                  : state.parkingGuards.first.id))
         : null;
     state = state.copyWith(
       currentMode: mode,
@@ -1712,7 +1716,9 @@ class AppController extends StateNotifier<AppState> {
       currentMode: mode,
       activeGuardId: mode == AccountMode.parkingGuard
           ? (state.activeGuardId ??
-                (state.parkingGuards.isEmpty ? null : state.parkingGuards.first.id))
+                (state.parkingGuards.isEmpty
+                    ? null
+                    : state.parkingGuards.first.id))
           : null,
       clearActiveGuard: mode != AccountMode.parkingGuard,
     );
@@ -1905,24 +1911,30 @@ class AppController extends StateNotifier<AppState> {
     final profile = rows.first;
     final profileId = profile['id'] as String;
 
-    await Supabase.instance.client.from('profiles').update({
-      'account_status': dbStatus,
-      'verified_at': status == AccountStatus.verified
-          ? DateTime.now().toIso8601String()
-          : null,
-    }).eq('id', profileId);
+    await Supabase.instance.client
+        .from('profiles')
+        .update({
+          'account_status': dbStatus,
+          'verified_at': status == AccountStatus.verified
+              ? DateTime.now().toIso8601String()
+              : null,
+        })
+        .eq('id', profileId);
 
     if (profile['role'] == 'provider') {
-      await Supabase.instance.client.from('providers').update({
-        'status': dbStatus,
-        'approved_by': Supabase.instance.client.auth.currentUser?.id,
-        'approved_at': status == AccountStatus.verified
-            ? DateTime.now().toIso8601String()
-            : null,
-        'rejection_reason': status == AccountStatus.rejected
-            ? 'Ditolak oleh Super Admin.'
-            : null,
-      }).eq('profile_id', profileId);
+      await Supabase.instance.client
+          .from('providers')
+          .update({
+            'status': dbStatus,
+            'approved_by': Supabase.instance.client.auth.currentUser?.id,
+            'approved_at': status == AccountStatus.verified
+                ? DateTime.now().toIso8601String()
+                : null,
+            'rejection_reason': status == AccountStatus.rejected
+                ? 'Ditolak oleh Super Admin.'
+                : null,
+          })
+          .eq('profile_id', profileId);
 
       await Supabase.instance.client
           .from('provider_applications')
@@ -2830,7 +2842,7 @@ class AppController extends StateNotifier<AppState> {
             'latitude': latitude,
             'longitude': longitude,
             'map_embed_url': mapEmbedUrl,
-            'photo_url': photoLabel,
+            'photo_url': null,
             'tariff_type': _tariffTypeToDb(tariffType),
             'motor_rate': motorRate,
             'car_rate': carRate,
@@ -2840,6 +2852,20 @@ class AppController extends StateNotifier<AppState> {
           .select('id')
           .single();
       lotId = insertedLot['id'] as String;
+      if (photoBytes != null) {
+        final photoUrl = await _parkingService.uploadCurrentProviderLotPhoto(
+          lotId: lotId,
+          bytes: photoBytes,
+          fileName: photoLabel,
+        );
+        if (photoUrl != null) {
+          await Supabase.instance.client
+              .from('parking_lots')
+              .update({'photo_url': photoUrl})
+              .eq('id', lotId);
+          photoLabel = photoUrl;
+        }
+      }
 
       await Supabase.instance.client.from('parking_slots').insert([
         for (var index = 1; index <= capacity; index++)
@@ -3758,7 +3784,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on AuthException catch (error) {
       _showLoginMessage(error.message);
     } catch (_) {
-      _showLoginMessage('Tidak bisa login customer. Cek email, password, dan koneksi.');
+      _showLoginMessage(
+        'Tidak bisa login customer. Cek email, password, dan koneksi.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -3840,7 +3868,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on AuthException catch (error) {
       _showLoginMessage(error.message);
     } catch (_) {
-      _showLoginMessage('Tidak bisa login penyedia. Cek email, password, dan koneksi.');
+      _showLoginMessage(
+        'Tidak bisa login penyedia. Cek email, password, dan koneksi.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -3911,7 +3941,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } on AuthException catch (error) {
       _showLoginMessage(error.message);
     } catch (_) {
-      _showLoginMessage('Tidak bisa login ke Supabase. Cek email, password, dan koneksi.');
+      _showLoginMessage(
+        'Tidak bisa login ke Supabase. Cek email, password, dan koneksi.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -4006,9 +4038,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<ProviderApplication?> _providerApplicationForLogin(
@@ -4061,24 +4093,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final profile = rows.first;
     final profileId = profile['id'] as String;
 
-    await Supabase.instance.client.from('profiles').update({
-      'account_status': dbStatus,
-      'verified_at': status == AccountStatus.verified
-          ? DateTime.now().toIso8601String()
-          : null,
-    }).eq('id', profileId);
+    await Supabase.instance.client
+        .from('profiles')
+        .update({
+          'account_status': dbStatus,
+          'verified_at': status == AccountStatus.verified
+              ? DateTime.now().toIso8601String()
+              : null,
+        })
+        .eq('id', profileId);
 
     if (profile['role'] == 'provider') {
-      await Supabase.instance.client.from('providers').update({
-        'status': dbStatus,
-        'approved_by': Supabase.instance.client.auth.currentUser?.id,
-        'approved_at': status == AccountStatus.verified
-            ? DateTime.now().toIso8601String()
-            : null,
-        'rejection_reason': status == AccountStatus.rejected
-            ? 'Ditolak oleh Super Admin.'
-            : null,
-      }).eq('profile_id', profileId);
+      await Supabase.instance.client
+          .from('providers')
+          .update({
+            'status': dbStatus,
+            'approved_by': Supabase.instance.client.auth.currentUser?.id,
+            'approved_at': status == AccountStatus.verified
+                ? DateTime.now().toIso8601String()
+                : null,
+            'rejection_reason': status == AccountStatus.rejected
+                ? 'Ditolak oleh Super Admin.'
+                : null,
+          })
+          .eq('profile_id', profileId);
 
       await Supabase.instance.client
           .from('provider_applications')
@@ -4363,15 +4401,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final authResponse = await supabase.auth.signUp(
         email: email,
         password: password,
-        data: {
-          'full_name': fullName,
-          'role': 'provider',
-        },
+        data: {'full_name': fullName, 'role': 'provider'},
       );
       final user = authResponse.user;
 
       if (user == null) {
-        _showRegisterMessage('Pendaftaran penyedia perlu konfirmasi email terlebih dahulu.');
+        _showRegisterMessage(
+          'Pendaftaran penyedia perlu konfirmasi email terlebih dahulu.',
+        );
         return;
       }
 
@@ -4440,7 +4477,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } on AuthException catch (error) {
       _showRegisterMessage(error.message);
     } catch (_) {
-      _showRegisterMessage('Tidak bisa daftar penyedia. Cek koneksi dan coba lagi.');
+      _showRegisterMessage(
+        'Tidak bisa daftar penyedia. Cek koneksi dan coba lagi.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -4477,15 +4516,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final authResponse = await supabase.auth.signUp(
         email: email,
         password: password,
-        data: {
-          'full_name': fullName,
-          'role': 'customer',
-        },
+        data: {'full_name': fullName, 'role': 'customer'},
       );
       final user = authResponse.user;
 
       if (user == null) {
-        _showRegisterMessage('Pendaftaran customer perlu konfirmasi email terlebih dahulu.');
+        _showRegisterMessage(
+          'Pendaftaran customer perlu konfirmasi email terlebih dahulu.',
+        );
         return;
       }
 
@@ -4529,7 +4567,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     } on AuthException catch (error) {
       _showRegisterMessage(error.message);
     } catch (_) {
-      _showRegisterMessage('Tidak bisa daftar customer. Cek koneksi dan coba lagi.');
+      _showRegisterMessage(
+        'Tidak bisa daftar customer. Cek koneksi dan coba lagi.',
+      );
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -4622,9 +4662,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -5048,7 +5088,9 @@ class ProviderVerificationScreen extends ConsumerWidget {
                     if (user == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text('Silakan login ulang sebagai penyedia.'),
+                          content: Text(
+                            'Silakan login ulang sebagai penyedia.',
+                          ),
                         ),
                       );
                       return;
@@ -5072,9 +5114,7 @@ class ProviderVerificationScreen extends ConsumerWidget {
                       } else {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text(
-                              'Status penyedia sudah diperbarui.',
-                            ),
+                            content: Text('Status penyedia sudah diperbarui.'),
                           ),
                         );
                       }
@@ -6642,7 +6682,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
-                  label: _isBooking ? 'Membuat booking...' : 'Konfirmasi booking',
+                  label: _isBooking
+                      ? 'Membuat booking...'
+                      : 'Konfirmasi booking',
                   icon: Icons.check_circle_rounded,
                   onPressed: _selectedSlot == null || _isBooking
                       ? null
@@ -9930,54 +9972,56 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   onPressed: _isSaving
                       ? null
                       : () async {
-                    final error = _lotFormError();
-                    if (error != null) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text(error)));
-                      return;
-                    }
-                    setState(() => _isSaving = true);
-                    try {
-                      await ref
-                          .read(appControllerProvider.notifier)
-                          .addLot(
-                            name: _nameController.text.trim(),
-                            address: _addressController.text.trim(),
-                            capacity: _capacity.toInt(),
-                            price: _price.toInt(),
-                            mapEmbedUrl: plazaSudirmanMapEmbedUrl,
-                            latitude: -6.2087145,
-                            longitude: 106.8224854,
-                            tariffType: _tariffType,
-                            motorRate: _motorRate.toInt(),
-                            carRate: _carRate.toInt(),
-                            truckRate: _truckRate.toInt(),
-                            photoLabel: _photoLabel,
-                            photoBytes: _photoBytes,
-                          );
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Lahan dan slot berhasil disimpan.'),
-                        ),
-                      );
-                      context.pop();
-                    } catch (_) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Gagal menyimpan lahan ke Supabase.',
-                          ),
-                        ),
-                      );
-                    } finally {
-                      if (mounted) {
-                        setState(() => _isSaving = false);
-                      }
-                    }
-                  },
+                          final error = _lotFormError();
+                          if (error != null) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(error)));
+                            return;
+                          }
+                          setState(() => _isSaving = true);
+                          try {
+                            await ref
+                                .read(appControllerProvider.notifier)
+                                .addLot(
+                                  name: _nameController.text.trim(),
+                                  address: _addressController.text.trim(),
+                                  capacity: _capacity.toInt(),
+                                  price: _price.toInt(),
+                                  mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                                  latitude: -6.2087145,
+                                  longitude: 106.8224854,
+                                  tariffType: _tariffType,
+                                  motorRate: _motorRate.toInt(),
+                                  carRate: _carRate.toInt(),
+                                  truckRate: _truckRate.toInt(),
+                                  photoLabel: _photoLabel,
+                                  photoBytes: _photoBytes,
+                                );
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Lahan dan slot berhasil disimpan.',
+                                ),
+                              ),
+                            );
+                            context.pop();
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Gagal menyimpan lahan ke Supabase.',
+                                ),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isSaving = false);
+                            }
+                          }
+                        },
                 ),
               ],
             ),
