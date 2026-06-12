@@ -8,6 +8,45 @@ class SupabaseChatService {
 
   final SupabaseClient _client;
 
+  Future<List<ChatMessage>> fetchMessages({required String localRoomId}) async {
+    final roomId = await _roomIdForLocalRoom(localRoomId);
+    if (roomId == null) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('chat_messages')
+        .select('id, sender_role, sender_name, message, is_read, created_at')
+        .eq('room_id', roomId)
+        .order('created_at');
+
+    return [
+      for (final row in rows)
+        _messageFromRow(Map<String, dynamic>.from(row as Map), localRoomId),
+    ];
+  }
+
+  Future<Stream<List<ChatMessage>>> watchMessages({
+    required String localRoomId,
+  }) async {
+    final roomId = await _roomIdForLocalRoom(localRoomId);
+    if (roomId == null) {
+      return const Stream.empty();
+    }
+
+    return _client
+        .from('chat_messages')
+        .stream(primaryKey: ['id'])
+        .eq('room_id', roomId)
+        .order('created_at')
+        .map(
+          (rows) => [
+            for (final row in rows)
+              _messageFromRow(Map<String, dynamic>.from(row), localRoomId),
+          ],
+        );
+  }
+
   Future<void> sendMessage({
     required String localRoomId,
     required String title,
@@ -49,6 +88,34 @@ class SupabaseChatService {
       'sender_name': senderName,
       'message': message,
     });
+  }
+
+  Future<String?> _roomIdForLocalRoom(String localRoomId) async {
+    final rows = await _client
+        .from('chat_rooms')
+        .select('id')
+        .eq('room_key', _canonicalRoomKey(localRoomId))
+        .limit(1);
+    if (rows.isEmpty) {
+      return null;
+    }
+    return (rows.first as Map)['id'] as String?;
+  }
+
+  ChatMessage _messageFromRow(Map<String, dynamic> row, String localRoomId) {
+    return ChatMessage(
+      id: row['id'] as String,
+      roomId: localRoomId,
+      senderRole: _roleLabel(row['sender_role'] as String?),
+      senderName: row['sender_name'] as String? ?? 'Pengguna',
+      receiverRole: '',
+      receiverName: '',
+      message: row['message'] as String? ?? '',
+      createdAt:
+          DateTime.tryParse(row['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      isRead: row['is_read'] as bool? ?? false,
+    );
   }
 
   Future<Map<String, dynamic>?> _profileById(String profileId) async {
@@ -156,6 +223,13 @@ class SupabaseChatService {
     AccountMode.provider => 'provider',
     AccountMode.parkingGuard => 'parking_guard',
     AccountMode.customer => 'customer',
+  };
+
+  String _roleLabel(String? role) => switch (role) {
+    'super_admin' => 'Super Admin',
+    'provider' => 'Penyedia Parkir',
+    'parking_guard' => 'Penjaga Parkir',
+    _ => 'Customer',
   };
 
   String _roomTypeFromKey(String roomKey) {

@@ -1321,6 +1321,65 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<void> loadChatMessagesFromSupabase({
+    required AccountMode mode,
+    required String roomId,
+  }) async {
+    final messages = await _chatService.fetchMessages(localRoomId: roomId);
+    _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
+  }
+
+  void replaceChatMessagesFromSupabase({
+    required AccountMode mode,
+    required String roomId,
+    required List<ChatMessage> messages,
+  }) {
+    _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
+  }
+
+  Future<Stream<List<ChatMessage>>> watchChatMessagesFromSupabase({
+    required String roomId,
+  }) {
+    return _chatService.watchMessages(localRoomId: roomId);
+  }
+
+  void _replaceChatMessages({
+    required AccountMode mode,
+    required String roomId,
+    required List<ChatMessage> messages,
+  }) {
+    if (messages.isEmpty) {
+      return;
+    }
+
+    List<ChatMessage> merge(List<ChatMessage> current) {
+      return [
+        for (final message in current)
+          if (message.roomId != roomId) message,
+        ...messages,
+      ];
+    }
+
+    switch (mode) {
+      case AccountMode.customer:
+        state = state.copyWith(
+          customerChatMessages: merge(state.customerChatMessages),
+        );
+      case AccountMode.provider:
+        state = state.copyWith(
+          providerChatMessages: merge(state.providerChatMessages),
+        );
+      case AccountMode.parkingGuard:
+        state = state.copyWith(
+          guardChatMessages: merge(state.guardChatMessages),
+        );
+      case AccountMode.superAdmin:
+        state = state.copyWith(
+          superAdminChatMessages: merge(state.superAdminChatMessages),
+        );
+    }
+  }
+
   List<ChatRoom> _touchRoom(
     List<ChatRoom> rooms,
     String roomId,
@@ -7142,6 +7201,7 @@ class CustomerChatRoomScreen extends ConsumerStatefulWidget {
 class _CustomerChatRoomScreenState
     extends ConsumerState<CustomerChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
+  StreamSubscription<List<ChatMessage>>? _chatSubscription;
 
   @override
   void initState() {
@@ -7151,14 +7211,42 @@ class _CustomerChatRoomScreenState
         ref
             .read(appControllerProvider.notifier)
             .markCustomerChatAsRead(widget.roomId);
+        _loadAndWatchMessages();
       }
     });
   }
 
   @override
   void dispose() {
+    _chatSubscription?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAndWatchMessages() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller
+        .loadChatMessagesFromSupabase(
+          mode: AccountMode.customer,
+          roomId: widget.roomId,
+        )
+        .catchError((_) {});
+    final stream = await controller
+        .watchChatMessagesFromSupabase(roomId: widget.roomId)
+        .catchError((_) => const Stream<List<ChatMessage>>.empty());
+    _chatSubscription?.cancel();
+    _chatSubscription = stream.listen((messages) {
+      if (!mounted) {
+        return;
+      }
+      ref
+          .read(appControllerProvider.notifier)
+          .replaceChatMessagesFromSupabase(
+            mode: AccountMode.customer,
+            roomId: widget.roomId,
+            messages: messages,
+          );
+    });
   }
 
   void _sendMessage() {
@@ -7385,6 +7473,7 @@ class RoleChatRoomScreen extends ConsumerStatefulWidget {
 
 class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
+  StreamSubscription<List<ChatMessage>>? _chatSubscription;
 
   @override
   void initState() {
@@ -7401,13 +7490,38 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
         case AccountMode.parkingGuard:
           controller.markChatAsRead(widget.roomId);
       }
+      _loadAndWatchMessages();
     });
   }
 
   @override
   void dispose() {
+    _chatSubscription?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAndWatchMessages() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller
+        .loadChatMessagesFromSupabase(mode: widget.mode, roomId: widget.roomId)
+        .catchError((_) {});
+    final stream = await controller
+        .watchChatMessagesFromSupabase(roomId: widget.roomId)
+        .catchError((_) => const Stream<List<ChatMessage>>.empty());
+    _chatSubscription?.cancel();
+    _chatSubscription = stream.listen((messages) {
+      if (!mounted) {
+        return;
+      }
+      ref
+          .read(appControllerProvider.notifier)
+          .replaceChatMessagesFromSupabase(
+            mode: widget.mode,
+            roomId: widget.roomId,
+            messages: messages,
+          );
+    });
   }
 
   void _sendMessage() {
@@ -11769,6 +11883,7 @@ class GuardChatRoomScreen extends ConsumerStatefulWidget {
 
 class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
   final TextEditingController _messageController = TextEditingController();
+  StreamSubscription<List<ChatMessage>>? _chatSubscription;
 
   @override
   void initState() {
@@ -11776,14 +11891,42 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.roomId.isNotEmpty) {
         ref.read(appControllerProvider.notifier).markChatAsRead(widget.roomId);
+        _loadAndWatchMessages();
       }
     });
   }
 
   @override
   void dispose() {
+    _chatSubscription?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAndWatchMessages() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller
+        .loadChatMessagesFromSupabase(
+          mode: AccountMode.parkingGuard,
+          roomId: widget.roomId,
+        )
+        .catchError((_) {});
+    final stream = await controller
+        .watchChatMessagesFromSupabase(roomId: widget.roomId)
+        .catchError((_) => const Stream<List<ChatMessage>>.empty());
+    _chatSubscription?.cancel();
+    _chatSubscription = stream.listen((messages) {
+      if (!mounted) {
+        return;
+      }
+      ref
+          .read(appControllerProvider.notifier)
+          .replaceChatMessagesFromSupabase(
+            mode: AccountMode.parkingGuard,
+            roomId: widget.roomId,
+            messages: messages,
+          );
+    });
   }
 
   void _sendMessage() {
