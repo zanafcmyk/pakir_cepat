@@ -13,6 +13,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12150,6 +12153,94 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
         .fetchLatestReceiptFromSupabase();
   }
 
+  Future<Uint8List> _buildReceiptPdf({
+    required String receiptNumber,
+    required String ticketNumber,
+    required String locationName,
+    required String plateNumber,
+    required String paymentStatus,
+    required String paymentMethod,
+    required int amount,
+    required String issuedAt,
+  }) async {
+    final pdf = pw.Document();
+    final rows = <(String, String)>[
+      ('Nomor nota', receiptNumber),
+      ('Nomor tiket', ticketNumber),
+      ('Lokasi', locationName),
+      ('Kendaraan', plateNumber),
+      ('Pembayaran', paymentStatus),
+      ('Metode', paymentMethod),
+      ('Diterbitkan', issuedAt),
+      ('Total', formatCurrency(amount)),
+    ];
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Parkir Cepat',
+                style: pw.TextStyle(
+                  fontSize: 24,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text('Nota Digital Parkir'),
+              pw.SizedBox(height: 24),
+              pw.Center(
+                child: pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: receiptNumber,
+                  width: 120,
+                  height: 120,
+                ),
+              ),
+              pw.SizedBox(height: 24),
+              pw.Table(
+                border: pw.TableBorder.all(color: PdfColors.grey300),
+                columnWidths: const {
+                  0: pw.FlexColumnWidth(1.2),
+                  1: pw.FlexColumnWidth(2),
+                },
+                children: [
+                  for (final row in rows)
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(10),
+                          child: pw.Text(
+                            row.$1,
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(10),
+                          child: pw.Text(row.$2),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              pw.Spacer(),
+              pw.Text(
+                'Dokumen ini dibuat otomatis oleh aplikasi Parkir Cepat.',
+                style: const pw.TextStyle(color: PdfColors.grey600),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
   @override
   Widget build(BuildContext context) {
     final history = ref.watch(appControllerProvider).history;
@@ -12182,6 +12273,18 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
           final issuedAt = receipt == null
               ? fallbackTransaction!.timeLabel
               : formatDateTime(receipt.issuedAt);
+          Future<Uint8List> buildPdf() {
+            return _buildReceiptPdf(
+              receiptNumber: receiptNumber,
+              ticketNumber: ticketNumber,
+              locationName: locationName,
+              plateNumber: plateNumber,
+              paymentStatus: paymentStatus,
+              paymentMethod: paymentMethod,
+              amount: amount,
+              issuedAt: issuedAt,
+            );
+          }
 
           return ListView(
             padding: const EdgeInsets.all(20),
@@ -12213,11 +12316,21 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                     PrimaryButton(
                       label: 'Cetak nota',
                       icon: Icons.print_rounded,
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Preview nota siap dicetak'),
-                          ),
+                      onPressed: () async {
+                        await Printing.layoutPdf(
+                          name: '$receiptNumber.pdf',
+                          onLayout: (_) => buildPdf(),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SecondaryButton(
+                      label: 'Export PDF',
+                      icon: Icons.picture_as_pdf_rounded,
+                      onPressed: () async {
+                        await Printing.sharePdf(
+                          bytes: await buildPdf(),
+                          filename: '$receiptNumber.pdf',
                         );
                       },
                     ),

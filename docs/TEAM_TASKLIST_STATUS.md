@@ -62,11 +62,11 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Search/filter lokasi customer memakai query Supabase.
 - [x] Reset password dari link email diarahkan ke halaman set password baru.
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
+- [x] Nota/receipt bisa dicetak dan diexport sebagai PDF.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
 - [ ] Payment masih demo, belum gateway pembayaran asli.
-- [ ] Nota/receipt sudah membaca Supabase jika ada, tetapi print/export masih UI/demo.
 - [ ] Notifikasi in-app sudah ada, tetapi push notification asli ke HP belum production.
 
 #### Catatan audit baris 48-66
@@ -86,7 +86,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
 - Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SUPABASE_SERVICE_ROLE_KEY`.
 - Payment gateway asli belum dikerjakan karena membutuhkan pilihan provider pembayaran, credential, webhook, dan environment production.
-- Receipt sudah baca Supabase, tetapi print/export masih UI/demo.
+- Receipt sudah baca Supabase dan tombol cetak/export sekarang menghasilkan PDF.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
@@ -214,7 +214,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [ ] Payment masih demo.
-- [ ] Nota/receipt print/export masih UI/demo.
 
 #### Belum Ada/Belum Production
 
@@ -255,8 +254,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 ## Prioritas Aman Berikutnya
 
 1. Payment gateway asli.
-2. Print/export nota sungguhan.
-3. Push notification production.
-4. Edge Function untuk membuat akun penjaga.
-5. Route protection dan middleware auth.
-6. Realtime slot/lokasi/notifikasi.
+2. Push notification production.
+3. Edge Function untuk membuat akun penjaga.
+4. Route protection dan middleware auth.
+5. Realtime slot/lokasi/notifikasi.
