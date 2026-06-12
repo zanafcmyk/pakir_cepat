@@ -64,6 +64,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
 - [x] Nota/receipt bisa dicetak dan diexport sebagai PDF.
 - [x] Penyedia membuat akun penjaga langsung lewat Edge Function `create-guard-account`.
+- [x] Route protection dasar membatasi akses halaman berdasarkan role login.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -102,8 +103,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Laporan pendapatan dari query Supabase.
 - [ ] Statistik dari query Supabase.
 - [ ] Push notification asli ke HP.
-- [ ] Role guard/route protection yang ketat.
-- [ ] Middleware/auth protection penuh.
+- [x] Role guard/route protection dasar.
+- [x] Middleware/auth redirect dasar.
 - [ ] Realtime slot.
 - [ ] Realtime lokasi.
 - [ ] Realtime notifikasi.
@@ -187,7 +188,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
+- [x] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
 - [ ] Realtime status slot/lokasi untuk penjaga.
 - [ ] Push notification tugas/booking untuk penjaga.
 
@@ -242,6 +243,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] Data demo/lokal perlu dipisah dari data production.
 - [ ] Error handling koneksi Supabase perlu dibuat lebih konsisten.
+- [ ] Route protection perlu audit production lanjutan setelah semua deep link final.
 
 #### Belum Ada/Belum Production
 
@@ -257,5 +259,5 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 1. Payment gateway asli.
 2. Push notification production.
-3. Route protection dan middleware auth.
-4. Realtime slot/lokasi/notifikasi.
+3. Realtime slot/lokasi/notifikasi.
+4. Audit production route protection dan deep link.

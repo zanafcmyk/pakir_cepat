@@ -45,6 +45,12 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>(
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
+    redirect: (context, routeState) {
+      return guardedRedirect(
+        routeState.uri.path,
+        () => ref.read(appControllerProvider),
+      );
+    },
     routes: [
       GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
       GoRoute(
@@ -375,6 +381,76 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+String? guardedRedirect(String location, AppState Function() readState) {
+  const publicRoutes = {
+    '/',
+    '/onboarding',
+    '/forgot-password',
+    '/reset-password',
+  };
+
+  if (publicRoutes.contains(location)) {
+    return null;
+  }
+
+  final state = readState();
+
+  if (location == '/login' || location == '/register') {
+    return state.isAuthenticated ? landingRouteForState(state) : null;
+  }
+
+  if (!state.isAuthenticated) {
+    return '/login';
+  }
+
+  if (location == '/provider-verification') {
+    return state.currentMode == AccountMode.provider &&
+            state.accountStatus == AccountStatus.pending
+        ? null
+        : landingRouteForState(state);
+  }
+
+  if (state.currentMode == AccountMode.provider &&
+      state.accountStatus == AccountStatus.pending) {
+    return '/provider-verification';
+  }
+
+  final allowed = switch (state.currentMode) {
+    AccountMode.customer =>
+      location.startsWith('/customer') ||
+          location == '/change-password' ||
+          location == '/delete-account',
+    AccountMode.provider =>
+      location.startsWith('/provider') ||
+          location.startsWith('/admin') ||
+          location == '/change-password' ||
+          location == '/delete-account',
+    AccountMode.parkingGuard =>
+      location.startsWith('/guard') ||
+          location == '/change-password' ||
+          location == '/delete-account',
+    AccountMode.superAdmin =>
+      location.startsWith('/super-admin') ||
+          location == '/change-password' ||
+          location == '/delete-account',
+  };
+
+  return allowed ? null : landingRouteForState(state);
+}
+
+String landingRouteForState(AppState value) {
+  if (value.currentMode == AccountMode.provider &&
+      value.accountStatus == AccountStatus.pending) {
+    return '/provider-verification';
+  }
+  return switch (value.currentMode) {
+    AccountMode.superAdmin => '/super-admin/dashboard',
+    AccountMode.provider => '/provider/dashboard',
+    AccountMode.parkingGuard => '/guard/dashboard',
+    AccountMode.customer => '/customer/home',
+  };
+}
 
 class ParkirCepatApp extends ConsumerWidget {
   const ParkirCepatApp({super.key});
@@ -1518,16 +1594,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   String landingRouteFor(AppState value) {
-    if (value.currentMode == AccountMode.provider &&
-        value.accountStatus == AccountStatus.pending) {
-      return '/provider-verification';
-    }
-    return switch (value.currentMode) {
-      AccountMode.superAdmin => '/super-admin/dashboard',
-      AccountMode.provider => '/provider/dashboard',
-      AccountMode.parkingGuard => '/guard/dashboard',
-      AccountMode.customer => '/customer/home',
-    };
+    return landingRouteForState(value);
   }
 
   void setOnboardingPage(int index) {
