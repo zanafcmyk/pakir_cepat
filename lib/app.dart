@@ -25,6 +25,8 @@ import 'services/supabase_guard_service.dart';
 import 'services/supabase_notification_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
+import 'services/supabase_profile_service.dart';
+import 'services/supabase_review_service.dart';
 import 'services/supabase_vehicle_service.dart';
 import 'widgets/map_embed_view.dart';
 
@@ -118,6 +120,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/customer/notifications',
         builder: (context, state) => const CustomerNotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/customer/favorites',
+        builder: (context, state) => const CustomerFavoriteLotsScreen(),
       ),
       GoRoute(
         path: '/customer/profile',
@@ -1277,6 +1283,8 @@ class AppController extends StateNotifier<AppState> {
       SupabaseNotificationService();
   final SupabaseGuardService _guardService = SupabaseGuardService();
   final SupabaseFavoriteService _favoriteService = SupabaseFavoriteService();
+  final SupabaseProfileService _profileService = SupabaseProfileService();
+  final SupabaseReviewService _reviewService = SupabaseReviewService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1521,6 +1529,18 @@ class AppController extends StateNotifier<AppState> {
     final favoriteLotIds = await _favoriteService
         .fetchCurrentCustomerFavoriteLotIds();
     state = state.copyWith(favoriteLotIds: favoriteLotIds);
+  }
+
+  Future<void> submitParkingReview({
+    required String ticketNumber,
+    required int rating,
+    required String comment,
+  }) {
+    return _reviewService.submitReviewForTicket(
+      ticketNumber: ticketNumber,
+      rating: rating,
+      comment: comment,
+    );
   }
 
   Future<void> loadComplaintsFromSupabase() async {
@@ -2032,11 +2052,16 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void updateCustomerProfile({
+  Future<void> updateCustomerProfile({
     required String name,
     required String email,
     required String phone,
-  }) {
+  }) async {
+    await _profileService.updateCurrentUserProfile(
+      name: name,
+      email: email,
+      phone: phone,
+    );
     state = state.copyWith(
       userName: state.currentMode == AccountMode.customer
           ? name
@@ -7328,6 +7353,17 @@ class _ParkingHistoryScreenState extends ConsumerState<ParkingHistoryScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                       ),
+                      if (item.id.startsWith('TKT-')) ...[
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _showReviewDialog(context, item),
+                            icon: const Icon(Icons.star_rounded),
+                            label: const Text('Beri review'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -7335,6 +7371,135 @@ class _ParkingHistoryScreenState extends ConsumerState<ParkingHistoryScreen> {
             )
             .toList(),
       ),
+    );
+  }
+
+  Future<void> _showReviewDialog(
+    BuildContext context,
+    TransactionRecord item,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _ParkingReviewDialog(transaction: item),
+    );
+  }
+}
+
+class _ParkingReviewDialog extends ConsumerStatefulWidget {
+  const _ParkingReviewDialog({required this.transaction});
+
+  final TransactionRecord transaction;
+
+  @override
+  ConsumerState<_ParkingReviewDialog> createState() =>
+      _ParkingReviewDialogState();
+}
+
+class _ParkingReviewDialogState extends ConsumerState<_ParkingReviewDialog> {
+  final TextEditingController _commentController = TextEditingController();
+  int _rating = 5;
+  bool _isSaving = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_isSaving) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .submitParkingReview(
+            ticketNumber: widget.transaction.id,
+            rating: _rating,
+            comment: _commentController.text.trim(),
+          );
+      if (!mounted) {
+        return;
+      }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Review berhasil dikirim')));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal mengirim review. Review untuk tiket ini mungkin sudah ada.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Review ${widget.transaction.locationName}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (var index = 1; index <= 5; index++)
+                IconButton(
+                  tooltip: '$index bintang',
+                  onPressed: () => setState(() => _rating = index),
+                  icon: Icon(
+                    index <= _rating
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
+                    color: const Color(0xFFD97706),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _commentController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Catatan review',
+              prefixIcon: Icon(Icons.rate_review_outlined),
+            ),
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 12),
+            InlineNotice(
+              icon: Icons.error_outline_rounded,
+              accent: const Color(0xFFDC2626),
+              message: _errorMessage!,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        FilledButton.icon(
+          onPressed: _isSaving ? null : _submit,
+          icon: const Icon(Icons.send_rounded),
+          label: Text(_isSaving ? 'Mengirim...' : 'Kirim'),
+        ),
+      ],
     );
   }
 }
@@ -8447,6 +8612,84 @@ class _CustomerNotificationsScreenState
   }
 }
 
+class CustomerFavoriteLotsScreen extends ConsumerStatefulWidget {
+  const CustomerFavoriteLotsScreen({super.key});
+
+  @override
+  ConsumerState<CustomerFavoriteLotsScreen> createState() =>
+      _CustomerFavoriteLotsScreenState();
+}
+
+class _CustomerFavoriteLotsScreenState
+    extends ConsumerState<CustomerFavoriteLotsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() async {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final favoriteLots = [
+      for (final lot in state.lots)
+        if (state.favoriteLotIds.contains(lot.id)) lot,
+    ];
+
+    return CustomerShell(
+      currentIndex: 4,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          const HeaderSection(
+            title: 'Lokasi favorit',
+            subtitle:
+                'Lokasi parkir yang kamu simpan untuk akses cepat booking berikutnya.',
+          ),
+          const SizedBox(height: 18),
+          if (favoriteLots.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada favorit',
+              body:
+                  'Tekan ikon love pada lokasi parkir untuk menyimpannya di daftar ini.',
+              actionLabel: 'Cari lokasi',
+              onPressed: () => context.go('/customer/home'),
+            )
+          else
+            ...favoriteLots.map(
+              (lot) => Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: ParkingLotCard(
+                  lot: lot,
+                  isFavorite: true,
+                  onToggleFavorite: () => ref
+                      .read(appControllerProvider.notifier)
+                      .toggleFavoriteLot(lot.id),
+                  onDetail: () {
+                    ref.read(appControllerProvider.notifier).selectLot(lot);
+                    context.push('/customer/parking-detail');
+                  },
+                  onBooking: lot.isFull
+                      ? () {}
+                      : () {
+                          ref
+                              .read(appControllerProvider.notifier)
+                              .selectLot(lot);
+                          context.push('/customer/booking');
+                        },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class CustomerProfileScreen extends ConsumerWidget {
   const CustomerProfileScreen({super.key});
 
@@ -8505,6 +8748,14 @@ class CustomerProfileScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
+            icon: Icons.favorite_rounded,
+            iconColor: const Color(0xFFDC2626),
+            title: 'Lokasi favorit',
+            subtitle: '${state.favoriteLotIds.length} lokasi tersimpan',
+            onTap: () => context.push('/customer/favorites'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
             icon: Icons.receipt_long_rounded,
             iconColor: AppTheme.blue,
             title: 'Riwayat transaksi',
@@ -8558,6 +8809,7 @@ class _CustomerEditProfileScreenState
   late final TextEditingController _phoneController;
   Uint8List? _avatarBytes;
   String? _errorMessage;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -8577,7 +8829,11 @@ class _CustomerEditProfileScreenState
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_isSaving) {
+      return;
+    }
+
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
     final phone = _phoneController.text.trim();
@@ -8595,13 +8851,35 @@ class _CustomerEditProfileScreenState
       return;
     }
 
-    ref
-        .read(appControllerProvider.notifier)
-        .updateCustomerProfile(name: name, email: email, phone: phone);
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Profil berhasil diperbarui')));
-    context.go('/customer/profile');
+    setState(() {
+      _errorMessage = null;
+      _isSaving = true;
+    });
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateCustomerProfile(name: name, email: email, phone: phone);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profil berhasil diperbarui')),
+      );
+      context.go('/customer/profile');
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal menyimpan profil ke Supabase. Cek koneksi dan coba lagi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   Future<void> _pickPhoto() async {
@@ -8732,9 +9010,9 @@ class _CustomerEditProfileScreenState
                 ],
                 const SizedBox(height: 18),
                 _CustomerCompactButton(
-                  label: 'Simpan Perubahan',
+                  label: _isSaving ? 'Menyimpan...' : 'Simpan Perubahan',
                   icon: Icons.save_rounded,
-                  onPressed: _save,
+                  onPressed: _isSaving ? null : _save,
                 ),
               ],
             ),
@@ -9063,7 +9341,7 @@ class _CustomerCompactButton extends StatelessWidget {
 
   final String label;
   final IconData icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
