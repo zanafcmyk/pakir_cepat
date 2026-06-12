@@ -47,6 +47,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Onboarding tersimpan lokal permanen di device dengan `SharedPreferences`.
 - [x] Dashboard customer memuat ulang data utama dari Supabase saat dibuka.
 - [x] Dashboard penyedia membaca kendaraan masuk dan pendapatan hari ini dari Supabase.
+- [x] Provider daily revenue detail membaca transaksi hari ini dari Supabase.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -62,7 +63,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Payment masih demo, belum gateway pembayaran asli.
 - [ ] Nota/receipt sudah membaca Supabase jika ada, tetapi print/export masih UI/demo.
 - [ ] Provider financial report belum sepenuhnya query agregasi Supabase.
-- [ ] Provider daily revenue belum sepenuhnya query agregasi Supabase.
 - [ ] Provider statistics belum sepenuhnya query agregasi Supabase.
 - [ ] Notifikasi in-app sudah ada, tetapi push notification asli ke HP belum production.
 
@@ -70,7 +70,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - Onboarding sudah tidak hanya state lokal sementara. Status selesai onboarding sekarang tersimpan di device dengan `SharedPreferences`.
 - Dashboard customer sudah refresh data utama dari Supabase saat dibuka: lokasi/slot, kendaraan, booking aktif, riwayat, favorit, dan notifikasi. Search/filter lokasi masih belum production.
-- Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini dan pendapatan hari ini. Grafik, financial report, daily revenue detail, dan provider statistics masih perlu query agregasi lanjutan.
+- Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini dan pendapatan hari ini. Grafik, financial report, dan provider statistics masih perlu query agregasi lanjutan.
+- Provider daily revenue detail sudah membaca transaksi, total, rata-rata, transaksi terbesar, dan metode pembayaran dari Supabase untuk hari ini.
 - Dashboard penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
 - Statistik dan laporan penyedia/super admin masih perlu query agregasi Supabase khusus.
 - Monitoring kendaraan penyedia masih perlu dipastikan memakai data booking/slot Supabase penuh.
@@ -146,6 +147,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Avatar penyedia upload dan load dari Supabase.
 - [x] Foto lahan parkir penyedia upload ke Supabase Storage.
 - [x] Dashboard penyedia membaca ringkasan kendaraan masuk dan pendapatan hari ini dari Supabase.
+- [x] Provider daily revenue detail membaca transaksi hari ini dari Supabase.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -154,7 +156,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Statistik penyedia sebagian masih pakai data lokal/state.
 - [ ] Laporan penyedia sebagian masih pakai data lokal/history state.
 - [ ] Provider financial report belum sepenuhnya query agregasi Supabase.
-- [ ] Provider daily revenue belum sepenuhnya query agregasi Supabase.
 - [ ] Provider statistics belum sepenuhnya query agregasi Supabase.
 
 #### Belum Ada/Belum Production

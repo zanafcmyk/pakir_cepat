@@ -1638,6 +1638,11 @@ class AppController extends StateNotifier<AppState> {
     return _parkingService.fetchCurrentProviderDashboardSummary();
   }
 
+  Future<SupabaseProviderDailyRevenue>
+  fetchProviderDailyRevenueFromSupabase() {
+    return _parkingService.fetchCurrentProviderDailyRevenue();
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -11643,133 +11648,159 @@ class ProviderFinancialReportScreen extends ConsumerWidget {
   }
 }
 
-class ProviderDailyRevenueScreen extends ConsumerWidget {
+class ProviderDailyRevenueScreen extends ConsumerStatefulWidget {
   const ProviderDailyRevenueScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(appControllerProvider).history;
-    final todayTransactions = history
-        .where((item) => item.timeLabel.toLowerCase().contains('hari ini'))
-        .toList();
-    final dailyRevenue = todayTransactions.fold<int>(
-      0,
-      (total, item) => total + item.total,
-    );
-    final averageTransaction = todayTransactions.isEmpty
-        ? 0
-        : (dailyRevenue / todayTransactions.length).round();
-    final highestTransaction = todayTransactions.isEmpty
-        ? 0
-        : todayTransactions
-              .map((item) => item.total)
-              .reduce((value, item) => math.max(value, item));
-    final qrisEstimate = (dailyRevenue * 0.65).round();
-    final cashEstimate = dailyRevenue - qrisEstimate;
+  ConsumerState<ProviderDailyRevenueScreen> createState() =>
+      _ProviderDailyRevenueScreenState();
+}
 
+class _ProviderDailyRevenueScreenState
+    extends ConsumerState<ProviderDailyRevenueScreen> {
+  late Future<SupabaseProviderDailyRevenue> _dailyRevenueFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dailyRevenueFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchProviderDailyRevenueFromSupabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Pendapatan hari ini')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  formatCurrency(dailyRevenue),
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.emerald,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Total pendapatan dari transaksi hari ini.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
-                ),
-                const SizedBox(height: 18),
-                SummaryRow(
-                  label: 'Transaksi hari ini',
-                  value: '${todayTransactions.length} transaksi',
-                ),
-                SummaryRow(
-                  label: 'Rata-rata transaksi',
-                  value: formatCurrency(averageTransaction),
-                ),
-                SummaryRow(
-                  label: 'Transaksi terbesar',
-                  value: formatCurrency(highestTransaction),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Metode pembayaran',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SummaryRow(
-                  label: 'QRIS / digital',
-                  value: formatCurrency(qrisEstimate),
-                  valueColor: AppTheme.blue,
-                ),
-                SummaryRow(
-                  label: 'Tunai',
-                  value: formatCurrency(cashEstimate),
-                  valueColor: AppTheme.emerald,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SectionTitle(title: 'Transaksi hari ini'),
-          const SizedBox(height: 12),
-          if (todayTransactions.isEmpty)
-            const EmptyStateCard(
-              title: 'Belum ada transaksi',
-              body: 'Transaksi yang masuk hari ini akan tampil di sini.',
-              actionLabel: 'Lihat statistik',
-              onPressed: _noop,
-            )
-          else
-            ...todayTransactions.map(
-              (item) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: PremiumCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.locationName,
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      SummaryRow(label: 'ID transaksi', value: item.id),
-                      SummaryRow(label: 'Kendaraan', value: item.plateNumber),
-                      SummaryRow(label: 'Waktu', value: item.timeLabel),
-                      SummaryRow(
-                        label: 'Pendapatan',
-                        value: formatCurrency(item.total),
-                        valueColor: AppTheme.emerald,
-                      ),
-                    ],
-                  ),
+      body: FutureBuilder<SupabaseProviderDailyRevenue>(
+        future: _dailyRevenueFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final data =
+              snapshot.data ??
+              const SupabaseProviderDailyRevenue(
+                transactions: [],
+                qrisRevenue: 0,
+                cashRevenue: 0,
+                otherRevenue: 0,
+              );
+          final todayTransactions = data.transactions;
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      formatCurrency(data.totalRevenue),
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.emerald,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Total pendapatan dari transaksi Supabase hari ini.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                    ),
+                    const SizedBox(height: 18),
+                    SummaryRow(
+                      label: 'Transaksi hari ini',
+                      value: '${todayTransactions.length} transaksi',
+                    ),
+                    SummaryRow(
+                      label: 'Rata-rata transaksi',
+                      value: formatCurrency(data.averageTransaction),
+                    ),
+                    SummaryRow(
+                      label: 'Transaksi terbesar',
+                      value: formatCurrency(data.highestTransaction),
+                    ),
+                  ],
                 ),
               ),
-            ),
-        ],
+              const SizedBox(height: 16),
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Metode pembayaran',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SummaryRow(
+                      label: 'QRIS / digital',
+                      value: formatCurrency(data.qrisRevenue),
+                      valueColor: AppTheme.blue,
+                    ),
+                    SummaryRow(
+                      label: 'Tunai',
+                      value: formatCurrency(data.cashRevenue),
+                      valueColor: AppTheme.emerald,
+                    ),
+                    if (data.otherRevenue > 0)
+                      SummaryRow(
+                        label: 'Lainnya',
+                        value: formatCurrency(data.otherRevenue),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SectionTitle(title: 'Transaksi hari ini'),
+              const SizedBox(height: 12),
+              if (todayTransactions.isEmpty)
+                const EmptyStateCard(
+                  title: 'Belum ada transaksi',
+                  body: 'Transaksi yang masuk hari ini akan tampil di sini.',
+                  actionLabel: 'Lihat statistik',
+                  onPressed: _noop,
+                )
+              else
+                ...todayTransactions.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: PremiumCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.locationName,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          SummaryRow(label: 'ID transaksi', value: item.id),
+                          SummaryRow(
+                            label: 'Kendaraan',
+                            value: item.plateNumber,
+                          ),
+                          SummaryRow(label: 'Status', value: item.status),
+                          SummaryRow(label: 'Waktu', value: item.timeLabel),
+                          SummaryRow(
+                            label: 'Pendapatan',
+                            value: formatCurrency(item.total),
+                            valueColor: AppTheme.emerald,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

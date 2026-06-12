@@ -22,6 +22,32 @@ class SupabaseProviderDashboardSummary {
   final int revenueToday;
 }
 
+class SupabaseProviderDailyRevenue {
+  const SupabaseProviderDailyRevenue({
+    required this.transactions,
+    required this.qrisRevenue,
+    required this.cashRevenue,
+    required this.otherRevenue,
+  });
+
+  final List<TransactionRecord> transactions;
+  final int qrisRevenue;
+  final int cashRevenue;
+  final int otherRevenue;
+
+  int get totalRevenue =>
+      transactions.fold(0, (total, item) => total + item.total);
+
+  int get averageTransaction =>
+      transactions.isEmpty ? 0 : (totalRevenue / transactions.length).round();
+
+  int get highestTransaction => transactions.isEmpty
+      ? 0
+      : transactions
+            .map((item) => item.total)
+            .reduce((value, item) => value > item ? value : item);
+}
+
 class SupabaseParkingService {
   SupabaseParkingService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
@@ -103,43 +129,7 @@ class SupabaseParkingService {
 
   Future<SupabaseProviderDashboardSummary>
   fetchCurrentProviderDashboardSummary() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      return const SupabaseProviderDashboardSummary(
-        vehiclesEnteredToday: 0,
-        revenueToday: 0,
-      );
-    }
-
-    final providerRows = await _client
-        .from('providers')
-        .select('id')
-        .eq('profile_id', user.id)
-        .limit(1);
-
-    if (providerRows.isEmpty) {
-      return const SupabaseProviderDashboardSummary(
-        vehiclesEnteredToday: 0,
-        revenueToday: 0,
-      );
-    }
-
-    final providerId = providerRows.first['id'] as String?;
-    if (providerId == null) {
-      return const SupabaseProviderDashboardSummary(
-        vehiclesEnteredToday: 0,
-        revenueToday: 0,
-      );
-    }
-
-    final lotRows = await _client
-        .from('parking_lots')
-        .select('id')
-        .eq('provider_id', providerId);
-    final lotIds = [
-      for (final row in lotRows)
-        if (row['id'] != null) row['id'] as String,
-    ];
+    final lotIds = await _currentProviderLotIds();
 
     if (lotIds.isEmpty) {
       return const SupabaseProviderDashboardSummary(
@@ -179,6 +169,162 @@ class SupabaseParkingService {
       vehiclesEnteredToday: vehiclesEnteredToday,
       revenueToday: revenueToday,
     );
+  }
+
+  Future<SupabaseProviderDailyRevenue>
+  fetchCurrentProviderDailyRevenue() async {
+    final lotIds = await _currentProviderLotIds();
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderDailyRevenue(
+        transactions: [],
+        qrisRevenue: 0,
+        cashRevenue: 0,
+        otherRevenue: 0,
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, entry_time, estimated_cost, final_cost, status, '
+          'parking_lots(name), vehicles(plate_number), '
+          'payments(method, status, amount, paid_at)',
+        )
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', todayStart.toIso8601String())
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    var qrisRevenue = 0;
+    var cashRevenue = 0;
+    var otherRevenue = 0;
+    final transactions = <TransactionRecord>[];
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final payment = _latestSuccessfulPayment(row['payments']);
+      final amount =
+          (payment?['amount'] as num?)?.toInt() ??
+          (row['final_cost'] as num?)?.toInt() ??
+          (row['estimated_cost'] as num?)?.toInt() ??
+          0;
+      final method = payment?['method'] as String?;
+
+      switch (method) {
+        case 'qris':
+        case 'ewallet':
+        case 'card':
+          qrisRevenue += amount;
+        case 'cash':
+          cashRevenue += amount;
+        default:
+          otherRevenue += amount;
+      }
+
+      transactions.add(
+        TransactionRecord(
+          id: row['ticket_number'] as String? ?? '-',
+          locationName: _nestedText(row['parking_lots'], 'name'),
+          plateNumber: _nestedText(row['vehicles'], 'plate_number'),
+          status: _bookingStatusLabel(row['status'] as String?),
+          total: amount,
+          timeLabel: _timeLabel(row['entry_time'] as String?),
+        ),
+      );
+    }
+
+    return SupabaseProviderDailyRevenue(
+      transactions: transactions,
+      qrisRevenue: qrisRevenue,
+      cashRevenue: cashRevenue,
+      otherRevenue: otherRevenue,
+    );
+  }
+
+  Future<List<String>> _currentProviderLotIds() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+
+    if (providerRows.isEmpty) {
+      return const [];
+    }
+
+    final providerId = providerRows.first['id'] as String?;
+    if (providerId == null) {
+      return const [];
+    }
+
+    final lotRows = await _client
+        .from('parking_lots')
+        .select('id')
+        .eq('provider_id', providerId);
+
+    return [
+      for (final row in lotRows)
+        if (row['id'] != null) row['id'] as String,
+    ];
+  }
+
+  Map<String, dynamic>? _latestSuccessfulPayment(dynamic value) {
+    if (value is! List || value.isEmpty) {
+      return null;
+    }
+
+    final payments = [
+      for (final item in value) Map<String, dynamic>.from(item as Map),
+    ];
+    payments.sort((a, b) {
+      final aTime =
+          DateTime.tryParse(a['paid_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime =
+          DateTime.tryParse(b['paid_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
+
+    for (final payment in payments) {
+      if (payment['status'] == 'paid') {
+        return payment;
+      }
+    }
+    return payments.first;
+  }
+
+  String _nestedText(dynamic value, String key) {
+    if (value is Map && value[key] != null) {
+      return value[key] as String;
+    }
+    return '-';
+  }
+
+  String _bookingStatusLabel(String? status) => switch (status) {
+    'paid' => 'Lunas',
+    'active' => 'Aktif',
+    'completed' => 'Selesai',
+    _ => 'Diproses',
+  };
+
+  String _timeLabel(String? value) {
+    final time = DateTime.tryParse(value ?? '');
+    if (time == null) {
+      return '-';
+    }
+
+    final local = time.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return 'Hari ini, $hour:$minute';
   }
 
   ParkingLot _parkingLotFromRow(
