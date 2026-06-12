@@ -1638,9 +1638,13 @@ class AppController extends StateNotifier<AppState> {
     return _parkingService.fetchCurrentProviderDashboardSummary();
   }
 
-  Future<SupabaseProviderDailyRevenue>
-  fetchProviderDailyRevenueFromSupabase() {
+  Future<SupabaseProviderDailyRevenue> fetchProviderDailyRevenueFromSupabase() {
     return _parkingService.fetchCurrentProviderDailyRevenue();
+  }
+
+  Future<SupabaseProviderFinancialReport>
+  fetchProviderFinancialReportFromSupabase() {
+    return _parkingService.fetchCurrentProviderFinancialReport();
   }
 
   void login({
@@ -4921,9 +4925,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Future<void> _sendResetEmail() async {
     final email = _emailController.text.trim();
     if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email wajib diisi.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email wajib diisi.')));
       return;
     }
 
@@ -4948,18 +4952,16 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal mengirim link reset password.'),
-        ),
+        const SnackBar(content: Text('Gagal mengirim link reset password.')),
       );
     } finally {
       if (mounted) {
@@ -11554,95 +11556,277 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
   }
 }
 
-class ProviderFinancialReportScreen extends ConsumerWidget {
+class ProviderFinancialReportScreen extends ConsumerStatefulWidget {
   const ProviderFinancialReportScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(appControllerProvider).history;
-    final revenue = history.fold<int>(0, (total, item) => total + item.total);
-    final estimatedExpense = (revenue * 0.3).round();
-    final netIncome = revenue - estimatedExpense;
+  ConsumerState<ProviderFinancialReportScreen> createState() =>
+      _ProviderFinancialReportScreenState();
+}
 
+class _ProviderFinancialReportScreenState
+    extends ConsumerState<ProviderFinancialReportScreen> {
+  late Future<SupabaseProviderFinancialReport> _reportFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchProviderFinancialReportFromSupabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Laporan keuangan')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Ringkasan pendapatan',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+      body: FutureBuilder<SupabaseProviderFinancialReport>(
+        future: _reportFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final report =
+              snapshot.data ??
+              const SupabaseProviderFinancialReport(
+                transactions: [],
+                dailyRevenue: 0,
+                monthlyRevenue: 0,
+                availableSlots: 0,
+                occupiedSlots: 0,
+                chartPoints: [],
+              );
+          final recentTransactions = report.transactions.take(5).toList();
+
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ringkasan pendapatan',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 16),
+                    SummaryRow(
+                      label: 'Total pendapatan bulan ini',
+                      value: formatCurrency(report.totalRevenue),
+                      valueColor: AppTheme.emerald,
+                    ),
+                    SummaryRow(
+                      label: 'Estimasi pengeluaran',
+                      value: formatCurrency(report.estimatedExpense),
+                      valueColor: const Color(0xFFDC2626),
+                    ),
+                    SummaryRow(
+                      label: 'Laba bersih estimasi',
+                      value: formatCurrency(report.estimatedNetIncome),
+                      valueColor: AppTheme.blue,
+                    ),
+                    SummaryRow(
+                      label: 'Jumlah transaksi',
+                      value: '${report.transactions.length} transaksi',
+                    ),
+                    const SizedBox(height: 20),
+                    PrimaryButton(
+                      label: 'Download laporan PDF',
+                      icon: Icons.picture_as_pdf_rounded,
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Laporan PDF siap diunduh'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                SummaryRow(
-                  label: 'Total pendapatan',
-                  value: formatCurrency(revenue),
-                  valueColor: AppTheme.emerald,
-                ),
-                SummaryRow(
-                  label: 'Estimasi pengeluaran',
-                  value: formatCurrency(estimatedExpense),
-                  valueColor: const Color(0xFFDC2626),
-                ),
-                SummaryRow(
-                  label: 'Laba bersih estimasi',
-                  value: formatCurrency(netIncome),
-                  valueColor: AppTheme.blue,
-                ),
-                SummaryRow(
-                  label: 'Jumlah transaksi',
-                  value: '${history.length} transaksi',
-                ),
-                const SizedBox(height: 20),
-                PrimaryButton(
-                  label: 'Download laporan PDF',
-                  icon: Icons.picture_as_pdf_rounded,
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Laporan PDF siap diunduh')),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          SectionTitle(title: 'Transaksi terbaru'),
-          const SizedBox(height: 12),
-          ...history
-              .take(5)
-              .map(
-                (item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: PremiumCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          item.locationName,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        SummaryRow(label: 'Transaksi', value: item.id),
-                        SummaryRow(label: 'Kendaraan', value: item.plateNumber),
-                        SummaryRow(
-                          label: 'Pendapatan',
-                          value: formatCurrency(item.total),
-                          valueColor: AppTheme.emerald,
-                        ),
-                      ],
+              ),
+              const SizedBox(height: 16),
+              SectionTitle(title: 'Transaksi terbaru'),
+              const SizedBox(height: 12),
+              if (recentTransactions.isEmpty)
+                const EmptyStateCard(
+                  title: 'Belum ada transaksi',
+                  body: 'Transaksi bulan ini akan tampil di laporan ini.',
+                  actionLabel: 'Kembali',
+                  onPressed: _noop,
+                )
+              else
+                ...recentTransactions.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: PremiumCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.locationName,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          SummaryRow(label: 'Transaksi', value: item.id),
+                          SummaryRow(
+                            label: 'Kendaraan',
+                            value: item.plateNumber,
+                          ),
+                          SummaryRow(label: 'Waktu', value: item.timeLabel),
+                          SummaryRow(
+                            label: 'Pendapatan',
+                            value: formatCurrency(item.total),
+                            valueColor: AppTheme.emerald,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class ProviderStatisticsContent extends StatelessWidget {
+  const ProviderStatisticsContent({super.key, required this.report});
+
+  final SupabaseProviderFinancialReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            StatCard(
+              label: 'Pendapatan harian',
+              value: formatCurrency(report.dailyRevenue),
+              accent: AppTheme.emerald,
+              icon: Icons.calendar_today_rounded,
+            ),
+            StatCard(
+              label: 'Pendapatan bulanan',
+              value: formatCurrency(report.monthlyRevenue),
+              accent: AppTheme.blue,
+              icon: Icons.insights_rounded,
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        PremiumCard(
+          child: SizedBox(
+            height: 220,
+            child: RevenueChart(points: report.chartPoints),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            Expanded(
+              child: SecondaryButton(
+                label: 'Export PDF',
+                icon: Icons.picture_as_pdf_rounded,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Laporan PDF berhasil disiapkan'),
+                    ),
+                  );
+                },
               ),
-        ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SecondaryButton(
+                label: 'Export Excel',
+                icon: Icons.table_view_rounded,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Laporan Excel berhasil disiapkan'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        PremiumCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Statistik slot parkir',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              SummaryRow(
+                label: 'Slot tersedia',
+                value: '${report.availableSlots}',
+              ),
+              SummaryRow(label: 'Slot penuh', value: '${report.occupiedSlots}'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class StatisticsScreen extends ConsumerStatefulWidget {
+  const StatisticsScreen({super.key});
+
+  @override
+  ConsumerState<StatisticsScreen> createState() => _StatisticsScreenState();
+}
+
+class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
+  late Future<SupabaseProviderFinancialReport> _reportFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchProviderFinancialReportFromSupabase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Statistik dan laporan')),
+      body: FutureBuilder<SupabaseProviderFinancialReport>(
+        future: _reportFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final report =
+              snapshot.data ??
+              const SupabaseProviderFinancialReport(
+                transactions: [],
+                dailyRevenue: 0,
+                monthlyRevenue: 0,
+                availableSlots: 0,
+                occupiedSlots: 0,
+                chartPoints: [],
+              );
+          return ProviderStatisticsContent(report: report);
+        },
       ),
     );
   }
@@ -11801,100 +11985,6 @@ class _ProviderDailyRevenueScreenState
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class StatisticsScreen extends ConsumerWidget {
-  const StatisticsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Statistik dan laporan')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Wrap(
-            spacing: 14,
-            runSpacing: 14,
-            children: const [
-              StatCard(
-                label: 'Pendapatan harian',
-                value: 'Rp 8,4 jt',
-                accent: AppTheme.emerald,
-                icon: Icons.calendar_today_rounded,
-              ),
-              StatCard(
-                label: 'Pendapatan bulanan',
-                value: 'Rp 214 jt',
-                accent: AppTheme.blue,
-                icon: Icons.insights_rounded,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          PremiumCard(child: SizedBox(height: 220, child: RevenueChart())),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Export PDF',
-                  icon: Icons.picture_as_pdf_rounded,
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Laporan PDF berhasil disiapkan'),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SecondaryButton(
-                  label: 'Export Excel',
-                  icon: Icons.table_view_rounded,
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Laporan Excel berhasil disiapkan'),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          PremiumCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Statistik slot parkir',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SummaryRow(
-                  label: 'Slot tersedia',
-                  value:
-                      '${state.slots.where((slot) => slot.isAvailable).length}',
-                ),
-                SummaryRow(
-                  label: 'Slot penuh',
-                  value:
-                      '${state.slots.where((slot) => !slot.isAvailable).length}',
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -15713,17 +15803,37 @@ class ActionCard extends StatelessWidget {
 }
 
 class RevenueChart extends StatelessWidget {
-  const RevenueChart({super.key});
+  const RevenueChart({super.key, this.points = const []});
+
+  final List<SupabaseRevenuePoint> points;
 
   @override
   Widget build(BuildContext context) {
+    final chartPoints = points.isEmpty
+        ? const [
+            SupabaseRevenuePoint(label: 'Sen', amount: 3500000),
+            SupabaseRevenuePoint(label: 'Sel', amount: 5200000),
+            SupabaseRevenuePoint(label: 'Rab', amount: 4600000),
+            SupabaseRevenuePoint(label: 'Kam', amount: 8400000),
+            SupabaseRevenuePoint(label: 'Jum', amount: 7800000),
+            SupabaseRevenuePoint(label: 'Sab', amount: 9600000),
+            SupabaseRevenuePoint(label: 'Min', amount: 11000000),
+          ]
+        : points;
+    final maxAmount = chartPoints.fold<int>(
+      0,
+      (maxValue, point) => math.max(maxValue, point.amount),
+    );
+    final maxY = math.max(1, (maxAmount / 1000000).ceil()).toDouble();
+    final interval = math.max(1, (maxY / 4).ceil()).toDouble();
+
     return LineChart(
       LineChartData(
         minY: 0,
-        maxY: 12,
+        maxY: maxY,
         gridData: FlGridData(
           drawVerticalLine: false,
-          horizontalInterval: 3,
+          horizontalInterval: interval,
           getDrawingHorizontalLine: (value) => FlLine(
             color: AppTheme.slate.withValues(alpha: 0.14),
             strokeWidth: 1,
@@ -15736,7 +15846,7 @@ class RevenueChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              interval: 3,
+              interval: interval,
               reservedSize: 28,
               getTitlesWidget: (value, meta) => Text(
                 value.toInt().toString(),
@@ -15750,17 +15860,9 @@ class RevenueChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               getTitlesWidget: (value, meta) {
-                const labels = [
-                  'Sen',
-                  'Sel',
-                  'Rab',
-                  'Kam',
-                  'Jum',
-                  'Sab',
-                  'Min',
-                ];
-                final text = value.toInt() >= 0 && value.toInt() < labels.length
-                    ? labels[value.toInt()]
+                final index = value.toInt();
+                final text = index >= 0 && index < chartPoints.length
+                    ? chartPoints[index].label
                     : '';
                 return Text(
                   text,
@@ -15774,14 +15876,9 @@ class RevenueChart extends StatelessWidget {
         ),
         lineBarsData: [
           LineChartBarData(
-            spots: const [
-              FlSpot(0, 3.5),
-              FlSpot(1, 5.2),
-              FlSpot(2, 4.6),
-              FlSpot(3, 8.4),
-              FlSpot(4, 7.8),
-              FlSpot(5, 9.6),
-              FlSpot(6, 11),
+            spots: [
+              for (var index = 0; index < chartPoints.length; index++)
+                FlSpot(index.toDouble(), chartPoints[index].amount / 1000000),
             ],
             isCurved: true,
             color: AppTheme.blue,

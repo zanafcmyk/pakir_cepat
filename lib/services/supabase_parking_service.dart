@@ -48,6 +48,38 @@ class SupabaseProviderDailyRevenue {
             .reduce((value, item) => value > item ? value : item);
 }
 
+class SupabaseRevenuePoint {
+  const SupabaseRevenuePoint({required this.label, required this.amount});
+
+  final String label;
+  final int amount;
+}
+
+class SupabaseProviderFinancialReport {
+  const SupabaseProviderFinancialReport({
+    required this.transactions,
+    required this.dailyRevenue,
+    required this.monthlyRevenue,
+    required this.availableSlots,
+    required this.occupiedSlots,
+    required this.chartPoints,
+  });
+
+  final List<TransactionRecord> transactions;
+  final int dailyRevenue;
+  final int monthlyRevenue;
+  final int availableSlots;
+  final int occupiedSlots;
+  final List<SupabaseRevenuePoint> chartPoints;
+
+  int get totalRevenue =>
+      transactions.fold(0, (total, item) => total + item.total);
+
+  int get estimatedExpense => (totalRevenue * 0.3).round();
+
+  int get estimatedNetIncome => totalRevenue - estimatedExpense;
+}
+
 class SupabaseParkingService {
   SupabaseParkingService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
@@ -243,6 +275,102 @@ class SupabaseParkingService {
     );
   }
 
+  Future<SupabaseProviderFinancialReport>
+  fetchCurrentProviderFinancialReport() async {
+    final lotIds = await _currentProviderLotIds();
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderFinancialReport(
+        transactions: [],
+        dailyRevenue: 0,
+        monthlyRevenue: 0,
+        availableSlots: 0,
+        occupiedSlots: 0,
+        chartPoints: [],
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final monthStart = DateTime(now.year, now.month);
+    final weekStart = todayStart.subtract(const Duration(days: 6));
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, entry_time, estimated_cost, final_cost, status, '
+          'created_at, parking_lots(name), vehicles(plate_number), '
+          'payments(method, status, amount, paid_at)',
+        )
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', monthStart.toIso8601String())
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    final transactions = <TransactionRecord>[];
+    final chartBuckets = <int, int>{
+      for (var index = 0; index < 7; index++) index: 0,
+    };
+    var dailyRevenue = 0;
+    var monthlyRevenue = 0;
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final createdAt = DateTime.tryParse(
+        row['created_at'] as String? ?? '',
+      )?.toLocal();
+      final amount = _bookingRevenueAmount(row);
+      monthlyRevenue += amount;
+
+      if (createdAt != null && !createdAt.isBefore(todayStart)) {
+        dailyRevenue += amount;
+      }
+
+      if (createdAt != null && !createdAt.isBefore(weekStart)) {
+        final bucketIndex = createdAt.difference(weekStart).inDays.clamp(0, 6);
+        chartBuckets[bucketIndex] = (chartBuckets[bucketIndex] ?? 0) + amount;
+      }
+
+      transactions.add(
+        TransactionRecord(
+          id: row['ticket_number'] as String? ?? '-',
+          locationName: _nestedText(row['parking_lots'], 'name'),
+          plateNumber: _nestedText(row['vehicles'], 'plate_number'),
+          status: _bookingStatusLabel(row['status'] as String?),
+          total: amount,
+          timeLabel: _dateTimeLabel(row['entry_time'] as String?),
+        ),
+      );
+    }
+
+    final slotRows = await _client
+        .from('parking_slots')
+        .select('status')
+        .inFilter('parking_lot_id', lotIds);
+    var availableSlots = 0;
+    var occupiedSlots = 0;
+    for (final row in slotRows) {
+      if (row['status'] == 'available') {
+        availableSlots++;
+      } else {
+        occupiedSlots++;
+      }
+    }
+
+    return SupabaseProviderFinancialReport(
+      transactions: transactions,
+      dailyRevenue: dailyRevenue,
+      monthlyRevenue: monthlyRevenue,
+      availableSlots: availableSlots,
+      occupiedSlots: occupiedSlots,
+      chartPoints: [
+        for (var index = 0; index < 7; index++)
+          SupabaseRevenuePoint(
+            label: _shortDayLabel(weekStart.add(Duration(days: index))),
+            amount: chartBuckets[index] ?? 0,
+          ),
+      ],
+    );
+  }
+
   Future<List<String>> _currentProviderLotIds() async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -301,6 +429,14 @@ class SupabaseParkingService {
     return payments.first;
   }
 
+  int _bookingRevenueAmount(Map<String, dynamic> row) {
+    final payment = _latestSuccessfulPayment(row['payments']);
+    return (payment?['amount'] as num?)?.toInt() ??
+        (row['final_cost'] as num?)?.toInt() ??
+        (row['estimated_cost'] as num?)?.toInt() ??
+        0;
+  }
+
   String _nestedText(dynamic value, String key) {
     if (value is Map && value[key] != null) {
       return value[key] as String;
@@ -325,6 +461,25 @@ class SupabaseParkingService {
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return 'Hari ini, $hour:$minute';
+  }
+
+  String _dateTimeLabel(String? value) {
+    final time = DateTime.tryParse(value ?? '');
+    if (time == null) {
+      return '-';
+    }
+
+    final local = time.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
+  }
+
+  String _shortDayLabel(DateTime value) {
+    const labels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    return labels[value.weekday - 1];
   }
 
   ParkingLot _parkingLotFromRow(
