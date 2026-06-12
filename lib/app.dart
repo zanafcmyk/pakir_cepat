@@ -4884,51 +4884,86 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
-  bool _otpSent = false;
+  final TextEditingController _emailController = TextEditingController();
+  bool _isSending = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendResetEmail() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email wajib diisi.')),
+      );
+      return;
+    }
+
+    setState(() => _isSending = true);
+
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      ref.read(appControllerProvider.notifier).requestPasswordReset();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Link reset password sudah dikirim ke email.'),
+        ),
+      );
+      context.pop();
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mengirim link reset password.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Reset password',
       subtitle:
-          'Verifikasi akun dengan email atau nomor HP lalu atur ulang password.',
+          'Masukkan email akun untuk menerima link reset password Supabase.',
       child: Column(
         children: [
-          const TextField(
-            decoration: InputDecoration(
-              labelText: 'Email / nomor HP',
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email akun',
               prefixIcon: Icon(Icons.alternate_email_rounded),
             ),
           ),
           const SizedBox(height: 16),
-          if (_otpSent) ...[
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Kode OTP',
-                prefixIcon: Icon(Icons.password_rounded),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const TextField(
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: 'Password baru',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
           PrimaryButton(
-            label: _otpSent ? 'Simpan password baru' : 'Kirim OTP',
-            icon: _otpSent ? Icons.check_rounded : Icons.sms_rounded,
-            onPressed: () {
-              if (_otpSent) {
-                ref.read(appControllerProvider.notifier).requestPasswordReset();
-                context.pop();
-              } else {
-                setState(() => _otpSent = true);
-              }
-            },
+            label: _isSending ? 'Mengirim...' : 'Kirim link reset',
+            icon: Icons.mark_email_read_rounded,
+            onPressed: _isSending ? null : _sendResetEmail,
           ),
         ],
       ),

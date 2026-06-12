@@ -42,6 +42,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Upload foto avatar/profil ke Supabase Storage.
 - [x] Load avatar dari `profiles.avatar_url` saat login berikutnya.
 - [x] Pengaturan akun customer ke Supabase.
+- [x] Forgot password mengirim link reset lewat Supabase.
+- [x] Upload foto lahan parkir penyedia ke Supabase Storage.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -55,15 +57,26 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Laporan penyedia sebagian masih pakai data lokal/history state.
 - [ ] Laporan super admin sebagian masih pakai data lokal/history state.
 - [ ] Monitoring kendaraan penyedia sebagian masih membaca history lokal/state.
-- [ ] Forgot password masih simulasi UI/OTP, belum reset password Supabase sungguhan.
 - [ ] Delete account masih reset state lokal, belum hapus akun Supabase sungguhan.
 - [ ] Payment masih demo, belum gateway pembayaran asli.
 - [ ] Nota/receipt sudah membaca Supabase jika ada, tetapi print/export masih UI/demo.
-- [ ] Edit foto lahan masih memakai picker lokal, belum upload foto lahan ke Supabase Storage.
 - [ ] Provider financial report belum sepenuhnya query agregasi Supabase.
 - [ ] Provider daily revenue belum sepenuhnya query agregasi Supabase.
 - [ ] Provider statistics belum sepenuhnya query agregasi Supabase.
 - [ ] Notifikasi in-app sudah ada, tetapi push notification asli ke HP belum production.
+
+#### Catatan audit baris 48-66
+
+- Onboarding masih lokal/demo. Belum dikerjakan pada tahap ini karena perlu scope sendiri.
+- Dashboard customer, penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
+- Statistik dan laporan penyedia/super admin masih perlu query agregasi Supabase khusus.
+- Monitoring kendaraan penyedia masih perlu dipastikan memakai data booking/slot Supabase penuh.
+- Forgot password sudah diganti dari simulasi OTP menjadi pengiriman link reset lewat Supabase. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
+- Delete account sungguhan belum dikerjakan karena penghapusan user Auth Supabase yang aman membutuhkan server/Edge Function.
+- Payment gateway asli belum dikerjakan karena membutuhkan pilihan provider pembayaran, credential, webhook, dan environment production.
+- Receipt sudah baca Supabase, tetapi print/export masih UI/demo.
+- Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
+- Push notification asli belum dikerjakan karena membutuhkan FCM/APNs, device token, permission, dan backend trigger.
 
 ### Belum Ada atau Belum Production
 
@@ -128,6 +141,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Penyedia bisa membuat/mengelola akun penjaga yang tersimpan ke Supabase.
 - [x] Edit profil penyedia ke Supabase.
 - [x] Avatar penyedia upload dan load dari Supabase.
+- [x] Foto lahan parkir penyedia upload ke Supabase Storage.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -138,7 +152,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Provider financial report belum sepenuhnya query agregasi Supabase.
 - [ ] Provider daily revenue belum sepenuhnya query agregasi Supabase.
 - [ ] Provider statistics belum sepenuhnya query agregasi Supabase.
-- [ ] Edit foto lahan masih picker lokal.
 
 #### Belum Ada/Belum Production
 
@@ -192,12 +205,12 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edit profil customer ke Supabase.
 - [x] Avatar customer upload dan load dari Supabase.
 - [x] Pengaturan akun customer tersimpan ke Supabase.
+- [x] Forgot password mengirim link reset lewat Supabase.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [ ] Onboarding masih lokal/demo.
 - [ ] Dashboard customer sebagian perlu dicek integrasi datanya.
-- [ ] Forgot password masih simulasi UI/OTP.
 - [ ] Delete account masih reset state lokal.
 - [ ] Payment masih demo.
 - [ ] Nota/receipt print/export masih UI/demo.
@@ -242,10 +255,9 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 1. Edit profil super admin ke Supabase.
 2. Ganti password dan reset password Supabase.
-3. Upload foto lahan ke Supabase Storage.
-4. Search/filter lokasi dari Supabase.
-5. Laporan pendapatan dan statistik dari query Supabase.
-6. Edge Function untuk membuat akun penjaga.
-7. Route protection dan middleware auth.
-8. Realtime slot/lokasi/notifikasi.
-9. Delete account sungguhan.
+3. Search/filter lokasi dari Supabase.
+4. Laporan pendapatan dan statistik dari query Supabase.
+5. Edge Function untuk membuat akun penjaga.
+6. Route protection dan middleware auth.
+7. Realtime slot/lokasi/notifikasi.
+8. Delete account sungguhan.
