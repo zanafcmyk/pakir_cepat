@@ -20,6 +20,7 @@ import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_favorite_service.dart';
 import 'services/supabase_guard_service.dart';
 import 'services/supabase_notification_service.dart';
 import 'services/supabase_parking_service.dart';
@@ -1275,6 +1276,7 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseNotificationService _notificationService =
       SupabaseNotificationService();
   final SupabaseGuardService _guardService = SupabaseGuardService();
+  final SupabaseFavoriteService _favoriteService = SupabaseFavoriteService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1513,6 +1515,12 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadCustomerHistoryFromSupabase() async {
     final history = await _bookingService.fetchCurrentCustomerHistory();
     state = state.copyWith(history: history);
+  }
+
+  Future<void> loadCustomerFavoritesFromSupabase() async {
+    final favoriteLotIds = await _favoriteService
+        .fetchCurrentCustomerFavoriteLotIds();
+    state = state.copyWith(favoriteLotIds: favoriteLotIds);
   }
 
   Future<void> loadComplaintsFromSupabase() async {
@@ -2777,14 +2785,29 @@ class AppController extends StateNotifier<AppState> {
     ParkingTariffType.progressive => 'progressive',
   };
 
-  void toggleFavoriteLot(String lotId) {
+  Future<void> toggleFavoriteLot(String lotId) async {
     final current = [...state.favoriteLotIds];
+    final wasFavorite = current.contains(lotId);
     if (current.contains(lotId)) {
       current.remove(lotId);
     } else {
       current.add(lotId);
     }
     state = state.copyWith(favoriteLotIds: current);
+
+    try {
+      if (wasFavorite) {
+        await _favoriteService.removeFavoriteLot(lotId);
+      } else {
+        await _favoriteService.saveFavoriteLot(lotId);
+      }
+    } catch (_) {
+      state = state.copyWith(
+        favoriteLotIds: wasFavorite
+            ? [...state.favoriteLotIds, lotId]
+            : state.favoriteLotIds.where((id) => id != lotId).toList(),
+      );
+    }
   }
 
   Future<void> saveVehicle({
@@ -3608,6 +3631,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+      await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -4369,6 +4393,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+      await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
