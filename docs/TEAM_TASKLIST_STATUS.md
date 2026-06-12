@@ -102,16 +102,16 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [x] Upload dokumen identitas penyedia ke Supabase Storage (kode dan SQL setup siap).
 - [x] Search/filter lokasi sungguhan dari database.
-- [ ] Laporan pendapatan dari query Supabase.
-- [ ] Statistik dari query Supabase.
+- [x] Laporan pendapatan utama dari query Supabase.
+- [x] Statistik utama dari query Supabase.
 - [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [x] Role guard/route protection dasar.
 - [x] Middleware/auth redirect dasar.
 - [ ] Realtime slot.
 - [ ] Realtime lokasi.
 - [ ] Realtime notifikasi.
-- [ ] Admin user management ke Supabase.
-- [ ] Super admin user management ke Supabase.
+- [x] Super admin user management ke Supabase untuk lihat user dan aktif/nonaktif akun.
+- [ ] Super admin hapus akun Auth sungguhan lewat admin action.
 
 ## Pembagian Tim
 
@@ -133,8 +133,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Belum Ada/Belum Production
 
 - [ ] User management super admin untuk hapus akun Auth sungguhan perlu Edge Function.
-- [ ] Role guard dan route protection ketat.
-- [ ] Middleware/auth protection penuh.
+- [x] Role guard dasar dan redirect auth sudah tersedia.
+- [ ] Audit role guard dan middleware auth untuk deep link production.
 - [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [ ] Review final sebelum merge ke `development` atau `master`.
 
@@ -161,6 +161,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [ ] Dashboard penyedia sebagian masih perlu dicek integrasi datanya.
+- [ ] Payment provider untuk settlement asli masih menunggu deploy Midtrans dan webhook.
 
 #### Belum Ada/Belum Production
 
@@ -185,7 +186,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Pembatasan route penjaga masih perlu middleware auth penuh.
+- [x] Pembatasan route penjaga dasar sudah ada.
+- [ ] Pembatasan route penjaga perlu audit deep link production.
 - [ ] Pembayaran tunai/manual masih bagian dari flow demo.
 
 #### Belum Ada/Belum Production
@@ -218,7 +220,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Payment masih demo.
+- [ ] Payment online sudah diarahkan ke pondasi Midtrans, tetapi belum production sampai Edge Function, secret, dan webhook aktif.
+- [ ] Payment tunai/manual masih perlu flow production agar hanya penjaga yang bisa konfirmasi.
 
 #### Belum Ada/Belum Production
 
@@ -257,7 +260,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Tabel `device_push_tokens` disiapkan di `docs/supabase_push_notifications.sql`.
 - [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
-- [ ] Query agregasi laporan/statistik.
+- [x] Query agregasi laporan/statistik utama.
 - [ ] Realtime slot/lokasi/notifikasi penuh.
 - [ ] Push notification provider production setelah Firebase config dipasang.
 
