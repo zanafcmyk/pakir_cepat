@@ -57,6 +57,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] User management super admin memuat profil dari Supabase dan menyimpan aktif/nonaktif ke `profiles.access_status`.
 - [x] Edit profil super admin tersimpan ke Supabase dan avatar memakai Supabase Storage.
 - [x] Ganti password akun login tersimpan ke Supabase Auth.
+- [x] Settings penyedia dan penjaga tersimpan ke Supabase lewat `profile_settings`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -84,6 +85,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Payment gateway asli belum dikerjakan karena membutuhkan pilihan provider pembayaran, credential, webhook, dan environment production.
 - Receipt sudah baca Supabase, tetapi print/export masih UI/demo.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
+- Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Push notification asli belum dikerjakan karena membutuhkan FCM/APNs, device token, permission, dan backend trigger.
 
 ### Belum Ada atau Belum Production
@@ -91,8 +93,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Penyedia membuat akun penjaga langsung lewat sistem aman menggunakan Edge Function.
 - [ ] Reset password Supabase sungguhan.
 - [ ] Hapus akun sungguhan di Supabase.
-- [ ] Settings penyedia.
-- [ ] Settings penjaga.
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [ ] Upload dokumen identitas penyedia ke Supabase Storage.
 - [ ] Search/filter lokasi sungguhan dari database.
@@ -148,6 +148,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Provider daily revenue detail membaca transaksi hari ini dari Supabase.
 - [x] Provider financial report membaca agregasi transaksi bulan ini dari Supabase.
 - [x] Provider statistics dan grafik revenue membaca agregasi Supabase.
+- [x] Settings penyedia tersimpan ke Supabase lewat `profile_settings`.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -157,7 +158,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
 - [ ] Upload dokumen identitas penyedia ke Supabase Storage.
-- [ ] Settings penyedia.
 - [ ] Search/filter data lokasi dari database.
 - [ ] Edge Function untuk membuat akun penjaga secara aman.
 
@@ -173,6 +173,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edit profil penjaga ke Supabase.
 - [x] Avatar penjaga upload dan load dari Supabase.
 - [x] Dashboard penjaga membaca assignment dan lokasi tugas dari Supabase saat dibuka.
+- [x] Settings penjaga tersimpan ke Supabase lewat `profile_settings`.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -181,7 +182,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Settings penjaga.
 - [ ] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
 - [ ] Realtime status slot/lokasi untuk penjaga.
 - [ ] Push notification tugas/booking untuk penjaga.

@@ -28,6 +28,7 @@ import 'services/supabase_notification_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
 import 'services/supabase_profile_service.dart';
+import 'services/supabase_profile_settings_service.dart';
 import 'services/supabase_review_service.dart';
 import 'services/supabase_super_admin_service.dart';
 import 'services/supabase_vehicle_service.dart';
@@ -199,6 +200,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             const RoleEditProfileScreen(mode: AccountMode.provider),
       ),
       GoRoute(
+        path: '/provider/account-settings',
+        builder: (context, state) =>
+            const RoleAccountSettingsScreen(mode: AccountMode.provider),
+      ),
+      GoRoute(
         path: '/provider/chat',
         builder: (context, state) => const RoleChatListScreen(
           mode: AccountMode.provider,
@@ -287,6 +293,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/guard/edit-profile',
         builder: (context, state) =>
             const RoleEditProfileScreen(mode: AccountMode.parkingGuard),
+      ),
+      GoRoute(
+        path: '/guard/account-settings',
+        builder: (context, state) =>
+            const RoleAccountSettingsScreen(mode: AccountMode.parkingGuard),
       ),
       GoRoute(
         path: '/guard/assigned-locations',
@@ -1315,6 +1326,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseComplaintService _complaintService = SupabaseComplaintService();
   final SupabaseCustomerSettingsService _customerSettingsService =
       SupabaseCustomerSettingsService();
+  final SupabaseProfileSettingsService _profileSettingsService =
+      SupabaseProfileSettingsService();
   final SupabaseParkingService _parkingService = SupabaseParkingService();
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
   final SupabaseBookingService _bookingService = SupabaseBookingService();
@@ -2258,6 +2271,26 @@ class AppController extends StateNotifier<AppState> {
       bookingNotificationEnabled: bookingNotificationEnabled,
       paymentNotificationEnabled: paymentNotificationEnabled,
       promoNotificationEnabled: promoNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+  }
+
+  Future<SupabaseProfileSettings> fetchCurrentProfileSettingsFromSupabase() {
+    return _profileSettingsService.fetchCurrentProfileSettings();
+  }
+
+  Future<void> updateCurrentProfileSettings({
+    required bool primaryNotificationEnabled,
+    required bool secondaryNotificationEnabled,
+    required bool reportNotificationEnabled,
+    required String selectedLanguage,
+    required bool accountSecurityEnabled,
+  }) {
+    return _profileSettingsService.saveCurrentProfileSettings(
+      primaryNotificationEnabled: primaryNotificationEnabled,
+      secondaryNotificationEnabled: secondaryNotificationEnabled,
+      reportNotificationEnabled: reportNotificationEnabled,
       selectedLanguage: selectedLanguage,
       accountSecurityEnabled: accountSecurityEnabled,
     );
@@ -9893,6 +9926,221 @@ class _CustomerAccountSettingsScreenState
   }
 }
 
+class RoleAccountSettingsScreen extends ConsumerStatefulWidget {
+  const RoleAccountSettingsScreen({super.key, required this.mode});
+
+  final AccountMode mode;
+
+  @override
+  ConsumerState<RoleAccountSettingsScreen> createState() =>
+      _RoleAccountSettingsScreenState();
+}
+
+class _RoleAccountSettingsScreenState
+    extends ConsumerState<RoleAccountSettingsScreen> {
+  bool _primaryNotificationEnabled = true;
+  bool _secondaryNotificationEnabled = true;
+  bool _reportNotificationEnabled = true;
+  bool _accountSecurityEnabled = true;
+  String _selectedLanguage = 'Indonesia';
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final settings = await ref
+          .read(appControllerProvider.notifier)
+          .fetchCurrentProfileSettingsFromSupabase();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _primaryNotificationEnabled = settings.primaryNotificationEnabled;
+        _secondaryNotificationEnabled = settings.secondaryNotificationEnabled;
+        _reportNotificationEnabled = settings.reportNotificationEnabled;
+        _selectedLanguage = settings.selectedLanguage;
+        _accountSecurityEnabled = settings.accountSecurityEnabled;
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateCurrentProfileSettings(
+            primaryNotificationEnabled: _primaryNotificationEnabled,
+            secondaryNotificationEnabled: _secondaryNotificationEnabled,
+            reportNotificationEnabled: _reportNotificationEnabled,
+            selectedLanguage: _selectedLanguage,
+            accountSecurityEnabled: _accountSecurityEnabled,
+          );
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengaturan akun berhasil disimpan.')),
+      );
+      context.go(
+        widget.mode == AccountMode.parkingGuard
+            ? '/guard/profile'
+            : '/provider/profile',
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Gagal menyimpan pengaturan. Pastikan SQL profile_settings sudah dijalankan.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isGuard = widget.mode == AccountMode.parkingGuard;
+    final title = isGuard ? 'Pengaturan Penjaga' : 'Pengaturan Penyedia';
+    final firstLabel = isGuard
+        ? 'Notifikasi tugas lokasi'
+        : 'Notifikasi booking masuk';
+    final secondLabel = isGuard
+        ? 'Notifikasi scan QR'
+        : 'Notifikasi pembayaran';
+    final reportLabel = isGuard
+        ? 'Notifikasi aktivitas shift'
+        : 'Notifikasi laporan harian';
+
+    final content = _isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+            children: [
+              HeaderSection(
+                title: title,
+                subtitle: 'Preferensi akun ini disimpan di Supabase.',
+              ),
+              const SizedBox(height: 18),
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Notifikasi',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _primaryNotificationEnabled,
+                      onChanged: (value) =>
+                          setState(() => _primaryNotificationEnabled = value),
+                      title: Text(firstLabel),
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: AppTheme.blue,
+                    ),
+                    SwitchListTile(
+                      value: _secondaryNotificationEnabled,
+                      onChanged: (value) =>
+                          setState(() => _secondaryNotificationEnabled = value),
+                      title: Text(secondLabel),
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: AppTheme.emerald,
+                    ),
+                    SwitchListTile(
+                      value: _reportNotificationEnabled,
+                      onChanged: (value) =>
+                          setState(() => _reportNotificationEnabled = value),
+                      title: Text(reportLabel),
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: AppTheme.blue,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Preferensi akun',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedLanguage,
+                      decoration: const InputDecoration(
+                        labelText: 'Bahasa aplikasi',
+                        prefixIcon: Icon(Icons.language_rounded),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Indonesia',
+                          child: Text('Indonesia'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'English',
+                          child: Text('English'),
+                        ),
+                      ],
+                      onChanged: (value) => setState(
+                        () => _selectedLanguage = value ?? 'Indonesia',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      value: _accountSecurityEnabled,
+                      onChanged: (value) =>
+                          setState(() => _accountSecurityEnabled = value),
+                      title: const Text('Mode keamanan akun'),
+                      subtitle: const Text(
+                        'Aktifkan perlindungan akun tambahan.',
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      activeThumbColor: AppTheme.emerald,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              PrimaryButton(
+                label: _isSaving ? 'Menyimpan...' : 'Simpan pengaturan',
+                icon: Icons.save_rounded,
+                onPressed: _isSaving ? null : _save,
+              ),
+            ],
+          );
+
+    return isGuard
+        ? GuardShell(currentIndex: 4, child: content)
+        : AdminShell(currentIndex: 4, child: content);
+  }
+}
+
 class _CustomerAvatarAdjustDialog extends StatefulWidget {
   const _CustomerAvatarAdjustDialog({
     required this.bytes,
@@ -12486,7 +12734,7 @@ class AdminProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.slate,
             title: 'Pengaturan akun',
             subtitle: 'Atur preferensi operasional dan notifikasi.',
-            onTap: () {},
+            onTap: () => context.push('/provider/account-settings'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -14455,6 +14703,14 @@ class GuardProfileScreen extends ConsumerWidget {
             title: 'Edit profil',
             subtitle: 'Perbarui nama, email, nomor HP, dan foto penjaga.',
             onTap: () => context.push('/guard/edit-profile'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
+            icon: Icons.settings_rounded,
+            iconColor: AppTheme.slate,
+            title: 'Pengaturan akun',
+            subtitle: 'Atur preferensi tugas dan notifikasi.',
+            onTap: () => context.push('/guard/account-settings'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
