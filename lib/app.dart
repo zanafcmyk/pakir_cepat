@@ -95,6 +95,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/super-admin/profile',
+        builder: (context, state) => const SuperAdminProfileScreen(),
+      ),
+      GoRoute(
+        path: '/super-admin/edit-profile',
+        builder: (context, state) =>
+            const RoleEditProfileScreen(mode: AccountMode.superAdmin),
+      ),
+      GoRoute(
         path: '/customer/home',
         builder: (context, state) => const CustomerHomeScreen(),
       ),
@@ -12360,6 +12369,85 @@ class AdminProfileScreen extends ConsumerWidget {
   }
 }
 
+class SuperAdminProfileScreen extends ConsumerWidget {
+  const SuperAdminProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appControllerProvider);
+    return SuperAdminShell(
+      currentIndex: 5,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+        children: [
+          PremiumCard(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor: AppTheme.blueSoft,
+                  backgroundImage: state.roleAvatarBytes == null
+                      ? null
+                      : MemoryImage(state.roleAvatarBytes!),
+                  child: state.roleAvatarBytes == null
+                      ? const Icon(
+                          Icons.admin_panel_settings_rounded,
+                          size: 40,
+                          color: AppTheme.blue,
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  state.userName,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                const StatusBadge(label: 'Super Admin', color: AppTheme.blue),
+                const SizedBox(height: 10),
+                Text(
+                  state.email,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          MiniInfoTile(
+            icon: Icons.edit_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Edit profil',
+            subtitle: 'Perbarui nama, email, nomor HP, dan foto profil.',
+            onTap: () => context.push('/super-admin/edit-profile'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
+            icon: Icons.security_rounded,
+            iconColor: AppTheme.emerald,
+            title: 'Akses super admin',
+            subtitle: 'Akun ini dipakai untuk pengawasan seluruh aplikasi.',
+            onTap: () {},
+          ),
+          const SizedBox(height: 18),
+          PrimaryButton(
+            label: 'Logout',
+            icon: Icons.logout_rounded,
+            color: AppTheme.ink,
+            onPressed: () {
+              ref.read(appControllerProvider.notifier).logout();
+              context.go('/login');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class RoleEditProfileScreen extends ConsumerStatefulWidget {
   const RoleEditProfileScreen({super.key, required this.mode});
 
@@ -12524,11 +12612,11 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profil berhasil diperbarui')),
       );
-      context.go(
-        widget.mode == AccountMode.parkingGuard
-            ? '/guard/profile'
-            : '/provider/profile',
-      );
+      context.go(switch (widget.mode) {
+        AccountMode.parkingGuard => '/guard/profile',
+        AccountMode.superAdmin => '/super-admin/profile',
+        _ => '/provider/profile',
+      });
     } catch (_) {
       if (!mounted) {
         return;
@@ -12546,9 +12634,11 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.mode == AccountMode.parkingGuard
-        ? 'Edit Profil Penjaga'
-        : 'Edit Profil Penyedia';
+    final title = switch (widget.mode) {
+      AccountMode.parkingGuard => 'Edit Profil Penjaga',
+      AccountMode.superAdmin => 'Edit Profil Super Admin',
+      _ => 'Edit Profil Penyedia',
+    };
     final form = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
       children: [
@@ -12573,7 +12663,9 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
                       ? Icon(
                           widget.mode == AccountMode.parkingGuard
                               ? Icons.security_rounded
-                              : Icons.admin_panel_settings_rounded,
+                              : widget.mode == AccountMode.superAdmin
+                              ? Icons.admin_panel_settings_rounded
+                              : Icons.apartment_rounded,
                           size: 42,
                           color: AppTheme.emerald,
                         )
@@ -12656,9 +12748,11 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
       ],
     );
 
-    return widget.mode == AccountMode.parkingGuard
-        ? GuardShell(currentIndex: 4, child: form)
-        : AdminShell(currentIndex: 4, child: form);
+    return switch (widget.mode) {
+      AccountMode.parkingGuard => GuardShell(currentIndex: 4, child: form),
+      AccountMode.superAdmin => SuperAdminShell(currentIndex: 5, child: form),
+      _ => AdminShell(currentIndex: 4, child: form),
+    };
   }
 }
 
@@ -14365,6 +14459,11 @@ class SuperAdminShell extends ConsumerWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/super-admin/chat',
+        ),
+        const ShellDestination(
+          label: 'Profil',
+          icon: Icons.person_rounded,
+          route: '/super-admin/profile',
         ),
       ],
       child: child,
