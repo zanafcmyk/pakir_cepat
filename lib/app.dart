@@ -14,6 +14,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models/app_models.dart';
@@ -1290,7 +1291,11 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 }
 
 class AppController extends StateNotifier<AppState> {
-  AppController() : super(AppState.seeded());
+  AppController() : super(AppState.seeded()) {
+    _loadOnboardingPreference();
+  }
+
+  static const _onboardingDoneKey = 'parkir_cepat_onboarding_done';
 
   final SupabaseChatService _chatService = SupabaseChatService();
   final SupabaseComplaintService _complaintService = SupabaseComplaintService();
@@ -1491,7 +1496,17 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(onboardingIndex: index);
   }
 
-  void finishOnboarding() {
+  Future<void> _loadOnboardingPreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    final onboardingDone = preferences.getBool(_onboardingDoneKey) ?? false;
+    if (onboardingDone) {
+      state = state.copyWith(onboardingDone: true);
+    }
+  }
+
+  Future<void> finishOnboarding() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_onboardingDoneKey, true);
     state = state.copyWith(onboardingDone: true);
   }
 

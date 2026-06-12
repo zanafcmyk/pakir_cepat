@@ -44,10 +44,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pengaturan akun customer ke Supabase.
 - [x] Forgot password mengirim link reset lewat Supabase.
 - [x] Upload foto lahan parkir penyedia ke Supabase Storage.
+- [x] Onboarding tersimpan lokal permanen di device dengan `SharedPreferences`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] Onboarding masih lokal/demo.
 - [ ] UI dashboard customer sudah ada, tetapi sebagian data masih perlu dicek integrasi Supabase.
 - [ ] UI dashboard penyedia sudah ada, tetapi sebagian data statistik/laporan masih belum query Supabase penuh.
 - [ ] UI dashboard penjaga sudah ada, tetapi perlu diperketat dengan role guard dan data assignment.
@@ -67,7 +67,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Catatan audit baris 48-66
 
-- Onboarding masih lokal/demo. Belum dikerjakan pada tahap ini karena perlu scope sendiri.
+- Onboarding sudah tidak hanya state lokal sementara. Status selesai onboarding sekarang tersimpan di device dengan `SharedPreferences`.
 - Dashboard customer, penyedia, penjaga, dan super admin masih perlu audit data per kartu/section sebelum ditandai production.
 - Statistik dan laporan penyedia/super admin masih perlu query agregasi Supabase khusus.
 - Monitoring kendaraan penyedia masih perlu dipastikan memakai data booking/slot Supabase penuh.
@@ -206,10 +206,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Avatar customer upload dan load dari Supabase.
 - [x] Pengaturan akun customer tersimpan ke Supabase.
 - [x] Forgot password mengirim link reset lewat Supabase.
+- [x] Onboarding tersimpan di device dan tidak muncul ulang setelah selesai.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Onboarding masih lokal/demo.
 - [ ] Dashboard customer sebagian perlu dicek integrasi datanya.
 - [ ] Delete account masih reset state lokal.
 - [ ] Payment masih demo.
