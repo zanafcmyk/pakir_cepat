@@ -178,6 +178,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AdminProfileScreen(),
       ),
       GoRoute(
+        path: '/provider/edit-profile',
+        builder: (context, state) =>
+            const RoleEditProfileScreen(mode: AccountMode.provider),
+      ),
+      GoRoute(
         path: '/provider/chat',
         builder: (context, state) => const RoleChatListScreen(
           mode: AccountMode.provider,
@@ -261,6 +266,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/guard/profile',
         builder: (context, state) => const GuardProfileScreen(),
+      ),
+      GoRoute(
+        path: '/guard/edit-profile',
+        builder: (context, state) =>
+            const RoleEditProfileScreen(mode: AccountMode.parkingGuard),
       ),
       GoRoute(
         path: '/guard/assigned-locations',
@@ -359,6 +369,7 @@ class AppState {
     required this.customerEmail,
     required this.customerPhone,
     this.customerAvatarBytes,
+    this.roleAvatarBytes,
     required this.bookingNotificationEnabled,
     required this.paymentNotificationEnabled,
     required this.promoNotificationEnabled,
@@ -408,6 +419,7 @@ class AppState {
   final String customerEmail;
   final String customerPhone;
   final Uint8List? customerAvatarBytes;
+  final Uint8List? roleAvatarBytes;
   final bool bookingNotificationEnabled;
   final bool paymentNotificationEnabled;
   final bool promoNotificationEnabled;
@@ -458,6 +470,8 @@ class AppState {
     String? customerPhone,
     Uint8List? customerAvatarBytes,
     bool removeCustomerAvatar = false,
+    Uint8List? roleAvatarBytes,
+    bool removeRoleAvatar = false,
     bool? bookingNotificationEnabled,
     bool? paymentNotificationEnabled,
     bool? promoNotificationEnabled,
@@ -512,6 +526,9 @@ class AppState {
       customerAvatarBytes: removeCustomerAvatar
           ? null
           : (customerAvatarBytes ?? this.customerAvatarBytes),
+      roleAvatarBytes: removeRoleAvatar
+          ? null
+          : (roleAvatarBytes ?? this.roleAvatarBytes),
       bookingNotificationEnabled:
           bookingNotificationEnabled ?? this.bookingNotificationEnabled,
       paymentNotificationEnabled:
@@ -1162,6 +1179,7 @@ class AppState {
       customerEmail: 'dio@parkircepat.app',
       customerPhone: '+62 812 7788 9911',
       customerAvatarBytes: null,
+      roleAvatarBytes: null,
       bookingNotificationEnabled: true,
       paymentNotificationEnabled: true,
       promoNotificationEnabled: false,
@@ -2076,6 +2094,45 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<void> updateRoleProfile({
+    required String name,
+    required String email,
+    required String phone,
+  }) async {
+    await _profileService.updateCurrentUserProfile(
+      name: name,
+      email: email,
+      phone: phone,
+    );
+
+    final activeId = state.activeGuardId;
+    state = state.copyWith(
+      userName: name,
+      email: email,
+      phoneNumber: phone,
+      parkingGuards:
+          state.currentMode == AccountMode.parkingGuard && activeId != null
+          ? [
+              for (final guard in state.parkingGuards)
+                if (guard.id == activeId)
+                  ParkingGuardAccount(
+                    id: guard.id,
+                    name: name,
+                    email: email,
+                    phoneNumber: phone,
+                    providerId: guard.providerId,
+                    assignedLotIds: guard.assignedLotIds,
+                    canScanQr: guard.canScanQr,
+                    canConfirmCash: guard.canConfirmCash,
+                    canManageSlots: guard.canManageSlots,
+                  )
+                else
+                  guard,
+            ]
+          : state.parkingGuards,
+    );
+  }
+
   void updateCustomerSettings({
     required bool bookingNotificationEnabled,
     required bool paymentNotificationEnabled,
@@ -2092,12 +2149,24 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void updateCustomerAvatar(Uint8List bytes) {
+  Future<void> updateCustomerAvatar(Uint8List bytes) async {
+    await _profileService.uploadCurrentUserAvatar(bytes);
     state = state.copyWith(customerAvatarBytes: bytes);
   }
 
-  void removeCustomerAvatar() {
+  Future<void> removeCustomerAvatar() async {
+    await _profileService.removeCurrentUserAvatar();
     state = state.copyWith(removeCustomerAvatar: true);
+  }
+
+  Future<void> updateRoleAvatar(Uint8List bytes) async {
+    await _profileService.uploadCurrentUserAvatar(bytes);
+    state = state.copyWith(roleAvatarBytes: bytes);
+  }
+
+  Future<void> removeRoleAvatar() async {
+    await _profileService.removeCurrentUserAvatar();
+    state = state.copyWith(removeRoleAvatar: true);
   }
 
   String createCustomerChatRoom({
@@ -8810,6 +8879,7 @@ class _CustomerEditProfileScreenState
   Uint8List? _avatarBytes;
   String? _errorMessage;
   bool _isSaving = false;
+  bool _isSavingAvatar = false;
 
   @override
   void initState() {
@@ -8909,13 +8979,51 @@ class _CustomerEditProfileScreenState
       _removePhoto();
       return;
     }
-    ref.read(appControllerProvider.notifier).updateCustomerAvatar(result);
-    setState(() => _avatarBytes = result);
+    setState(() {
+      _errorMessage = null;
+      _isSavingAvatar = true;
+    });
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateCustomerAvatar(result);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _avatarBytes = result);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal upload foto profil. Pastikan SQL storage avatar sudah dijalankan.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAvatar = false);
+      }
+    }
   }
 
-  void _removePhoto() {
-    ref.read(appControllerProvider.notifier).removeCustomerAvatar();
-    setState(() => _avatarBytes = null);
+  Future<void> _removePhoto() async {
+    setState(() => _isSavingAvatar = true);
+    try {
+      await ref.read(appControllerProvider.notifier).removeCustomerAvatar();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _avatarBytes = null);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _errorMessage = 'Gagal menghapus foto profil.');
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAvatar = false);
+      }
+    }
   }
 
   @override
@@ -8930,7 +9038,7 @@ class _CustomerEditProfileScreenState
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 GestureDetector(
-                  onTap: _pickPhoto,
+                  onTap: _isSavingAvatar ? null : _pickPhoto,
                   child: CircleAvatar(
                     radius: 48,
                     backgroundColor: AppTheme.blueSoft,
@@ -8954,13 +9062,15 @@ class _CustomerEditProfileScreenState
                     alignment: WrapAlignment.center,
                     children: [
                       OutlinedButton.icon(
-                        onPressed: _pickPhoto,
+                        onPressed: _isSavingAvatar ? null : _pickPhoto,
                         icon: const Icon(Icons.photo_camera_rounded, size: 18),
-                        label: const Text('Ganti Foto'),
+                        label: Text(
+                          _isSavingAvatar ? 'Mengupload...' : 'Ganti Foto',
+                        ),
                       ),
                       if (_avatarBytes != null)
                         OutlinedButton.icon(
-                          onPressed: _removePhoto,
+                          onPressed: _isSavingAvatar ? null : _removePhoto,
                           icon: const Icon(
                             Icons.delete_outline_rounded,
                             size: 18,
@@ -11528,14 +11638,19 @@ class AdminProfileScreen extends ConsumerWidget {
           PremiumCard(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.emeraldSoft,
-                  child: Icon(
-                    Icons.admin_panel_settings_rounded,
-                    size: 40,
-                    color: AppTheme.emerald,
-                  ),
+                  backgroundImage: state.roleAvatarBytes == null
+                      ? null
+                      : MemoryImage(state.roleAvatarBytes!),
+                  child: state.roleAvatarBytes == null
+                      ? const Icon(
+                          Icons.admin_panel_settings_rounded,
+                          size: 40,
+                          color: AppTheme.emerald,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -11573,7 +11688,7 @@ class AdminProfileScreen extends ConsumerWidget {
             iconColor: AppTheme.blue,
             title: 'Edit profil',
             subtitle: 'Perbarui data admin dan kontak.',
-            onTap: () {},
+            onTap: () => context.push('/provider/edit-profile'),
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
@@ -11612,6 +11727,308 @@ class AdminProfileScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class RoleEditProfileScreen extends ConsumerStatefulWidget {
+  const RoleEditProfileScreen({super.key, required this.mode});
+
+  final AccountMode mode;
+
+  @override
+  ConsumerState<RoleEditProfileScreen> createState() =>
+      _RoleEditProfileScreenState();
+}
+
+class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  Uint8List? _avatarBytes;
+  bool _isSaving = false;
+  bool _isSavingAvatar = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    final guard = activeGuard(state);
+    _avatarBytes = state.roleAvatarBytes;
+    _nameController = TextEditingController(
+      text: widget.mode == AccountMode.parkingGuard
+          ? (guard?.name ?? state.userName)
+          : state.userName,
+    );
+    _emailController = TextEditingController(
+      text: widget.mode == AccountMode.parkingGuard
+          ? (guard?.email.isNotEmpty == true ? guard!.email : state.email)
+          : state.email,
+    );
+    _phoneController = TextEditingController(
+      text: widget.mode == AccountMode.parkingGuard
+          ? (guard?.phoneNumber.isNotEmpty == true
+                ? guard!.phoneNumber
+                : state.phoneNumber)
+          : state.phoneNumber,
+    );
+  }
+
+  Future<void> _pickPhoto() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (picked == null) {
+      return;
+    }
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+
+    final result = await showDialog<Uint8List>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CustomerAvatarAdjustDialog(
+        bytes: bytes,
+        hasExistingPhoto: _avatarBytes != null,
+      ),
+    );
+    if (result == null) {
+      return;
+    }
+    if (result.isEmpty) {
+      await _removePhoto();
+      return;
+    }
+
+    setState(() {
+      _errorMessage = null;
+      _isSavingAvatar = true;
+    });
+    try {
+      await ref.read(appControllerProvider.notifier).updateRoleAvatar(result);
+      if (!mounted) {
+        return;
+      }
+      setState(() => _avatarBytes = result);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal upload foto profil. Pastikan SQL storage avatar sudah dijalankan.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAvatar = false);
+      }
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    setState(() => _isSavingAvatar = true);
+    try {
+      await ref.read(appControllerProvider.notifier).removeRoleAvatar();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _avatarBytes = null);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _errorMessage = 'Gagal menghapus foto profil.');
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAvatar = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) {
+      return;
+    }
+
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    if (name.isEmpty) {
+      setState(() => _errorMessage = 'Nama tidak boleh kosong.');
+      return;
+    }
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() => _errorMessage = 'Email tidak valid.');
+      return;
+    }
+    if (phone.isEmpty) {
+      setState(() => _errorMessage = 'Nomor HP tidak boleh kosong.');
+      return;
+    }
+
+    setState(() {
+      _errorMessage = null;
+      _isSaving = true;
+    });
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateRoleProfile(name: name, email: email, phone: phone);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profil berhasil diperbarui')),
+      );
+      context.go(
+        widget.mode == AccountMode.parkingGuard
+            ? '/guard/profile'
+            : '/provider/profile',
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal menyimpan profil ke Supabase. Cek koneksi dan coba lagi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = widget.mode == AccountMode.parkingGuard
+        ? 'Edit Profil Penjaga'
+        : 'Edit Profil Penyedia';
+    final form = ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+      children: [
+        HeaderSection(
+          title: title,
+          subtitle: 'Perbarui data akun yang tersimpan di Supabase.',
+        ),
+        const SizedBox(height: 18),
+        PremiumCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GestureDetector(
+                onTap: _isSavingAvatar ? null : _pickPhoto,
+                child: CircleAvatar(
+                  radius: 46,
+                  backgroundColor: AppTheme.emeraldSoft,
+                  backgroundImage: _avatarBytes == null
+                      ? null
+                      : MemoryImage(_avatarBytes!),
+                  child: _avatarBytes == null
+                      ? Icon(
+                          widget.mode == AccountMode.parkingGuard
+                              ? Icons.security_rounded
+                              : Icons.admin_panel_settings_rounded,
+                          size: 42,
+                          color: AppTheme.emerald,
+                        )
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _isSavingAvatar ? null : _pickPhoto,
+                      icon: const Icon(Icons.photo_camera_rounded, size: 18),
+                      label: Text(
+                        _isSavingAvatar ? 'Mengupload...' : 'Ganti Foto',
+                      ),
+                    ),
+                    if (_avatarBytes != null)
+                      OutlinedButton.icon(
+                        onPressed: _isSavingAvatar ? null : _removePhoto,
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                        ),
+                        label: const Text('Hapus Foto'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFDC2626),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nama',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(
+                  labelText: 'Nomor HP',
+                  prefixIcon: Icon(Icons.phone_iphone_rounded),
+                ),
+              ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 12),
+                InlineNotice(
+                  icon: Icons.error_outline_rounded,
+                  accent: const Color(0xFFDC2626),
+                  message: _errorMessage!,
+                ),
+              ],
+              const SizedBox(height: 18),
+              PrimaryButton(
+                label: _isSaving ? 'Menyimpan...' : 'Simpan Profil',
+                icon: Icons.save_rounded,
+                onPressed: _isSaving ? null : _save,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    return widget.mode == AccountMode.parkingGuard
+        ? GuardShell(currentIndex: 4, child: form)
+        : AdminShell(currentIndex: 4, child: form);
   }
 }
 
@@ -13092,14 +13509,19 @@ class GuardProfileScreen extends ConsumerWidget {
           PremiumCard(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
                   backgroundColor: AppTheme.emeraldSoft,
-                  child: Icon(
-                    Icons.security_rounded,
-                    size: 40,
-                    color: AppTheme.emerald,
-                  ),
+                  backgroundImage: state.roleAvatarBytes == null
+                      ? null
+                      : MemoryImage(state.roleAvatarBytes!),
+                  child: state.roleAvatarBytes == null
+                      ? const Icon(
+                          Icons.security_rounded,
+                          size: 40,
+                          color: AppTheme.emerald,
+                        )
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -13119,6 +13541,14 @@ class GuardProfileScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 18),
+          MiniInfoTile(
+            icon: Icons.edit_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Edit profil',
+            subtitle: 'Perbarui nama, email, nomor HP, dan foto penjaga.',
+            onTap: () => context.push('/guard/edit-profile'),
+          ),
+          const SizedBox(height: 12),
           PrimaryButton(
             label: 'Logout',
             icon: Icons.logout_rounded,
