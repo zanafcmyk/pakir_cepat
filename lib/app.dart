@@ -29,6 +29,7 @@ import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
 import 'services/supabase_profile_service.dart';
 import 'services/supabase_profile_settings_service.dart';
+import 'services/supabase_provider_document_service.dart';
 import 'services/supabase_review_service.dart';
 import 'services/supabase_super_admin_service.dart';
 import 'services/supabase_vehicle_service.dart';
@@ -63,6 +64,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/change-password',
         builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (context, state) =>
+            const ChangePasswordScreen(isRecovery: true),
       ),
       GoRoute(
         path: '/provider-verification',
@@ -1557,6 +1563,15 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<void> searchParkingLotsFromSupabase(String query) async {
+    final data = await _parkingService.fetchParkingData(searchQuery: query);
+    state = state.copyWith(
+      lots: data.lots,
+      selectedLot: data.lots.isEmpty ? state.selectedLot : data.lots.first,
+      slots: data.slots.isEmpty ? state.slots : data.slots,
+    );
+  }
+
   Future<void> loadCustomerVehiclesFromSupabase() async {
     final vehicles = await _vehicleService.fetchCurrentCustomerVehicles();
     if (vehicles.isEmpty) {
@@ -1804,7 +1819,9 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(isAuthenticated: false);
   }
 
-  void deleteAccount() {
+  Future<void> deleteAccount() async {
+    await Supabase.instance.client.functions.invoke('delete-account');
+    await Supabase.instance.client.auth.signOut();
     final seeded = AppState.seeded();
     state = seeded;
   }
@@ -4406,7 +4423,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _parkingPhotoController;
   late final TextEditingController _locationPointController;
   late final TextEditingController _identityController;
+  final SupabaseProviderDocumentService _providerDocumentService =
+      SupabaseProviderDocumentService();
   AccountMode _mode = AccountMode.customer;
+  Uint8List? _identityDocumentBytes;
+  String? _identityDocumentName;
   double _providerCapacity = 80;
   bool _isLoading = false;
 
@@ -4446,6 +4467,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _locationPointController.dispose();
     _identityController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickIdentityDocument() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 92,
+    );
+    if (picked == null) {
+      return;
+    }
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _identityDocumentBytes = bytes;
+      _identityDocumentName = picked.name;
+      _identityController.text = picked.name;
+    });
   }
 
   Future<void> _submitRegister() async {
@@ -4558,15 +4600,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         'access_status': 'active',
       });
 
+      var uploadedIdentityUrl = identityLabel;
+      if (_identityDocumentBytes != null) {
+        uploadedIdentityUrl =
+            await _providerDocumentService.uploadIdentityDocument(
+              profileId: user.id,
+              bytes: _identityDocumentBytes!,
+              fileName: _identityDocumentName,
+            ) ??
+            identityLabel;
+      }
+
       final provider = await supabase
           .from('providers')
           .upsert({
             'profile_id': user.id,
             'business_name': parkingName,
             'business_address': parkingAddress,
-            'identity_document_url': identityLabel.isEmpty
+            'identity_document_url': uploadedIdentityUrl.isEmpty
                 ? null
-                : identityLabel,
+                : uploadedIdentityUrl,
             'status': 'pending',
           }, onConflict: 'profile_id')
           .select('id')
@@ -4578,7 +4631,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         photoLabel: photoLabel,
         locationLabel: locationLabel,
         capacity: _providerCapacity.toInt(),
-        identityLabel: identityLabel,
+        identityLabel: uploadedIdentityUrl,
       );
 
       await supabase.from('provider_applications').insert({
@@ -4589,7 +4642,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         'photo_url': photoLabel.isEmpty ? null : photoLabel,
         'location_label': locationLabel.isEmpty ? null : locationLabel,
         'capacity': _providerCapacity.toInt(),
-        'identity_document_url': identityLabel.isEmpty ? null : identityLabel,
+        'identity_document_url': uploadedIdentityUrl.isEmpty
+            ? null
+            : uploadedIdentityUrl,
         'status': 'pending',
       });
 
@@ -4938,9 +4993,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _identityController,
+                    readOnly: true,
                     decoration: const InputDecoration(
                       labelText: 'Upload KTP / verifikasi identitas',
                       prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _pickIdentityDocument,
+                    icon: const Icon(Icons.upload_file_rounded),
+                    label: Text(
+                      _identityDocumentBytes == null
+                          ? 'Pilih dokumen identitas'
+                          : 'Ganti dokumen identitas',
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -5013,7 +5079,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     setState(() => _isSending = true);
 
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: Uri.base.resolve('/reset-password').toString(),
+      );
       ref.read(appControllerProvider.notifier).requestPasswordReset();
 
       if (!mounted) {
@@ -5078,7 +5147,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 }
 
 class ChangePasswordScreen extends ConsumerStatefulWidget {
-  const ChangePasswordScreen({super.key});
+  const ChangePasswordScreen({super.key, this.isRecovery = false});
+
+  final bool isRecovery;
 
   @override
   ConsumerState<ChangePasswordScreen> createState() =>
@@ -5151,7 +5222,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ganti password')),
+      appBar: AppBar(
+        title: Text(widget.isRecovery ? 'Reset password' : 'Ganti password'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -5159,9 +5232,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const HeaderSection(
+                HeaderSection(
                   title: 'Password baru',
-                  subtitle: 'Perbarui password akun yang sedang login.',
+                  subtitle: widget.isRecovery
+                      ? 'Masukkan password baru setelah membuka link reset dari email.'
+                      : 'Perbarui password akun yang sedang login.',
                 ),
                 const SizedBox(height: 18),
                 TextField(
@@ -5214,6 +5289,7 @@ class DeleteAccountScreen extends ConsumerStatefulWidget {
 
 class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   bool _agree = false;
+  bool _isDeleting = false;
 
   @override
   Widget build(BuildContext context) {
@@ -5264,15 +5340,32 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 ),
                 const SizedBox(height: 10),
                 PrimaryButton(
-                  label: 'Hapus akun permanen',
+                  label: _isDeleting ? 'Menghapus...' : 'Hapus akun permanen',
                   icon: Icons.delete_forever_rounded,
                   color: const Color(0xFFDC2626),
-                  onPressed: _agree
-                      ? () {
-                          ref
-                              .read(appControllerProvider.notifier)
-                              .deleteAccount();
-                          context.go('/login');
+                  onPressed: _agree && !_isDeleting
+                      ? () async {
+                          setState(() => _isDeleting = true);
+                          try {
+                            await ref
+                                .read(appControllerProvider.notifier)
+                                .deleteAccount();
+                            if (!context.mounted) return;
+                            context.go('/login');
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Gagal menghapus akun. Pastikan Edge Function delete-account sudah deploy.',
+                                ),
+                              ),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() => _isDeleting = false);
+                            }
+                          }
                         }
                       : null,
                 ),
@@ -6322,12 +6415,31 @@ class CustomerHomeScreen extends ConsumerStatefulWidget {
 }
 
 class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(_refreshDashboardData);
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _searchParkingLots(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 450), () {
+      ref
+          .read(appControllerProvider.notifier)
+          .searchParkingLotsFromSupabase(value)
+          .catchError((_) {});
+    });
   }
 
   Future<void> _refreshDashboardData() async {
@@ -6483,7 +6595,11 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             ),
             const SizedBox(height: 18),
           ],
-          const SearchField(label: 'Cari lokasi parkir, mall, kantor'),
+          SearchField(
+            label: 'Cari lokasi parkir, mall, kantor',
+            controller: _searchController,
+            onChanged: _searchParkingLots,
+          ),
           const SizedBox(height: 18),
           HeroBanner(
             title: 'Parkir premium lebih cepat',
@@ -15255,13 +15371,22 @@ class HeroBanner extends StatelessWidget {
 }
 
 class SearchField extends StatelessWidget {
-  const SearchField({super.key, required this.label});
+  const SearchField({
+    super.key,
+    required this.label,
+    this.controller,
+    this.onChanged,
+  });
 
   final String label;
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
+      controller: controller,
+      onChanged: onChanged,
       decoration: InputDecoration(
         hintText: label,
         prefixIcon: const Icon(Icons.search_rounded),

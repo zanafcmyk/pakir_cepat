@@ -113,14 +113,19 @@ class SupabaseParkingService {
     return _client.storage.from('parking-lot-photos').getPublicUrl(path);
   }
 
-  Future<SupabaseParkingData> fetchParkingData() async {
-    final lotRows = await _client
+  Future<SupabaseParkingData> fetchParkingData({String? searchQuery}) async {
+    final normalizedSearch = searchQuery?.trim();
+    var lotQuery = _client
         .from('parking_lots')
         .select(
           'id, provider_id, name, address, price_per_hour, total_slots, open_hours, rating, map_embed_url, latitude, longitude, photo_url, tariff_type, motor_rate, car_rate, truck_rate',
         )
-        .eq('is_active', true)
-        .order('created_at', ascending: false);
+        .eq('is_active', true);
+    if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      final pattern = normalizedSearch.replaceAll(',', ' ');
+      lotQuery = lotQuery.or('name.ilike.%$pattern%,address.ilike.%$pattern%');
+    }
+    final lotRows = await lotQuery.order('created_at', ascending: false);
 
     final slotRows = await _client
         .from('parking_slots')
