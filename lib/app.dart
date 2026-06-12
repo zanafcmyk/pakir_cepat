@@ -20,6 +20,7 @@ import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_notification_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
 import 'services/supabase_vehicle_service.dart';
@@ -1270,6 +1271,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
   final SupabaseBookingService _bookingService = SupabaseBookingService();
   final SupabasePaymentService _paymentService = SupabasePaymentService();
+  final SupabaseNotificationService _notificationService =
+      SupabaseNotificationService();
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1316,6 +1319,18 @@ class AppController extends StateNotifier<AppState> {
             participantRole: participantRole,
             participantName: participantName,
             message: message,
+          )
+          .catchError((_) {}),
+    );
+  }
+
+  void _syncCurrentUserNotification(NoticeItem notice, {String type = 'info'}) {
+    unawaited(
+      _notificationService
+          .saveCurrentUserNotification(
+            title: notice.title,
+            message: notice.message,
+            type: type,
           )
           .catchError((_) {}),
     );
@@ -1501,6 +1516,20 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadComplaintsFromSupabase() async {
     final complaints = await _complaintService.fetchComplaintsForAdmin();
     state = state.copyWith(complaints: complaints);
+  }
+
+  Future<void> loadCurrentUserNotificationsFromSupabase() async {
+    final notices = await _notificationService.fetchCurrentUserNotifications();
+
+    switch (state.currentMode) {
+      case AccountMode.customer:
+        state = state.copyWith(customerNotifications: notices);
+      case AccountMode.provider:
+      case AccountMode.parkingGuard:
+        state = state.copyWith(adminNotifications: notices);
+      case AccountMode.superAdmin:
+        state = state.copyWith(superAdminNotifications: notices);
+    }
   }
 
   Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
@@ -2805,22 +2834,20 @@ class AppController extends StateNotifier<AppState> {
       for (final slot in state.slots)
         if (slot.label == slotCode) slot.copyWith(isAvailable: false) else slot,
     ];
+    final customerNotice = NoticeItem(
+      title: 'Booking berhasil',
+      message:
+          'Slot $slotCode di ${lot.name} menunggu pembayaran sebelum tiket aktif.',
+      timeLabel: 'Baru saja',
+      icon: Icons.local_parking_rounded,
+      accent: AppTheme.blue,
+    );
 
     state = state.copyWith(
       activeBooking: booking,
       reservationLockedUntil: DateTime.now().add(const Duration(minutes: 15)),
       slots: updatedSlots,
-      customerNotifications: [
-        NoticeItem(
-          title: 'Booking berhasil',
-          message:
-              'Slot $slotCode di ${lot.name} menunggu pembayaran sebelum tiket aktif.',
-          timeLabel: 'Baru saja',
-          icon: Icons.local_parking_rounded,
-          accent: AppTheme.blue,
-        ),
-        ...state.customerNotifications,
-      ],
+      customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
         NoticeItem(
           title: 'Slot baru terpakai',
@@ -2832,6 +2859,7 @@ class AppController extends StateNotifier<AppState> {
         ...state.adminNotifications,
       ],
     );
+    _syncCurrentUserNotification(customerNotice, type: 'booking');
   }
 
   Future<void> payBooking(PaymentMethod method) async {
@@ -2855,20 +2883,18 @@ class AppController extends StateNotifier<AppState> {
       total: booking.estimatedCost,
       timeLabel: formatDateTime(booking.entryTime),
     );
+    final customerNotice = NoticeItem(
+      title: 'Pembayaran demo berhasil',
+      message: 'Tiket ${booking.ticketNumber} aktif dari simulasi bayar.',
+      timeLabel: 'Baru saja',
+      icon: Icons.payments_rounded,
+      accent: AppTheme.emerald,
+    );
     state = state.copyWith(
       activeBooking: updatedBooking,
       reservationLockedUntil: null,
       history: [transaction, ...state.history],
-      customerNotifications: [
-        NoticeItem(
-          title: 'Pembayaran demo berhasil',
-          message: 'Tiket ${booking.ticketNumber} aktif dari simulasi bayar.',
-          timeLabel: 'Baru saja',
-          icon: Icons.payments_rounded,
-          accent: AppTheme.emerald,
-        ),
-        ...state.customerNotifications,
-      ],
+      customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
         NoticeItem(
           title: 'Pembayaran demo berhasil',
@@ -2881,6 +2907,7 @@ class AppController extends StateNotifier<AppState> {
         ...state.adminNotifications,
       ],
     );
+    _syncCurrentUserNotification(customerNotice, type: 'payment');
   }
 
   Booking? bookingByTicketNumber(String ticketNumber) {
@@ -3545,6 +3572,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
 
       if (!mounted) {
         return;
@@ -3621,6 +3651,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         clearProviderApplication: application == null,
       );
       await controller.loadParkingDataFromSupabase().catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
 
       if (!mounted) {
         return;
@@ -3686,6 +3719,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         rememberMe: _rememberMe,
       );
       await controller.loadComplaintsFromSupabase().catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
 
       if (!mounted) {
         return;
@@ -4221,6 +4257,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
 
       if (!mounted) {
         return;
@@ -8154,11 +8193,29 @@ String _customerChatTimeLabel(DateTime time) {
   return formatDateTime(time);
 }
 
-class CustomerNotificationsScreen extends ConsumerWidget {
+class CustomerNotificationsScreen extends ConsumerStatefulWidget {
   const CustomerNotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CustomerNotificationsScreen> createState() =>
+      _CustomerNotificationsScreenState();
+}
+
+class _CustomerNotificationsScreenState
+    extends ConsumerState<CustomerNotificationsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadCurrentUserNotificationsFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notices = ref.watch(appControllerProvider).customerNotifications;
     return CustomerShell(
       currentIndex: -1,
@@ -10878,11 +10935,29 @@ class ManageSlotsScreen extends ConsumerWidget {
   }
 }
 
-class AdminNotificationsScreen extends ConsumerWidget {
+class AdminNotificationsScreen extends ConsumerStatefulWidget {
   const AdminNotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AdminNotificationsScreen> createState() =>
+      _AdminNotificationsScreenState();
+}
+
+class _AdminNotificationsScreenState
+    extends ConsumerState<AdminNotificationsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadCurrentUserNotificationsFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final notices = ref.watch(appControllerProvider).adminNotifications;
     return AdminShell(
       currentIndex: 3,
