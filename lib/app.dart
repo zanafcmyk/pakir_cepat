@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
+import 'services/supabase_complaint_service.dart';
 import 'services/supabase_parking_service.dart';
 import 'services/supabase_payment_service.dart';
 import 'services/supabase_vehicle_service.dart';
@@ -1264,6 +1265,7 @@ class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.seeded());
 
   final SupabaseChatService _chatService = SupabaseChatService();
+  final SupabaseComplaintService _complaintService = SupabaseComplaintService();
   final SupabaseParkingService _parkingService = SupabaseParkingService();
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
   final SupabaseBookingService _bookingService = SupabaseBookingService();
@@ -1435,6 +1437,11 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadCustomerHistoryFromSupabase() async {
     final history = await _bookingService.fetchCurrentCustomerHistory();
     state = state.copyWith(history: history);
+  }
+
+  Future<void> loadComplaintsFromSupabase() async {
+    final complaints = await _complaintService.fetchComplaintsForAdmin();
+    state = state.copyWith(complaints: complaints);
   }
 
   Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
@@ -1837,7 +1844,8 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void answerComplaint(String id, String reply) {
+  Future<void> answerComplaint(String id, String reply) async {
+    await _complaintService.answerComplaint(id: id, reply: reply);
     ComplaintItem? answered;
     final complaints = [
       for (final complaint in state.complaints)
@@ -1884,7 +1892,8 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void closeComplaint(String id) {
+  Future<void> closeComplaint(String id) async {
+    await _complaintService.closeComplaint(id);
     state = state.copyWith(
       complaints: [
         for (final complaint in state.complaints)
@@ -2099,24 +2108,34 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void submitCustomerComplaint({
+  Future<void> submitCustomerComplaint({
     required String title,
     required String category,
     required String description,
     required String priority,
-  }) {
+  }) async {
     final now = DateTime.now();
-    final complaint = Complaint(
-      id: 'CUS-CMP-${now.millisecondsSinceEpoch}',
-      senderRole: 'Customer',
+    final remoteComplaint = await _complaintService.submitComplaint(
+      senderMode: AccountMode.customer,
       senderName: state.customerName,
       title: title,
       category: category,
       description: description,
       priority: priority,
-      status: 'Terkirim',
-      createdAt: now,
     );
+    final complaint =
+        remoteComplaint ??
+        Complaint(
+          id: 'CUS-CMP-${now.millisecondsSinceEpoch}',
+          senderRole: 'Customer',
+          senderName: state.customerName,
+          title: title,
+          category: category,
+          description: description,
+          priority: priority,
+          status: 'Terkirim',
+          createdAt: now,
+        );
     state = state.copyWith(
       customerComplaints: [complaint, ...state.customerComplaints],
     );
@@ -2498,25 +2517,36 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void submitGuardComplaint({
+  Future<void> submitGuardComplaint({
     required String title,
     required String category,
     required String description,
     required String priority,
-  }) {
+  }) async {
     final guard = activeGuard(state);
     final now = DateTime.now();
-    final complaint = Complaint(
-      id: 'CMP-${now.millisecondsSinceEpoch}',
-      senderRole: 'Penjaga Parkir',
-      senderName: guard?.name ?? 'Penjaga Parkir',
+    final guardName = guard?.name ?? 'Penjaga Parkir';
+    final remoteComplaint = await _complaintService.submitComplaint(
+      senderMode: AccountMode.parkingGuard,
+      senderName: guardName,
       title: title,
       category: category,
       description: description,
       priority: priority,
-      status: 'Terkirim',
-      createdAt: now,
     );
+    final complaint =
+        remoteComplaint ??
+        Complaint(
+          id: 'CMP-${now.millisecondsSinceEpoch}',
+          senderRole: 'Penjaga Parkir',
+          senderName: guardName,
+          title: title,
+          category: category,
+          description: description,
+          priority: priority,
+          status: 'Terkirim',
+          createdAt: now,
+        );
     state = state.copyWith(
       guardComplaints: [complaint, ...state.guardComplaints],
     );
@@ -3596,6 +3626,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         phoneNumber: _phoneController.text,
         rememberMe: _rememberMe,
       );
+      await controller.loadComplaintsFromSupabase().catchError((_) {});
 
       if (!mounted) {
         return;
@@ -4946,11 +4977,29 @@ class SuperAdminReportsScreen extends ConsumerWidget {
   }
 }
 
-class SuperAdminComplaintsScreen extends ConsumerWidget {
+class SuperAdminComplaintsScreen extends ConsumerStatefulWidget {
   const SuperAdminComplaintsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SuperAdminComplaintsScreen> createState() =>
+      _SuperAdminComplaintsScreenState();
+}
+
+class _SuperAdminComplaintsScreenState
+    extends ConsumerState<SuperAdminComplaintsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadComplaintsFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final complaints = ref.watch(appControllerProvider).complaints;
     return SuperAdminShell(
       currentIndex: 3,
@@ -5298,9 +5347,11 @@ class ComplaintCard extends ConsumerWidget {
                   icon: Icons.done_all_rounded,
                   onPressed: complaint.status == ComplaintStatus.closed
                       ? null
-                      : () => ref
-                            .read(appControllerProvider.notifier)
-                            .closeComplaint(complaint.id),
+                      : () async {
+                          await ref
+                              .read(appControllerProvider.notifier)
+                              .closeComplaint(complaint.id);
+                        },
                 ),
               ),
               const SizedBox(width: 12),
@@ -5363,7 +5414,7 @@ Future<void> _showComplaintReplyDialog(
   if (reply == null || reply.trim().isEmpty) {
     return;
   }
-  ref
+  await ref
       .read(appControllerProvider.notifier)
       .answerComplaint(complaint.id, reply.trim());
   if (context.mounted) {
@@ -7636,18 +7687,31 @@ class _CustomerComplaintScreenState
     super.dispose();
   }
 
-  void _submitComplaint() {
+  Future<void> _submitComplaint() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .submitCustomerComplaint(
-          title: _titleController.text.trim(),
-          category: _category,
-          description: _descriptionController.text.trim(),
-          priority: _priority,
-        );
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .submitCustomerComplaint(
+            title: _titleController.text.trim(),
+            category: _category,
+            description: _descriptionController.text.trim(),
+            priority: _priority,
+          );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal mengirim komplain ke Supabase')),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
@@ -11902,18 +11966,31 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
     super.dispose();
   }
 
-  void _submitComplaint() {
+  Future<void> _submitComplaint() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .submitGuardComplaint(
-          title: _titleController.text.trim(),
-          category: _category,
-          description: _descriptionController.text.trim(),
-          priority: _priority,
-        );
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .submitGuardComplaint(
+            title: _titleController.text.trim(),
+            category: _category,
+            description: _descriptionController.text.trim(),
+            priority: _priority,
+          );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal mengirim komplain ke Supabase')),
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
