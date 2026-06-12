@@ -29,6 +29,15 @@ class SupabaseProfileService {
         .eq('id', user.id);
   }
 
+  Future<void> updateCurrentUserPassword(String password) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    await _client.auth.updateUser(UserAttributes(password: password));
+  }
+
   Future<Uint8List?> fetchCurrentUserAvatarBytes() async {
     final user = _client.auth.currentUser;
     if (user == null) {

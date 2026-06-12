@@ -56,6 +56,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Statistik dan laporan super admin membaca transaksi serta grafik 7 hari dari Supabase.
 - [x] User management super admin memuat profil dari Supabase dan menyimpan aktif/nonaktif ke `profiles.access_status`.
 - [x] Edit profil super admin tersimpan ke Supabase dan avatar memakai Supabase Storage.
+- [x] Ganti password akun login tersimpan ke Supabase Auth.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -88,7 +89,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 ### Belum Ada atau Belum Production
 
 - [ ] Penyedia membuat akun penjaga langsung lewat sistem aman menggunakan Edge Function.
-- [ ] Ganti password Supabase.
 - [ ] Reset password Supabase sungguhan.
 - [ ] Hapus akun sungguhan di Supabase.
 - [ ] Settings penyedia.
@@ -206,6 +206,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Forgot password mengirim link reset lewat Supabase.
 - [x] Onboarding tersimpan di device dan tidak muncul ulang setelah selesai.
 - [x] Dashboard customer memuat data utama dari Supabase saat halaman dibuka.
+- [x] Ganti password akun login tersimpan ke Supabase Auth.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
@@ -215,7 +216,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Ganti password Supabase.
 - [ ] Reset password Supabase sungguhan.
 - [ ] Hapus akun sungguhan di Supabase.
 - [ ] Search/filter lokasi sungguhan dari database.

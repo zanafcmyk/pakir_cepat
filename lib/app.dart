@@ -60,6 +60,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const DeleteAccountScreen(),
       ),
       GoRoute(
+        path: '/change-password',
+        builder: (context, state) => const ChangePasswordScreen(),
+      ),
+      GoRoute(
         path: '/provider-verification',
         builder: (context, state) => const ProviderVerificationScreen(),
       ),
@@ -2229,6 +2233,10 @@ class AppController extends StateNotifier<AppState> {
             ]
           : state.parkingGuards,
     );
+  }
+
+  Future<void> updateCurrentUserPassword(String password) {
+    return _profileService.updateCurrentUserPassword(password);
   }
 
   Future<void> updateCustomerSettings({
@@ -5029,6 +5037,133 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             label: _isSending ? 'Mengirim...' : 'Kirim link reset',
             icon: Icons.mark_email_read_rounded,
             onPressed: _isSending ? null : _sendResetEmail,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ChangePasswordScreen extends ConsumerStatefulWidget {
+  const ChangePasswordScreen({super.key});
+
+  @override
+  ConsumerState<ChangePasswordScreen> createState() =>
+      _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  bool _isSaving = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (password.length < 6) {
+      setState(() => _errorMessage = 'Password minimal 6 karakter.');
+      return;
+    }
+    if (password != confirmPassword) {
+      setState(() => _errorMessage = 'Konfirmasi password belum sama.');
+      return;
+    }
+
+    setState(() {
+      _errorMessage = null;
+      _isSaving = true;
+    });
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateCurrentUserPassword(password);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password berhasil diperbarui.')),
+      );
+      context.pop();
+    } on AuthException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _errorMessage = error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _errorMessage =
+            'Gagal memperbarui password. Cek koneksi dan coba lagi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ganti password')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          PremiumCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const HeaderSection(
+                  title: 'Password baru',
+                  subtitle: 'Perbarui password akun yang sedang login.',
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password baru',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _confirmPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Konfirmasi password',
+                    prefixIcon: Icon(Icons.lock_reset_rounded),
+                  ),
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFDC2626),
+                    message: _errorMessage!,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                PrimaryButton(
+                  label: _isSaving ? 'Menyimpan...' : 'Simpan password',
+                  icon: Icons.save_rounded,
+                  onPressed: _isSaving ? null : _save,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -9293,6 +9428,14 @@ class CustomerProfileScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
+            icon: Icons.lock_reset_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Ganti password',
+            subtitle: 'Perbarui password login akun.',
+            onTap: () => context.push('/change-password'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
             icon: Icons.delete_outline_rounded,
             iconColor: const Color(0xFFDC2626),
             title: 'Hapus akun',
@@ -12347,6 +12490,14 @@ class AdminProfileScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           MiniInfoTile(
+            icon: Icons.lock_reset_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Ganti password',
+            subtitle: 'Perbarui password login akun.',
+            onTap: () => context.push('/change-password'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
             icon: Icons.delete_outline_rounded,
             iconColor: const Color(0xFFDC2626),
             title: 'Hapus akun',
@@ -12431,6 +12582,14 @@ class SuperAdminProfileScreen extends ConsumerWidget {
             title: 'Akses super admin',
             subtitle: 'Akun ini dipakai untuk pengawasan seluruh aplikasi.',
             onTap: () {},
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
+            icon: Icons.lock_reset_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Ganti password',
+            subtitle: 'Perbarui password login akun.',
+            onTap: () => context.push('/change-password'),
           ),
           const SizedBox(height: 18),
           PrimaryButton(
@@ -14296,6 +14455,14 @@ class GuardProfileScreen extends ConsumerWidget {
             title: 'Edit profil',
             subtitle: 'Perbarui nama, email, nomor HP, dan foto penjaga.',
             onTap: () => context.push('/guard/edit-profile'),
+          ),
+          const SizedBox(height: 12),
+          MiniInfoTile(
+            icon: Icons.lock_reset_rounded,
+            iconColor: AppTheme.blue,
+            title: 'Ganti password',
+            subtitle: 'Perbarui password login akun.',
+            onTap: () => context.push('/change-password'),
           ),
           const SizedBox(height: 12),
           PrimaryButton(
