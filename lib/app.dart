@@ -1663,6 +1663,14 @@ class AppController extends StateNotifier<AppState> {
     return _superAdminService.fetchReport();
   }
 
+  Future<void> loadManagedUsersFromSupabase() async {
+    final users = await _superAdminService.fetchManagedUsers();
+    if (users.isEmpty) {
+      return;
+    }
+    state = state.copyWith(managedUsers: users);
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -2017,7 +2025,7 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
-  void toggleManagedUserAccess(String id) {
+  Future<void> toggleManagedUserAccess(String id) async {
     ManagedUserAccount? updatedUser;
     final users = [
       for (final user in state.managedUsers)
@@ -2036,6 +2044,11 @@ class AppController extends StateNotifier<AppState> {
     if (updatedUser == null) {
       return;
     }
+
+    await _superAdminService.updateUserAccessStatus(
+      profileId: updatedUser.id,
+      status: updatedUser.status,
+    );
 
     state = state.copyWith(
       managedUsers: users,
@@ -2057,14 +2070,14 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void suspendFirstActiveManagedUser() {
+  Future<void> suspendFirstActiveManagedUser() async {
     final activeUsers = state.managedUsers.where(
       (user) => user.status == UserAccessStatus.active,
     );
     if (activeUsers.isEmpty) {
       return;
     }
-    toggleManagedUserAccess(activeUsers.first.id);
+    await toggleManagedUserAccess(activeUsers.first.id);
   }
 
   void prepareSuperAdminReport(String format) {
@@ -5415,16 +5428,29 @@ class _SuperAdminDashboardScreenState
                     label: 'Nonaktifkan akun',
                     icon: Icons.block_rounded,
                     accent: AppTheme.blueSoft,
-                    onTap: () {
+                    onTap: () async {
                       final hasActiveUser = ref
                           .read(appControllerProvider)
                           .managedUsers
                           .any(
                             (user) => user.status == UserAccessStatus.active,
                           );
-                      ref
-                          .read(appControllerProvider.notifier)
-                          .suspendFirstActiveManagedUser();
+                      try {
+                        await ref
+                            .read(appControllerProvider.notifier)
+                            .suspendFirstActiveManagedUser();
+                        if (!context.mounted) return;
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Gagal memperbarui akses di Supabase.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(
@@ -5446,11 +5472,28 @@ class _SuperAdminDashboardScreenState
   }
 }
 
-class SuperAdminUsersScreen extends ConsumerWidget {
+class SuperAdminUsersScreen extends ConsumerStatefulWidget {
   const SuperAdminUsersScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SuperAdminUsersScreen> createState() =>
+      _SuperAdminUsersScreenState();
+}
+
+class _SuperAdminUsersScreenState extends ConsumerState<SuperAdminUsersScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(
+      () => ref
+          .read(appControllerProvider.notifier)
+          .loadManagedUsersFromSupabase()
+          .catchError((_) {}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     return SuperAdminShell(
       currentIndex: 1,
@@ -5904,19 +5947,29 @@ class ManagedUserAccountCard extends ConsumerWidget {
                 ? Icons.check_circle_rounded
                 : Icons.block_rounded,
             color: isSuspended ? AppTheme.emerald : const Color(0xFFDC2626),
-            onPressed: () {
-              ref
-                  .read(appControllerProvider.notifier)
-                  .toggleManagedUserAccess(user.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    isSuspended
-                        ? 'Akun berhasil diaktifkan kembali.'
-                        : 'Akun berhasil dinonaktifkan.',
+            onPressed: () async {
+              try {
+                await ref
+                    .read(appControllerProvider.notifier)
+                    .toggleManagedUserAccess(user.id);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      isSuspended
+                          ? 'Akun berhasil diaktifkan kembali.'
+                          : 'Akun berhasil dinonaktifkan.',
+                    ),
                   ),
-                ),
-              );
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gagal memperbarui akses di Supabase.'),
+                  ),
+                );
+              }
             },
           ),
         ],

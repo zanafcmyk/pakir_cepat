@@ -54,10 +54,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Dashboard penjaga memuat assignment dan lokasi tugas dari Supabase saat dibuka.
 - [x] Dashboard super admin membaca ringkasan pengguna, komplain, lokasi, booking aktif, dan revenue dari Supabase.
 - [x] Statistik dan laporan super admin membaca transaksi serta grafik 7 hari dari Supabase.
+- [x] User management super admin memuat profil dari Supabase dan menyimpan aktif/nonaktif ke `profiles.access_status`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] UI dashboard super admin sudah ada, tetapi sebagian aksi user management belum tersimpan penuh ke Supabase.
 - [ ] Delete account masih reset state lokal, belum hapus akun Supabase sungguhan.
 - [ ] Payment masih demo, belum gateway pembayaran asli.
 - [ ] Nota/receipt sudah membaca Supabase jika ada, tetapi print/export masih UI/demo.
@@ -75,6 +75,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Monitoring kendaraan penyedia sudah memuat transaksi penyedia dari Supabase saat halaman dibuka.
 - Dashboard super admin sudah membaca agregasi Supabase untuk jumlah user per role, pending verifikasi, akun nonaktif, komplain menunggu, lokasi aktif, kendaraan aktif, total transaksi, dan revenue.
 - Laporan super admin sudah membaca transaksi Supabase dan grafik revenue 7 hari.
+- User management super admin sudah membaca daftar `profiles` dari Supabase dan tombol aktif/nonaktif menyimpan ke `profiles.access_status`.
 - Dashboard penyedia dan penjaga masih perlu audit data per kartu/section sebelum ditandai production.
 - Forgot password sudah diganti dari simulasi OTP menjadi pengiriman link reset lewat Supabase. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
 - Delete account sungguhan belum dikerjakan karena penghapusan user Auth Supabase yang aman membutuhkan server/Edge Function.
@@ -120,15 +121,12 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Avatar/profil bisa upload dan load dari Supabase.
 - [x] Dashboard super admin membaca ringkasan agregasi dari Supabase.
 - [x] Statistik/laporan super admin membaca transaksi dan grafik revenue dari Supabase.
-
-#### Sudah Ada Tapi Masih Demo/Lokal
-
-- [ ] Admin/super admin user management belum semua aksi tersimpan ke Supabase.
+- [x] User management super admin membaca profil dari Supabase dan menyimpan aktif/nonaktif ke Supabase.
 
 #### Belum Ada/Belum Production
 
 - [ ] Edit profil super admin ke Supabase.
-- [ ] User management super admin ke Supabase.
+- [ ] User management super admin untuk hapus akun Auth sungguhan perlu Edge Function.
 - [ ] Role guard dan route protection ketat.
 - [ ] Middleware/auth protection penuh.
 - [ ] Push notification asli ke HP.

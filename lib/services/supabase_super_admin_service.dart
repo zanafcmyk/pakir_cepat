@@ -45,6 +45,35 @@ class SupabaseSuperAdminService {
 
   final SupabaseClient _client;
 
+  Future<List<ManagedUserAccount>> fetchManagedUsers() async {
+    final rows = await _client
+        .from('profiles')
+        .select('id, full_name, email, role, access_status, note, created_at')
+        .neq('role', 'super_admin')
+        .order('created_at', ascending: false);
+
+    return [
+      for (final item in rows)
+        _managedUserFromRow(Map<String, dynamic>.from(item as Map)),
+    ];
+  }
+
+  Future<void> updateUserAccessStatus({
+    required String profileId,
+    required UserAccessStatus status,
+  }) {
+    return _client
+        .from('profiles')
+        .update({
+          'access_status': _accessStatusToDb(status),
+          'note': status == UserAccessStatus.suspended
+              ? 'Dinonaktifkan oleh Super Admin untuk pemeriksaan.'
+              : 'Diaktifkan kembali oleh Super Admin.',
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', profileId);
+  }
+
   Future<SupabaseSuperAdminOverview> fetchOverview() async {
     final profiles = await _client
         .from('profiles')
@@ -199,4 +228,35 @@ class SupabaseSuperAdminService {
     const labels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
     return labels[value.weekday - 1];
   }
+
+  ManagedUserAccount _managedUserFromRow(Map<String, dynamic> row) {
+    final accessStatus = row['access_status'] == 'suspended'
+        ? UserAccessStatus.suspended
+        : UserAccessStatus.active;
+
+    return ManagedUserAccount(
+      id: row['id'] as String? ?? '',
+      name: row['full_name'] as String? ?? '-',
+      email: row['email'] as String? ?? '-',
+      role: _roleFromDb(row['role'] as String?),
+      status: accessStatus,
+      note:
+          row['note'] as String? ??
+          (accessStatus == UserAccessStatus.suspended
+              ? 'Akun sedang dinonaktifkan.'
+              : 'Akun aktif.'),
+    );
+  }
+
+  AccountMode _roleFromDb(String? role) => switch (role) {
+    'provider' => AccountMode.provider,
+    'parking_guard' => AccountMode.parkingGuard,
+    'super_admin' => AccountMode.superAdmin,
+    _ => AccountMode.customer,
+  };
+
+  String _accessStatusToDb(UserAccessStatus status) => switch (status) {
+    UserAccessStatus.active => 'active',
+    UserAccessStatus.suspended => 'suspended',
+  };
 }
