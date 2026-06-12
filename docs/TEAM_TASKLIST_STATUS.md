@@ -41,6 +41,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edit profil penjaga ke Supabase.
 - [x] Upload foto avatar/profil ke Supabase Storage.
 - [x] Load avatar dari `profiles.avatar_url` saat login berikutnya.
+- [x] Pengaturan akun customer ke Supabase.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -54,7 +55,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Laporan penyedia sebagian masih pakai data lokal/history state.
 - [ ] Laporan super admin sebagian masih pakai data lokal/history state.
 - [ ] Monitoring kendaraan penyedia sebagian masih membaca history lokal/state.
-- [ ] Pengaturan akun customer masih lokal.
 - [ ] Forgot password masih simulasi UI/OTP, belum reset password Supabase sungguhan.
 - [ ] Delete account masih reset state lokal, belum hapus akun Supabase sungguhan.
 - [ ] Payment masih demo, belum gateway pembayaran asli.
@@ -72,7 +72,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Ganti password Supabase.
 - [ ] Reset password Supabase sungguhan.
 - [ ] Hapus akun sungguhan di Supabase.
-- [ ] Settings customer ke tabel `customer_settings`.
 - [ ] Settings penyedia.
 - [ ] Settings penjaga.
 - [x] Upload foto lahan parkir ke Supabase Storage (kode dan SQL setup siap).
@@ -192,12 +191,12 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Chat customer membaca pesan lama dan realtime dari Supabase.
 - [x] Edit profil customer ke Supabase.
 - [x] Avatar customer upload dan load dari Supabase.
+- [x] Pengaturan akun customer tersimpan ke Supabase.
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [ ] Onboarding masih lokal/demo.
 - [ ] Dashboard customer sebagian perlu dicek integrasi datanya.
-- [ ] Pengaturan akun customer masih lokal.
 - [ ] Forgot password masih simulasi UI/OTP.
 - [ ] Delete account masih reset state lokal.
 - [ ] Payment masih demo.
@@ -205,7 +204,6 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] Settings customer ke tabel `customer_settings`.
 - [ ] Ganti password Supabase.
 - [ ] Reset password Supabase sungguhan.
 - [ ] Hapus akun sungguhan di Supabase.
@@ -242,13 +240,12 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 ## Prioritas Aman Berikutnya
 
-1. Settings customer ke Supabase.
-2. Edit profil super admin ke Supabase.
-3. Ganti password dan reset password Supabase.
-4. Upload foto lahan ke Supabase Storage.
-5. Search/filter lokasi dari Supabase.
-6. Laporan pendapatan dan statistik dari query Supabase.
-7. Edge Function untuk membuat akun penjaga.
-8. Route protection dan middleware auth.
-9. Realtime slot/lokasi/notifikasi.
-10. Delete account sungguhan.
+1. Edit profil super admin ke Supabase.
+2. Ganti password dan reset password Supabase.
+3. Upload foto lahan ke Supabase Storage.
+4. Search/filter lokasi dari Supabase.
+5. Laporan pendapatan dan statistik dari query Supabase.
+6. Edge Function untuk membuat akun penjaga.
+7. Route protection dan middleware auth.
+8. Realtime slot/lokasi/notifikasi.
+9. Delete account sungguhan.

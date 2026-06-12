@@ -148,12 +148,12 @@ Belum production:
 - Chat.
 - Notifikasi in-app.
 - Profil customer.
+- Settings customer.
 
 Belum production:
 
 - Payment gateway asli.
 - Search/filter lokasi dari query database penuh.
-- Settings customer ke Supabase.
 - Push notification asli ke HP.
 - Receipt print/export sungguhan.
 
@@ -240,6 +240,7 @@ Belum production:
 - Edit profil customer.
 - Edit profil penyedia.
 - Edit profil penjaga.
+- Settings customer.
 - Upload avatar ke Supabase Storage.
 - Load avatar saat login.
 
@@ -249,7 +250,7 @@ Belum production:
 - Beberapa data dashboard tiap role.
 - Statistik dan laporan.
 - Monitoring kendaraan penyedia sebagian.
-- Settings customer/penyedia/penjaga.
+- Settings penyedia/penjaga.
 - Forgot password.
 - Delete account.
 - Payment gateway.
@@ -371,7 +372,6 @@ Belum production:
 
 ### Fase 1 - Stabilkan Supabase Core
 
-- Settings customer ke Supabase.
 - Edit profil super admin ke Supabase.
 - Ganti password dan reset password Supabase.
 - Search/filter lokasi dari Supabase.

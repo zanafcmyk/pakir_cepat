@@ -20,6 +20,7 @@ import 'models/app_models.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_customer_settings_service.dart';
 import 'services/supabase_favorite_service.dart';
 import 'services/supabase_guard_service.dart';
 import 'services/supabase_notification_service.dart';
@@ -1293,6 +1294,8 @@ class AppController extends StateNotifier<AppState> {
 
   final SupabaseChatService _chatService = SupabaseChatService();
   final SupabaseComplaintService _complaintService = SupabaseComplaintService();
+  final SupabaseCustomerSettingsService _customerSettingsService =
+      SupabaseCustomerSettingsService();
   final SupabaseParkingService _parkingService = SupabaseParkingService();
   final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
   final SupabaseBookingService _bookingService = SupabaseBookingService();
@@ -1547,6 +1550,22 @@ class AppController extends StateNotifier<AppState> {
     final favoriteLotIds = await _favoriteService
         .fetchCurrentCustomerFavoriteLotIds();
     state = state.copyWith(favoriteLotIds: favoriteLotIds);
+  }
+
+  Future<void> loadCustomerSettingsFromSupabase() async {
+    final settings = await _customerSettingsService
+        .fetchCurrentCustomerSettings();
+    if (settings == null) {
+      return;
+    }
+
+    state = state.copyWith(
+      bookingNotificationEnabled: settings.bookingNotificationEnabled,
+      paymentNotificationEnabled: settings.paymentNotificationEnabled,
+      promoNotificationEnabled: settings.promoNotificationEnabled,
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
   }
 
   Future<void> submitParkingReview({
@@ -2145,13 +2164,21 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void updateCustomerSettings({
+  Future<void> updateCustomerSettings({
     required bool bookingNotificationEnabled,
     required bool paymentNotificationEnabled,
     required bool promoNotificationEnabled,
     required String selectedLanguage,
     required bool accountSecurityEnabled,
-  }) {
+  }) async {
+    await _customerSettingsService.saveCurrentCustomerSettings(
+      bookingNotificationEnabled: bookingNotificationEnabled,
+      paymentNotificationEnabled: paymentNotificationEnabled,
+      promoNotificationEnabled: promoNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+
     state = state.copyWith(
       bookingNotificationEnabled: bookingNotificationEnabled,
       paymentNotificationEnabled: paymentNotificationEnabled,
@@ -3773,6 +3800,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
       await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
+      await controller.loadCustomerSettingsFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -4556,6 +4584,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await controller.loadActiveBookingFromSupabase().catchError((_) {});
       await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
       await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
+      await controller.loadCustomerSettingsFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -9220,6 +9249,7 @@ class _CustomerAccountSettingsScreenState
   late bool _promoNotificationEnabled;
   late bool _accountSecurityEnabled;
   late String _selectedLanguage;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -9232,20 +9262,43 @@ class _CustomerAccountSettingsScreenState
     _selectedLanguage = state.selectedLanguage;
   }
 
-  void _save() {
-    ref
-        .read(appControllerProvider.notifier)
-        .updateCustomerSettings(
-          bookingNotificationEnabled: _bookingNotificationEnabled,
-          paymentNotificationEnabled: _paymentNotificationEnabled,
-          promoNotificationEnabled: _promoNotificationEnabled,
-          selectedLanguage: _selectedLanguage,
-          accountSecurityEnabled: _accountSecurityEnabled,
-        );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
-    );
-    context.go('/customer/profile');
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .updateCustomerSettings(
+            bookingNotificationEnabled: _bookingNotificationEnabled,
+            paymentNotificationEnabled: _paymentNotificationEnabled,
+            promoNotificationEnabled: _promoNotificationEnabled,
+            selectedLanguage: _selectedLanguage,
+            accountSecurityEnabled: _accountSecurityEnabled,
+          );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
+      );
+      context.go('/customer/profile');
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal menyimpan pengaturan ke Supabase.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   @override
@@ -9336,9 +9389,9 @@ class _CustomerAccountSettingsScreenState
           ),
           const SizedBox(height: 18),
           _CustomerCompactButton(
-            label: 'Simpan Pengaturan',
+            label: _isSaving ? 'Menyimpan...' : 'Simpan Pengaturan',
             icon: Icons.save_rounded,
-            onPressed: _save,
+            onPressed: _isSaving ? null : _save,
           ),
         ],
       ),
