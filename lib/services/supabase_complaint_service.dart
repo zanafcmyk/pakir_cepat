@@ -54,7 +54,7 @@ class SupabaseComplaintService {
     final rows = await _client
         .from('complaints')
         .select(
-          'id, sender_role, title, description, status, reply, created_at, profiles(full_name)',
+          'id, sender_profile_id, sender_role, title, description, status, reply, created_at, profiles(full_name)',
         )
         .order('created_at', ascending: false);
 
@@ -90,6 +90,7 @@ class SupabaseComplaintService {
 
     return ComplaintItem(
       id: row['id'] as String,
+      senderProfileId: row['sender_profile_id'] as String?,
       senderName: profile is Map
           ? profile['full_name'] as String? ?? 'Pengguna'
           : 'Pengguna',

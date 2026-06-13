@@ -247,6 +247,7 @@ class NoticeItem {
 class ComplaintItem {
   const ComplaintItem({
     required this.id,
+    this.senderProfileId,
     required this.senderName,
     required this.senderRole,
     required this.subject,
@@ -257,6 +258,7 @@ class ComplaintItem {
   });
 
   final String id;
+  final String? senderProfileId;
   final String senderName;
   final AccountMode senderRole;
   final String subject;
@@ -267,6 +269,7 @@ class ComplaintItem {
 
   ComplaintItem copyWith({
     String? id,
+    String? senderProfileId,
     String? senderName,
     AccountMode? senderRole,
     String? subject,
@@ -277,6 +280,7 @@ class ComplaintItem {
   }) {
     return ComplaintItem(
       id: id ?? this.id,
+      senderProfileId: senderProfileId ?? this.senderProfileId,
       senderName: senderName ?? this.senderName,
       senderRole: senderRole ?? this.senderRole,
       subject: subject ?? this.subject,

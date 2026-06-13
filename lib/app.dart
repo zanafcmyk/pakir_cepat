@@ -1638,6 +1638,24 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  void _syncProfileNotification({
+    required String profileId,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) {
+    unawaited(
+      _notificationService
+          .saveProfileNotification(
+            profileId: profileId,
+            title: title,
+            message: message,
+            type: type,
+          )
+          .catchError((_) {}),
+    );
+  }
+
   void _syncProviderNotificationForLot({
     required ParkingLot lot,
     required String title,
@@ -2705,12 +2723,22 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     if (answered.senderRole != AccountMode.superAdmin) {
-      _syncRoleNotification(
-        role: answered.senderRole,
-        title: 'Komplain dijawab',
-        message: '${answered.subject}: $reply',
-        type: 'complaint',
-      );
+      final senderProfileId = answered.senderProfileId;
+      if (senderProfileId == null || senderProfileId.isEmpty) {
+        _syncRoleNotification(
+          role: answered.senderRole,
+          title: 'Komplain dijawab',
+          message: '${answered.subject}: $reply',
+          type: 'complaint',
+        );
+      } else {
+        _syncProfileNotification(
+          profileId: senderProfileId,
+          title: 'Komplain dijawab',
+          message: '${answered.subject}: $reply',
+          type: 'complaint',
+        );
+      }
     }
   }
 
