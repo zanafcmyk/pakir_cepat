@@ -42,6 +42,40 @@ class SupabaseNotificationService {
     });
   }
 
+  Future<void> saveRoleNotification({
+    required AccountMode role,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) async {
+    final rows = await _client
+        .from('profiles')
+        .select('id')
+        .eq('role', _roleToDb(role))
+        .eq('access_status', 'active');
+
+    if (rows.isEmpty) {
+      return;
+    }
+
+    await _client.from('notifications').insert([
+      for (final row in rows)
+        {
+          'profile_id': Map<String, dynamic>.from(row as Map)['id'],
+          'title': title,
+          'message': message,
+          'type': type,
+        },
+    ]);
+  }
+
+  String _roleToDb(AccountMode mode) => switch (mode) {
+    AccountMode.superAdmin => 'super_admin',
+    AccountMode.provider => 'provider',
+    AccountMode.parkingGuard => 'parking_guard',
+    AccountMode.customer => 'customer',
+  };
+
   NoticeItem _noticeFromRow(Map<String, dynamic> row) {
     final type = row['type'] as String? ?? 'info';
     final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');

@@ -75,6 +75,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pondasi realtime lokasi siap lewat listener `parking_lots`.
 - [x] Realtime assignment penjaga siap lewat listener `parking_guards`.
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
+- [x] Sinkron notifikasi in-app antar role untuk booking, pembayaran, verifikasi akun, dan komplain dasar.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
@@ -86,6 +87,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
+- [ ] Notifikasi in-app antar role masih role-level; perlu ditargetkan ke `profile_id` penerima spesifik saat aplikasi punya banyak penyedia/penjaga.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
@@ -117,6 +119,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
 - Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SERVICE_ROLE_KEY`.
 - Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
+- Matriks sinkron antar role dicatat di `docs/ROLE_SYNC_STATUS.md`.
 
 ### Belum Ada atau Belum Production
 

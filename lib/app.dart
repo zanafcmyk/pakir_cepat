@@ -1620,6 +1620,24 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  void _syncRoleNotification({
+    required AccountMode role,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) {
+    unawaited(
+      _notificationService
+          .saveRoleNotification(
+            role: role,
+            title: title,
+            message: message,
+            type: type,
+          )
+          .catchError((_) {}),
+    );
+  }
+
   Future<void> loadChatMessagesFromSupabase({
     required AccountMode mode,
     required String roomId,
@@ -2342,6 +2360,16 @@ class AppController extends StateNotifier<AppState> {
 
     if (selected != null) {
       await _syncRegistrationStatus(selected, status);
+      _syncRoleNotification(
+        role: selected.role,
+        title: status == AccountStatus.verified
+            ? 'Akun disetujui'
+            : 'Akun ditolak',
+        message: status == AccountStatus.verified
+            ? 'Akun ${roleLabel(selected.role)} kamu sudah diverifikasi Super Admin.'
+            : 'Pengajuan akun ${roleLabel(selected.role)} perlu diperbarui.',
+        type: 'verification',
+      );
     }
 
     final notices = [
@@ -2602,6 +2630,14 @@ class AppController extends StateNotifier<AppState> {
         ...state.superAdminNotifications,
       ],
     );
+    if (answered.senderRole != AccountMode.superAdmin) {
+      _syncRoleNotification(
+        role: answered.senderRole,
+        title: 'Komplain dijawab',
+        message: '${answered.subject}: $reply',
+        type: 'complaint',
+      );
+    }
   }
 
   Future<void> closeComplaint(String id) async {
@@ -2956,6 +2992,12 @@ class AppController extends StateNotifier<AppState> {
         );
     state = state.copyWith(
       customerComplaints: [complaint, ...state.customerComplaints],
+    );
+    _syncRoleNotification(
+      role: AccountMode.superAdmin,
+      title: 'Komplain customer baru',
+      message: '$title - $category dari ${state.customerName}.',
+      type: 'complaint',
     );
   }
 
@@ -3368,6 +3410,12 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(
       guardComplaints: [complaint, ...state.guardComplaints],
     );
+    _syncRoleNotification(
+      role: AccountMode.superAdmin,
+      title: 'Komplain penjaga baru',
+      message: '$title - $category dari ${guard?.name ?? 'Penjaga Parkir'}.',
+      type: 'complaint',
+    );
   }
 
   Future<void> addLot({
@@ -3619,6 +3667,19 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     _syncCurrentUserNotification(customerNotice, type: 'booking');
+    _syncRoleNotification(
+      role: AccountMode.provider,
+      title: 'Booking baru',
+      message: '${vehicle.plateNumber} booking slot $slotCode di ${lot.name}.',
+      type: 'booking',
+    );
+    _syncRoleNotification(
+      role: AccountMode.parkingGuard,
+      title: 'Booking baru untuk dicek',
+      message:
+          'Tiket $ticketNumber menunggu pembayaran dan scan di ${lot.name}.',
+      type: 'booking',
+    );
   }
 
   Future<void> payBooking(PaymentMethod method) async {
@@ -3667,6 +3728,19 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     _syncCurrentUserNotification(customerNotice, type: 'payment');
+    _syncRoleNotification(
+      role: AccountMode.provider,
+      title: 'Pembayaran terkonfirmasi',
+      message:
+          '${booking.plateNumber} membayar ${formatCurrency(booking.estimatedCost)} untuk ${booking.locationName}.',
+      type: 'payment',
+    );
+    _syncRoleNotification(
+      role: AccountMode.parkingGuard,
+      title: 'Pembayaran tiket lunas',
+      message: 'Tiket ${booking.ticketNumber} siap diverifikasi penjaga.',
+      type: 'payment',
+    );
   }
 
   Future<SupabaseGatewayPaymentResult?> createGatewayPayment(
