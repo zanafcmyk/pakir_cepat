@@ -1427,7 +1427,11 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
+  RealtimeChannel? _parkingLotRealtimeChannel;
+  RealtimeChannel? _notificationRealtimeChannel;
   Timer? _parkingSlotRealtimeDebounce;
+  Timer? _notificationRealtimeDebounce;
+  String? _notificationRealtimeProfileId;
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1635,6 +1639,7 @@ class AppController extends StateNotifier<AppState> {
       slots: data.slots.isEmpty ? state.slots : data.slots,
     );
     startParkingSlotRealtime();
+    startParkingLocationRealtime();
   }
 
   void startParkingSlotRealtime() {
@@ -1648,6 +1653,22 @@ class AppController extends StateNotifier<AppState> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'parking_slots',
+          callback: (_) => _scheduleParkingDataRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
+  void startParkingLocationRealtime() {
+    if (_parkingLotRealtimeChannel != null) {
+      return;
+    }
+
+    _parkingLotRealtimeChannel = Supabase.instance.client
+        .channel('public:parking_lots:realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'parking_lots',
           callback: (_) => _scheduleParkingDataRealtimeRefresh(),
         )
         .subscribe();
@@ -1774,6 +1795,50 @@ class AppController extends StateNotifier<AppState> {
         state = state.copyWith(adminNotifications: notices);
       case AccountMode.superAdmin:
         state = state.copyWith(superAdminNotifications: notices);
+    }
+    startCurrentUserNotificationsRealtime();
+  }
+
+  void startCurrentUserNotificationsRealtime() {
+    final profileId = Supabase.instance.client.auth.currentUser?.id;
+    if (profileId == null) {
+      return;
+    }
+    if (_notificationRealtimeChannel != null &&
+        _notificationRealtimeProfileId == profileId) {
+      return;
+    }
+
+    final oldChannel = _notificationRealtimeChannel;
+    if (oldChannel != null) {
+      unawaited(Supabase.instance.client.removeChannel(oldChannel));
+    }
+
+    _notificationRealtimeProfileId = profileId;
+    _notificationRealtimeChannel = Supabase.instance.client
+        .channel('public:notifications:$profileId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'notifications',
+          callback: (_) => _scheduleNotificationRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleNotificationRealtimeRefresh() {
+    _notificationRealtimeDebounce?.cancel();
+    _notificationRealtimeDebounce = Timer(
+      const Duration(milliseconds: 350),
+      () => unawaited(_refreshCurrentUserNotificationsFromRealtime()),
+    );
+  }
+
+  Future<void> _refreshCurrentUserNotificationsFromRealtime() async {
+    try {
+      await loadCurrentUserNotificationsFromSupabase();
+    } catch (_) {
+      // Realtime refresh is best-effort; opening the notification page reloads.
     }
   }
 
@@ -1935,12 +2000,14 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void logout() {
+    _stopRealtimeSubscriptions();
     state = state.copyWith(isAuthenticated: false);
   }
 
   Future<void> deleteAccount() async {
     await Supabase.instance.client.functions.invoke('delete-account');
     await Supabase.instance.client.auth.signOut();
+    _stopRealtimeSubscriptions();
     final seeded = AppState.seeded();
     state = seeded;
   }
@@ -3590,12 +3657,29 @@ class AppController extends StateNotifier<AppState> {
 
   @override
   void dispose() {
-    _parkingSlotRealtimeDebounce?.cancel();
-    final channel = _parkingSlotRealtimeChannel;
-    if (channel != null) {
-      unawaited(Supabase.instance.client.removeChannel(channel));
-    }
+    _stopRealtimeSubscriptions();
     super.dispose();
+  }
+
+  void _stopRealtimeSubscriptions() {
+    _parkingSlotRealtimeDebounce?.cancel();
+    _notificationRealtimeDebounce?.cancel();
+
+    final channels = [
+      _parkingSlotRealtimeChannel,
+      _parkingLotRealtimeChannel,
+      _notificationRealtimeChannel,
+    ];
+    for (final channel in channels) {
+      if (channel != null) {
+        unawaited(Supabase.instance.client.removeChannel(channel));
+      }
+    }
+
+    _parkingSlotRealtimeChannel = null;
+    _parkingLotRealtimeChannel = null;
+    _notificationRealtimeChannel = null;
+    _notificationRealtimeProfileId = null;
   }
 }
 
