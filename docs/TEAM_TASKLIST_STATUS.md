@@ -73,6 +73,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
+- [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -261,7 +262,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] SQL realtime slot perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] SQL realtime lokasi/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] Data demo/lokal perlu dipisah dari data production.
-- [ ] Error handling koneksi Supabase perlu dibuat lebih konsisten.
+- [x] Error handling koneksi Supabase mulai diperkuat di dashboard customer.
+- [ ] Error handling koneksi Supabase perlu diaudit konsisten di semua layar.
 - [x] Route protection dasar punya test deep link role.
 - [ ] Route protection perlu audit production lanjutan di perangkat asli setelah semua deep link final.
 

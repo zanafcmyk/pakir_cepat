@@ -6754,6 +6754,7 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   bool _isRefreshing = false;
+  String? _refreshError;
 
   @override
   void initState() {
@@ -6783,19 +6784,62 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
       return;
     }
 
-    setState(() => _isRefreshing = true);
+    setState(() {
+      _isRefreshing = true;
+      _refreshError = null;
+    });
     final controller = ref.read(appControllerProvider.notifier);
-    await controller.loadParkingDataFromSupabase().catchError((_) {});
-    await controller.loadCustomerVehiclesFromSupabase().catchError((_) {});
-    await controller.loadActiveBookingFromSupabase().catchError((_) {});
-    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
-    await controller.loadCustomerFavoritesFromSupabase().catchError((_) {});
-    await controller.loadCurrentUserNotificationsFromSupabase().catchError(
-      (_) {},
+    final failures = <String>[];
+    await _runRefreshStep(
+      failures,
+      'lokasi parkir',
+      controller.loadParkingDataFromSupabase,
+    );
+    await _runRefreshStep(
+      failures,
+      'kendaraan',
+      controller.loadCustomerVehiclesFromSupabase,
+    );
+    await _runRefreshStep(
+      failures,
+      'booking aktif',
+      controller.loadActiveBookingFromSupabase,
+    );
+    await _runRefreshStep(
+      failures,
+      'riwayat',
+      controller.loadCustomerHistoryFromSupabase,
+    );
+    await _runRefreshStep(
+      failures,
+      'favorit',
+      controller.loadCustomerFavoritesFromSupabase,
+    );
+    await _runRefreshStep(
+      failures,
+      'notifikasi',
+      controller.loadCurrentUserNotificationsFromSupabase,
     );
 
     if (mounted) {
-      setState(() => _isRefreshing = false);
+      setState(() {
+        _isRefreshing = false;
+        _refreshError = failures.isEmpty
+            ? null
+            : 'Sebagian data gagal dimuat: ${failures.join(', ')}. Cek koneksi lalu tarik untuk refresh.';
+      });
+    }
+  }
+
+  Future<void> _runRefreshStep(
+    List<String> failures,
+    String label,
+    Future<void> Function() load,
+  ) async {
+    try {
+      await load();
+    } catch (_) {
+      failures.add(label);
     }
   }
 
@@ -6928,6 +6972,14 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: 18),
+          ],
+          if (_refreshError != null) ...[
+            InlineNotice(
+              icon: Icons.wifi_off_rounded,
+              accent: const Color(0xFFD97706),
+              message: _refreshError!,
             ),
             const SizedBox(height: 18),
           ],
