@@ -245,7 +245,7 @@ class SupabasePaymentService {
   String _paymentMethodLabel(String? method) => switch (method) {
     'ewallet' => 'E-Wallet',
     'cash' => 'Tunai',
-    'card' => 'Debit/Kredit',
+    'card' => 'Digital',
     _ => 'QRIS',
   };
 
@@ -253,6 +253,5 @@ class SupabasePaymentService {
     PaymentMethod.qris => 'qris',
     PaymentMethod.ewallet => 'ewallet',
     PaymentMethod.cash => 'cash',
-    PaymentMethod.card => 'card',
   };
 }

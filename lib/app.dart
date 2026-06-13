@@ -8136,10 +8136,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   PaymentMethod _method = PaymentMethod.qris;
   String _wallet = 'GoPay';
   late final TextEditingController _walletPhoneController;
-  late final TextEditingController _cardNumberController;
-  late final TextEditingController _cardNameController;
-  late final TextEditingController _cardExpiryController;
-  late final TextEditingController _cardCvvController;
   String? _paymentError;
   bool _isStartingGateway = false;
 
@@ -8147,19 +8143,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   void initState() {
     super.initState();
     _walletPhoneController = TextEditingController();
-    _cardNumberController = TextEditingController();
-    _cardNameController = TextEditingController();
-    _cardExpiryController = TextEditingController();
-    _cardCvvController = TextEditingController();
   }
 
   @override
   void dispose() {
     _walletPhoneController.dispose();
-    _cardNumberController.dispose();
-    _cardNameController.dispose();
-    _cardExpiryController.dispose();
-    _cardCvvController.dispose();
     super.dispose();
   }
 
@@ -8180,11 +8168,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 
   Future<void> _payWithEWallet(Booking _) async {
-    setState(() => _paymentError = null);
-    await _startGatewayPayment();
-  }
-
-  Future<void> _payWithCard(Booking _) async {
     setState(() => _paymentError = null);
     await _startGatewayPayment();
   }
@@ -8252,16 +8235,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
-  void _useDemoCard() {
-    setState(() {
-      _paymentError = null;
-      _cardNumberController.text = '4111111111111111';
-      _cardNameController.text = 'Dio Pratama';
-      _cardExpiryController.text = '12/30';
-      _cardCvvController.text = '123';
-    });
-  }
-
   Future<void> _handlePayPressed(Booking booking) async {
     switch (_method) {
       case PaymentMethod.qris:
@@ -8272,8 +8245,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         _requestCashPaymentConfirmation(booking);
       case PaymentMethod.ewallet:
         await _payWithEWallet(booking);
-      case PaymentMethod.card:
-        await _payWithCard(booking);
     }
   }
 
@@ -8381,11 +8352,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       label: 'Tunai',
                       icon: Icons.payments_rounded,
                     ),
-                    ChoiceItem(
-                      value: PaymentMethod.card,
-                      label: 'Debit/Kredit',
-                      icon: Icons.credit_card_rounded,
-                    ),
                   ],
                   value: _method,
                   onChanged: isPayable
@@ -8400,7 +8366,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   icon: Icons.lock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'QRIS, e-wallet, dan kartu memakai payment gateway setelah Edge Function Midtrans dideploy. Tunai tetap dikonfirmasi penjaga.',
+                      'Scan QR dan e-wallet memakai payment gateway setelah Edge Function dideploy. Tunai tetap dikonfirmasi penjaga.',
                 ),
                 const SizedBox(height: 20),
                 _PaymentInstructionCard(
@@ -8408,12 +8374,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   booking: booking,
                   wallet: _wallet,
                   walletPhoneController: _walletPhoneController,
-                  cardNumberController: _cardNumberController,
-                  cardNameController: _cardNameController,
-                  cardExpiryController: _cardExpiryController,
-                  cardCvvController: _cardCvvController,
                   onWalletChanged: (value) => setState(() => _wallet = value),
-                  onUseDemoCard: _useDemoCard,
                 ),
                 if (_paymentError != null) ...[
                   const SizedBox(height: 12),
@@ -8478,24 +8439,14 @@ class _PaymentInstructionCard extends StatelessWidget {
     required this.booking,
     required this.wallet,
     required this.walletPhoneController,
-    required this.cardNumberController,
-    required this.cardNameController,
-    required this.cardExpiryController,
-    required this.cardCvvController,
     required this.onWalletChanged,
-    required this.onUseDemoCard,
   });
 
   final PaymentMethod method;
   final Booking booking;
   final String wallet;
   final TextEditingController walletPhoneController;
-  final TextEditingController cardNumberController;
-  final TextEditingController cardNameController;
-  final TextEditingController cardExpiryController;
-  final TextEditingController cardCvvController;
   final ValueChanged<String> onWalletChanged;
-  final VoidCallback onUseDemoCard;
 
   @override
   Widget build(BuildContext context) {
@@ -8568,59 +8519,6 @@ class _PaymentInstructionCard extends StatelessWidget {
             accent: AppTheme.emerald,
             message:
                 'Siapkan uang tunai sesuai total pembayaran dan tunjukkan tiket ke penjaga parkir.',
-          ),
-        ),
-        PaymentMethod.card => _PaymentMethodBox(
-          key: const ValueKey('card'),
-          icon: Icons.credit_card_rounded,
-          title: 'Debit/Kredit Gateway',
-          subtitle:
-              'Data kartu asli tidak disimpan aplikasi. Pembayaran kartu diproses di halaman gateway.',
-          child: Column(
-            children: [
-              TextField(
-                controller: cardNumberController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nomor kartu demo',
-                  prefixIcon: Icon(Icons.credit_card_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: cardNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nama di kartu demo',
-                  prefixIcon: Icon(Icons.person_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: cardExpiryController,
-                      decoration: const InputDecoration(labelText: 'MM/YY'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: cardCvvController,
-                      obscureText: true,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'CVV'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SecondaryButton(
-                label: 'Gunakan kartu demo',
-                icon: Icons.auto_fix_high_rounded,
-                onPressed: onUseDemoCard,
-              ),
-            ],
           ),
         ),
       },
@@ -8764,7 +8662,6 @@ String _paymentMethodLabel(PaymentMethod method) => switch (method) {
   PaymentMethod.qris => 'QRIS',
   PaymentMethod.ewallet => 'E-Wallet',
   PaymentMethod.cash => 'Tunai',
-  PaymentMethod.card => 'Debit/Kredit',
 };
 
 class ParkingHistoryScreen extends ConsumerStatefulWidget {

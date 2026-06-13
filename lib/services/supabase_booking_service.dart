@@ -41,9 +41,10 @@ class SupabaseBookingService {
     final vehicleId = await _vehicleId(customerId, vehicle.plateNumber);
     final ticketNumber = _ticketNumber();
 
-    await _client.from('parking_slots').update({
-      'status': 'reserved',
-    }).eq('id', slot.id);
+    await _client
+        .from('parking_slots')
+        .update({'status': 'reserved'})
+        .eq('id', slot.id);
 
     await _client.from('bookings').insert({
       'ticket_number': ticketNumber,
@@ -381,7 +382,6 @@ class SupabaseBookingService {
   PaymentMethod _paymentMethodFromDb(String? method) => switch (method) {
     'ewallet' => PaymentMethod.ewallet,
     'cash' => PaymentMethod.cash,
-    'card' => PaymentMethod.card,
     _ => PaymentMethod.qris,
   };
 }

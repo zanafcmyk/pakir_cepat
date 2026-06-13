@@ -10,7 +10,7 @@ enum VehicleKind { motor, mobil, truk }
 
 enum ParkingTariffType { hourly, flat, daily, progressive }
 
-enum PaymentMethod { qris, ewallet, cash, card }
+enum PaymentMethod { qris, ewallet, cash }
 
 enum BookingStatus { pendingPayment, paid, active, completed, cancelled }
 

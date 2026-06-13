@@ -25,6 +25,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Kendaraan customer ke Supabase.
 - [x] Booking parkir ke Supabase.
 - [x] Payment demo tersimpan ke Supabase.
+- [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
 - [x] Load booking aktif customer dari Supabase.
 - [x] Scan QR membaca booking dari Supabase.
 - [x] Update masuk/keluar kendaraan ke Supabase.
@@ -106,6 +107,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
 - Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SUPABASE_SERVICE_ROLE_KEY`.
 - Payment gateway Midtrans sudah disiapkan di kode dan Edge Function, tetapi belum production penuh sampai secret `MIDTRANS_SERVER_KEY`, deploy function, dan webhook Midtrans aktif.
+- Payment gateway ditampung dulu; pilihan debit/kredit sudah dihapus dari aplikasi sesuai keputusan terbaru.
 - Receipt sudah baca Supabase dan tombol cetak/export sekarang menghasilkan PDF.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
