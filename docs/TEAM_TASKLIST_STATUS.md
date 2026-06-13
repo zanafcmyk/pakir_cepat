@@ -69,6 +69,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pondasi push notification production siap lewat tabel token dan Edge Function FCM.
 - [x] Pondasi realtime slot siap lewat listener `parking_slots`.
 - [x] Pondasi realtime lokasi siap lewat listener `parking_lots`.
+- [x] Realtime assignment penjaga siap lewat listener `parking_guards`.
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
@@ -82,7 +83,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 - [ ] Realtime slot perlu SQL `docs/supabase_realtime_slots.sql` dijalankan di Supabase production.
-- [ ] Realtime lokasi/notifikasi perlu SQL `docs/supabase_realtime_location_notifications.sql` dijalankan di Supabase production.
+- [ ] Realtime lokasi/assignment penjaga/notifikasi perlu SQL `docs/supabase_realtime_location_notifications.sql` dijalankan di Supabase production.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
@@ -207,7 +208,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Belum Ada/Belum Production
 
 - [x] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
-- [ ] Realtime status slot/lokasi untuk penjaga.
+- [x] Realtime status slot/lokasi/assignment untuk penjaga.
 - [ ] Push notification tugas/booking untuk penjaga.
 
 ### Customer Flow - Pelanggan Bersama
@@ -262,7 +263,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Policy RLS perlu dicek ulang per role sebelum production.
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] SQL realtime slot perlu dipastikan sudah dijalankan di Supabase production.
-- [ ] SQL realtime lokasi/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
+- [ ] SQL realtime lokasi/assignment penjaga/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
 - [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
 - [ ] Data demo/lokal perlu audit lanjutan agar seed tidak muncul di build production.
 - [x] Error handling koneksi Supabase mulai diperkuat di dashboard customer.
@@ -281,7 +282,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edge Function `send-push-notification` untuk mengirim FCM HTTP v1.
 - [x] Tabel `device_push_tokens` disiapkan di `docs/supabase_push_notifications.sql`.
 - [x] SQL realtime slot disiapkan di `docs/supabase_realtime_slots.sql`.
-- [x] SQL realtime lokasi/notifikasi disiapkan di `docs/supabase_realtime_location_notifications.sql`.
+- [x] SQL realtime lokasi/assignment penjaga/notifikasi disiapkan di `docs/supabase_realtime_location_notifications.sql`.
 - [x] Storage bucket foto lahan (SQL setup siap di `docs/supabase_storage_parking_lot_photos.sql`).
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
 - [x] Query agregasi laporan/statistik utama.

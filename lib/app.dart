@@ -599,6 +599,7 @@ class AppState {
     bool? passwordResetRequested,
     List<ParkingLot>? lots,
     ParkingLot? selectedLot,
+    bool clearSelectedLot = false,
     List<Vehicle>? vehicles,
     Vehicle? selectedVehicle,
     List<ParkingSlot>? slots,
@@ -661,7 +662,7 @@ class AppState {
       passwordResetRequested:
           passwordResetRequested ?? this.passwordResetRequested,
       lots: lots ?? this.lots,
-      selectedLot: selectedLot ?? this.selectedLot,
+      selectedLot: clearSelectedLot ? null : (selectedLot ?? this.selectedLot),
       vehicles: vehicles ?? this.vehicles,
       selectedVehicle: selectedVehicle ?? this.selectedVehicle,
       slots: slots ?? this.slots,
@@ -1435,6 +1436,7 @@ class AppController extends StateNotifier<AppState> {
       SupabaseSuperAdminService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
   RealtimeChannel? _parkingLotRealtimeChannel;
+  RealtimeChannel? _parkingGuardRealtimeChannel;
   RealtimeChannel? _notificationRealtimeChannel;
   Timer? _parkingSlotRealtimeDebounce;
   Timer? _notificationRealtimeDebounce;
@@ -1682,6 +1684,22 @@ class AppController extends StateNotifier<AppState> {
         .subscribe();
   }
 
+  void startParkingGuardRealtime() {
+    if (_parkingGuardRealtimeChannel != null) {
+      return;
+    }
+
+    _parkingGuardRealtimeChannel = Supabase.instance.client
+        .channel('public:parking_guards:realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'parking_guards',
+          callback: (_) => _scheduleParkingDataRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
   void _scheduleParkingDataRealtimeRefresh() {
     _parkingSlotRealtimeDebounce?.cancel();
     _parkingSlotRealtimeDebounce = Timer(const Duration(milliseconds: 450), () {
@@ -1707,8 +1725,39 @@ class AppController extends StateNotifier<AppState> {
         slots: data.slots.isEmpty ? state.slots : data.slots,
         isUsingDemoData: false,
       );
+
+      if (state.currentMode == AccountMode.parkingGuard) {
+        await _refreshCurrentGuardAssignmentFromRealtime();
+      }
     } catch (_) {
       // Realtime refresh is best-effort; manual reload still works.
+    }
+  }
+
+  Future<void> _refreshCurrentGuardAssignmentFromRealtime() async {
+    try {
+      final guard = await _guardService.fetchCurrentGuardAccount();
+      if (!mounted) {
+        return;
+      }
+
+      if (guard == null) {
+        state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+        return;
+      }
+
+      final selectedLot = state.selectedLot;
+      final selectedLotStillAssigned =
+          selectedLot != null && guard.assignedLotIds.contains(selectedLot.id);
+
+      state = state.copyWith(
+        parkingGuards: [guard],
+        activeGuardId: guard.id,
+        selectedLot: selectedLotStillAssigned ? selectedLot : null,
+        clearSelectedLot: !selectedLotStillAssigned,
+      );
+    } catch (_) {
+      // Realtime assignment refresh is best-effort; dashboard open reloads it.
     }
   }
 
@@ -1865,6 +1914,9 @@ class AppController extends StateNotifier<AppState> {
     }
 
     state = state.copyWith(parkingGuards: [guard], activeGuardId: guard.id);
+    startParkingGuardRealtime();
+    startParkingSlotRealtime();
+    startParkingLocationRealtime();
   }
 
   Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
@@ -3711,6 +3763,7 @@ class AppController extends StateNotifier<AppState> {
     final channels = [
       _parkingSlotRealtimeChannel,
       _parkingLotRealtimeChannel,
+      _parkingGuardRealtimeChannel,
       _notificationRealtimeChannel,
     ];
     for (final channel in channels) {
@@ -3721,6 +3774,7 @@ class AppController extends StateNotifier<AppState> {
 
     _parkingSlotRealtimeChannel = null;
     _parkingLotRealtimeChannel = null;
+    _parkingGuardRealtimeChannel = null;
     _notificationRealtimeChannel = null;
     _notificationRealtimeProfileId = null;
   }
