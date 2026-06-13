@@ -476,3 +476,81 @@ end;
 $$;
 
 grant execute on function public.app_create_customer_booking(uuid, uuid, text, text, timestamptz, integer, integer, integer) to authenticated;
+
+create or replace function public.app_provider_add_parking_slot(
+  p_parking_lot_id uuid
+)
+returns table (
+  slot_id uuid,
+  slot_label text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_provider_id uuid;
+  v_next_number integer;
+  v_label text;
+begin
+  if auth.uid() is null then
+    raise exception 'Provider session is required.';
+  end if;
+
+  select provider.id
+  into v_provider_id
+  from public.providers provider
+  where provider.profile_id = auth.uid()
+  limit 1;
+
+  if v_provider_id is null and not public.is_super_admin() then
+    raise exception 'Provider profile was not found.';
+  end if;
+
+  if not exists (
+    select 1
+    from public.parking_lots lot
+    where lot.id = p_parking_lot_id
+      and (lot.provider_id = v_provider_id or public.is_super_admin())
+  ) then
+    raise exception 'Parking lot is not owned by current provider.';
+  end if;
+
+  select coalesce(count(*), 0)::integer + 1
+  into v_next_number
+  from public.parking_slots slot
+  where slot.parking_lot_id = p_parking_lot_id;
+
+  loop
+    v_label := 'A-' || lpad(v_next_number::text, 2, '0');
+    exit when not exists (
+      select 1
+      from public.parking_slots slot
+      where slot.parking_lot_id = p_parking_lot_id
+        and slot.label = v_label
+    );
+    v_next_number := v_next_number + 1;
+  end loop;
+
+  insert into public.parking_slots (
+    parking_lot_id,
+    label,
+    status
+  )
+  values (
+    p_parking_lot_id,
+    v_label,
+    'available'
+  )
+  returning id, label into slot_id, slot_label;
+
+  update public.parking_lots
+  set total_slots = coalesce(total_slots, 0) + 1,
+      updated_at = now()
+  where id = p_parking_lot_id;
+
+  return next;
+end;
+$$;
+
+grant execute on function public.app_provider_add_parking_slot(uuid) to authenticated;

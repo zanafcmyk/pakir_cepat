@@ -237,7 +237,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/provider/add-lot',
-        builder: (context, state) => const AddParkingLotScreen(),
+        builder: (context, state) => AddParkingLotScreen(
+          editingLotId: state.uri.queryParameters['editLotId'],
+        ),
       ),
       GoRoute(
         path: '/provider/guards',
@@ -3670,7 +3672,82 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(
       lots: [lot, ...state.lots],
       selectedLot: lot,
-      slots: generatedSlots,
+      slots: [...generatedSlots, ...state.slots],
+    );
+  }
+
+  Future<void> updateLot({
+    required ParkingLot lot,
+    required String name,
+    required String address,
+    required int capacity,
+    required int price,
+    required ParkingTariffType tariffType,
+    required int motorRate,
+    required int carRate,
+    required int truckRate,
+    String? photoLabel,
+    Uint8List? photoBytes,
+  }) async {
+    if (!_isSupabaseUuid(lot.id)) {
+      throw StateError(
+        'Lokasi ini masih data demo/lokal. Buat lokasi baru agar perubahan bisa tersimpan ke Supabase.',
+      );
+    }
+
+    var savedPhotoLabel = lot.photoLabel;
+    if (photoBytes != null) {
+      final photoUrl = await _parkingService.uploadCurrentProviderLotPhoto(
+        lotId: lot.id,
+        bytes: photoBytes,
+        fileName: photoLabel,
+      );
+      if (photoUrl != null) {
+        savedPhotoLabel = photoUrl;
+      }
+    }
+
+    final payload = <String, dynamic>{
+      'name': name,
+      'address': address,
+      'price_per_hour': price,
+      'total_slots': capacity,
+      'tariff_type': _tariffTypeToDb(tariffType),
+      'motor_rate': motorRate,
+      'car_rate': carRate,
+      'truck_rate': truckRate,
+    };
+    if (savedPhotoLabel != null) {
+      payload['photo_url'] = savedPhotoLabel;
+    }
+
+    if (Supabase.instance.client.auth.currentUser != null) {
+      await Supabase.instance.client
+          .from('parking_lots')
+          .update(payload)
+          .eq('id', lot.id);
+    }
+
+    final updatedLot = lot.copyWith(
+      name: name,
+      address: address,
+      pricePerHour: price,
+      totalSlots: capacity,
+      photoLabel: savedPhotoLabel,
+      photoBytes: photoBytes,
+      tariffType: tariffType,
+      motorRate: motorRate,
+      carRate: carRate,
+      truckRate: truckRate,
+    );
+    state = state.copyWith(
+      lots: [
+        for (final item in state.lots)
+          if (item.id == lot.id) updatedLot else item,
+      ],
+      selectedLot: state.selectedLot?.id == lot.id
+          ? updatedLot
+          : state.selectedLot,
     );
   }
 
@@ -4076,6 +4153,11 @@ class AppController extends StateNotifier<AppState> {
     if (lot == null) {
       throw StateError('Pilih lokasi parkir terlebih dahulu.');
     }
+    if (!_isSupabaseUuid(lot.id)) {
+      throw StateError(
+        'Lokasi ini masih data demo/lokal. Buat lokasi baru dari tombol Tambah lokasi agar slot bisa tersimpan ke Supabase.',
+      );
+    }
 
     final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList();
     final nextNumber = lotSlots.length + 1;
@@ -4083,21 +4165,18 @@ class AppController extends StateNotifier<AppState> {
         ? 'A'
         : lotSlots.first.label.split('-').first.replaceAll(RegExp(r'\d'), '');
     final normalizedPrefix = prefix.trim().isEmpty ? 'A' : prefix.trim();
-    final label = '$normalizedPrefix-${nextNumber.toString().padLeft(2, '0')}';
+    var label = '$normalizedPrefix-${nextNumber.toString().padLeft(2, '0')}';
     var slotId = '${lot.id}-slot-$nextNumber';
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
-      final row = await Supabase.instance.client
-          .from('parking_slots')
-          .insert({
-            'parking_lot_id': lot.id,
-            'label': label,
-            'status': 'available',
-          })
-          .select('id')
-          .single();
-      slotId = row['id'] as String? ?? slotId;
+      final remoteSlot = await _parkingService.addCurrentProviderParkingSlot(
+        lot.id,
+      );
+      if (remoteSlot != null) {
+        slotId = remoteSlot.id;
+        label = remoteSlot.label;
+      }
     }
 
     final updatedLot = lot.copyWith(
@@ -4115,6 +4194,12 @@ class AppController extends StateNotifier<AppState> {
       ],
       selectedLot: updatedLot,
     );
+  }
+
+  bool _isSupabaseUuid(String value) {
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(value);
   }
 
   void toggleSlot(String id) {
@@ -11804,8 +11889,8 @@ class AdminMapScreen extends ConsumerWidget {
           const SizedBox(height: 18),
           SectionTitle(
             title: 'Daftar lokasi',
-            action: 'Edit slot',
-            onTap: () => context.push('/provider/manage-slots'),
+            action: 'Tambah lokasi',
+            onTap: () => context.push('/provider/add-lot'),
           ),
           const SizedBox(height: 12),
           ...lots.map(
@@ -11817,8 +11902,31 @@ class AdminMapScreen extends ConsumerWidget {
                 title: lot.name,
                 subtitle:
                     '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}',
-                onTap: () =>
-                    ref.read(appControllerProvider.notifier).selectLot(lot),
+                onTap: () {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                  context.push('/provider/manage-slots');
+                },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Edit lokasi',
+                      onPressed: () {
+                        ref.read(appControllerProvider.notifier).selectLot(lot);
+                        context.push('/provider/add-lot?editLotId=${lot.id}');
+                      },
+                      icon: const Icon(Icons.edit_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Kelola slot',
+                      onPressed: () {
+                        ref.read(appControllerProvider.notifier).selectLot(lot);
+                        context.push('/provider/manage-slots');
+                      },
+                      icon: const Icon(Icons.view_module_rounded),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -11829,7 +11937,9 @@ class AdminMapScreen extends ConsumerWidget {
 }
 
 class AddParkingLotScreen extends ConsumerStatefulWidget {
-  const AddParkingLotScreen({super.key});
+  const AddParkingLotScreen({super.key, this.editingLotId});
+
+  final String? editingLotId;
 
   @override
   ConsumerState<AddParkingLotScreen> createState() =>
@@ -11850,6 +11960,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   String? _formError;
   bool _isPickingPhoto = false;
   bool _isSaving = false;
+  bool _editDataLoaded = false;
+
+  bool get _isEditing => widget.editingLotId != null;
 
   @override
   void initState() {
@@ -11860,6 +11973,39 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController = TextEditingController(
       text: kReleaseMode ? '' : 'Jl. Gatot Subroto Smart Gate 8',
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_editDataLoaded) {
+      return;
+    }
+    _editDataLoaded = true;
+    final editingLotId = widget.editingLotId;
+    if (editingLotId == null) {
+      return;
+    }
+    final state = ref.read(appControllerProvider);
+    final lot = state.lots.where((item) => item.id == editingLotId).firstOrNull;
+    if (lot == null) {
+      return;
+    }
+    _nameController.text = lot.name;
+    _addressController.text = lot.address;
+    _capacity = lot.totalSlots.toDouble().clamp(20, 200);
+    _price = lot.pricePerHour.toDouble().clamp(5000, 25000);
+    _tariffType = lot.tariffType;
+    _motorRate = (lot.motorRate ?? lot.pricePerHour).toDouble().clamp(
+      2000,
+      20000,
+    );
+    _carRate = (lot.carRate ?? lot.pricePerHour).toDouble().clamp(5000, 40000);
+    _truckRate = (lot.truckRate ?? lot.pricePerHour).toDouble().clamp(
+      10000,
+      60000,
+    );
+    _photoLabel = lot.photoLabel;
   }
 
   @override
@@ -11884,7 +12030,7 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
         _truckRate.toInt() <= 0) {
       return 'Tarif motor, mobil, dan truk harus lebih dari 0.';
     }
-    if (_photoBytes == null) {
+    if (!_isEditing && _photoBytes == null) {
       return 'Foto lahan parkir wajib diupload.';
     }
     return null;
@@ -11913,8 +12059,17 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   Widget build(BuildContext context) {
     const plazaSudirmanMapEmbedUrl =
         'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid';
+    final editingLot = widget.editingLotId == null
+        ? null
+        : ref
+              .watch(appControllerProvider)
+              .lots
+              .where((item) => item.id == widget.editingLotId)
+              .firstOrNull;
     return Scaffold(
-      appBar: AppBar(title: const Text('Tambah lahan parkir')),
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Edit lokasi parkir' : 'Tambah lahan parkir'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -12050,7 +12205,11 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
-                  label: _isSaving ? 'Menyimpan...' : 'Simpan lahan',
+                  label: _isSaving
+                      ? 'Menyimpan...'
+                      : _isEditing
+                      ? 'Simpan perubahan'
+                      : 'Simpan lahan',
                   icon: Icons.save_rounded,
                   onPressed: _isSaving
                       ? null
@@ -12068,42 +12227,69 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                             _formError = null;
                           });
                           try {
-                            await ref
-                                .read(appControllerProvider.notifier)
-                                .addLot(
-                                  name: _nameController.text.trim(),
-                                  address: _addressController.text.trim(),
-                                  capacity: _capacity.toInt(),
-                                  price: _price.toInt(),
-                                  mapEmbedUrl: plazaSudirmanMapEmbedUrl,
-                                  latitude: -6.2087145,
-                                  longitude: 106.8224854,
-                                  tariffType: _tariffType,
-                                  motorRate: _motorRate.toInt(),
-                                  carRate: _carRate.toInt(),
-                                  truckRate: _truckRate.toInt(),
-                                  photoLabel: _photoLabel,
-                                  photoBytes: _photoBytes,
-                                );
+                            final controller = ref.read(
+                              appControllerProvider.notifier,
+                            );
+                            if (_isEditing && editingLot == null) {
+                              throw StateError(
+                                'Lokasi yang akan diedit tidak ditemukan. Buka ulang daftar lokasi lalu pilih edit lagi.',
+                              );
+                            }
+                            if (editingLot != null) {
+                              await controller.updateLot(
+                                lot: editingLot,
+                                name: _nameController.text.trim(),
+                                address: _addressController.text.trim(),
+                                capacity: _capacity.toInt(),
+                                price: _price.toInt(),
+                                tariffType: _tariffType,
+                                motorRate: _motorRate.toInt(),
+                                carRate: _carRate.toInt(),
+                                truckRate: _truckRate.toInt(),
+                                photoLabel: _photoLabel,
+                                photoBytes: _photoBytes,
+                              );
+                            } else {
+                              await controller.addLot(
+                                name: _nameController.text.trim(),
+                                address: _addressController.text.trim(),
+                                capacity: _capacity.toInt(),
+                                price: _price.toInt(),
+                                mapEmbedUrl: plazaSudirmanMapEmbedUrl,
+                                latitude: -6.2087145,
+                                longitude: 106.8224854,
+                                tariffType: _tariffType,
+                                motorRate: _motorRate.toInt(),
+                                carRate: _carRate.toInt(),
+                                truckRate: _truckRate.toInt(),
+                                photoLabel: _photoLabel,
+                                photoBytes: _photoBytes,
+                              );
+                            }
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Lahan dan slot berhasil disimpan.',
+                                  _isEditing
+                                      ? 'Lokasi berhasil diperbarui.'
+                                      : 'Lahan dan slot berhasil disimpan.',
                                 ),
                               ),
                             );
                             context.pop();
-                          } catch (_) {
+                          } catch (error) {
                             if (!context.mounted) return;
                             setState(
-                              () => _formError =
-                                  'Gagal menyimpan lahan ke Supabase. Pastikan koneksi, SQL lahan, dan bucket foto lahan sudah siap.',
+                              () => _formError = error is StateError
+                                  ? error.message
+                                  : 'Gagal menyimpan lahan ke Supabase. Pastikan koneksi, SQL lahan, dan bucket foto lahan sudah siap.',
                             );
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Gagal menyimpan lahan ke Supabase.',
+                                  error is StateError
+                                      ? error.message
+                                      : 'Gagal menyimpan lahan ke Supabase.',
                                 ),
                               ),
                             );
@@ -14024,11 +14210,15 @@ class ManageSlotsScreen extends ConsumerWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Slot baru berhasil ditambah.')),
                 );
-              } catch (_) {
+              } catch (error) {
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Gagal menambah slot ke Supabase.'),
+                  SnackBar(
+                    content: Text(
+                      error is StateError
+                          ? error.message
+                          : 'Gagal menambah slot ke Supabase. Jalankan SQL function app_provider_add_parking_slot dan pastikan lokasi ini milik akun penyedia.',
+                    ),
                   ),
                 );
               }
@@ -17489,6 +17679,7 @@ class MiniInfoTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.onTap,
+    this.trailing,
   });
 
   final IconData icon;
@@ -17496,6 +17687,7 @@ class MiniInfoTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -17536,7 +17728,9 @@ class MiniInfoTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (onTap != null)
+            if (trailing != null)
+              trailing!
+            else if (onTap != null)
               const Icon(Icons.chevron_right_rounded, color: AppTheme.slate),
           ],
         ),

@@ -29,6 +29,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Membaca lokasi parkir dan slot dari Supabase ke aplikasi.
 - [x] Slot booking customer tampil sebagai grid slot per lokasi yang lebih realistis.
 - [x] Penyedia bisa menambah slot parkir dari halaman kelola slot dan menyimpannya ke Supabase.
+- [x] Daftar lokasi penyedia punya aksi tambah lokasi, edit lokasi, dan kelola slot per lokasi.
 - [x] Kendaraan customer ke Supabase.
 - [x] Booking parkir ke Supabase memakai RPC aman untuk reserve slot dan membuat booking.
 - [x] Payment demo tersimpan ke Supabase.
@@ -103,6 +104,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
 - [ ] SQL RLS patch `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan di Supabase production.
 - [ ] SQL booking RPC terbaru di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar error booking customer karena RLS hilang.
+- [ ] SQL tambah slot penyedia `app_provider_add_parking_slot` di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar tombol tambah slot bisa melewati RLS.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66

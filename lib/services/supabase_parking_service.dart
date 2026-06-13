@@ -12,6 +12,16 @@ class SupabaseParkingData {
   final List<ParkingSlot> slots;
 }
 
+class SupabaseParkingSlotInsertResult {
+  const SupabaseParkingSlotInsertResult({
+    required this.id,
+    required this.label,
+  });
+
+  final String id;
+  final String label;
+}
+
 class SupabaseProviderDashboardSummary {
   const SupabaseProviderDashboardSummary({
     required this.vehiclesEnteredToday,
@@ -167,6 +177,48 @@ class SupabaseParkingService {
     ];
 
     return SupabaseParkingData(lots: lots, slots: slots);
+  }
+
+  Future<SupabaseParkingSlotInsertResult?> addCurrentProviderParkingSlot(
+    String lotId,
+  ) async {
+    try {
+      final rows = await _client.rpc(
+        'app_provider_add_parking_slot',
+        params: {'p_parking_lot_id': lotId},
+      );
+      if (rows is! List || rows.isEmpty) {
+        return null;
+      }
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      return SupabaseParkingSlotInsertResult(
+        id: row['slot_id'] as String,
+        label: row['slot_label'] as String? ?? '-',
+      );
+    } on PostgrestException catch (error) {
+      if (!_isMissingAddSlotRpc(error)) {
+        rethrow;
+      }
+    }
+
+    final existingSlots = await _client
+        .from('parking_slots')
+        .select('label')
+        .eq('parking_lot_id', lotId);
+    final label = _nextSlotLabel(existingSlots);
+    final row = await _client
+        .from('parking_slots')
+        .insert({
+          'parking_lot_id': lotId,
+          'label': label,
+          'status': 'available',
+        })
+        .select('id, label')
+        .single();
+    return SupabaseParkingSlotInsertResult(
+      id: row['id'] as String,
+      label: row['label'] as String? ?? label,
+    );
   }
 
   Future<SupabaseProviderDashboardSummary>
@@ -463,6 +515,26 @@ class SupabaseParkingService {
         (row['final_cost'] as num?)?.toInt() ??
         (row['estimated_cost'] as num?)?.toInt() ??
         0;
+  }
+
+  bool _isMissingAddSlotRpc(PostgrestException error) {
+    return error.code == '42883' ||
+        error.message.contains('app_provider_add_parking_slot');
+  }
+
+  String _nextSlotLabel(List<dynamic> rows) {
+    final numbers = rows
+        .map((row) => (row as Map)['label'] as String?)
+        .whereType<String>()
+        .map((label) => RegExp(r'(\d+)$').firstMatch(label)?.group(1))
+        .whereType<String>()
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList();
+    final next = numbers.isEmpty
+        ? rows.length + 1
+        : numbers.reduce((a, b) => a > b ? a : b) + 1;
+    return 'A-${next.toString().padLeft(2, '0')}';
   }
 
   String _nestedText(dynamic value, String key) {
