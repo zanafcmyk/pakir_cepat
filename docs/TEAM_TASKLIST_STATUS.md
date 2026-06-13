@@ -23,6 +23,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Status verifikasi penyedia disinkronkan ulang dari `profiles`, `providers`, dan `provider_applications`.
 - [x] Super admin memuat pengajuan penyedia pending dari tabel `provider_applications`.
 - [x] Super admin memuat fallback pengajuan penyedia pending dari tabel `providers` jika `provider_applications` belum ada/terbaca.
+- [x] Super admin punya RPC/fallback untuk memuat dan memperbarui verifikasi penyedia dari Supabase.
+- [x] Halaman verifikasi super admin punya tombol muat ulang pengajuan penyedia.
 - [x] Data lokasi parkir dan slot penyedia ke Supabase.
 - [x] Membaca lokasi parkir dan slot dari Supabase ke aplikasi.
 - [x] Kendaraan customer ke Supabase.

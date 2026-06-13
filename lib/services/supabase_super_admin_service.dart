@@ -46,49 +46,163 @@ class SupabaseSuperAdminService {
   final SupabaseClient _client;
 
   Future<List<RegistrationRequest>> fetchProviderRegistrationRequests() async {
-    final applicationRows = await _client
-        .from('provider_applications')
-        .select(
-          'id, parking_name, address, photo_url, location_label, capacity, '
-          'identity_document_url, status, created_at, '
-          'profiles(id, full_name, email, phone_number)',
-        )
-        .inFilter('status', ['pending', 'rejected'])
-        .order('created_at', ascending: false);
+    final rpcRequests = await _fetchProviderRegistrationRequestsFromRpc();
+    if (rpcRequests.isNotEmpty) {
+      return rpcRequests;
+    }
 
-    final requests = [
-      for (final item in applicationRows)
-        _registrationRequestFromRow(Map<String, dynamic>.from(item as Map)),
-    ];
+    final requests = <RegistrationRequest>[];
+
+    try {
+      final applicationRows = await _client
+          .from('provider_applications')
+          .select(
+            'id, parking_name, address, photo_url, location_label, capacity, '
+            'identity_document_url, status, created_at, '
+            'profiles(id, full_name, email, phone_number)',
+          )
+          .inFilter('status', ['pending', 'rejected'])
+          .order('created_at', ascending: false);
+
+      requests.addAll([
+        for (final item in applicationRows)
+          _registrationRequestFromRow(Map<String, dynamic>.from(item as Map)),
+      ]);
+    } catch (_) {
+      // Fall back to providers below when provider_applications is blocked.
+    }
 
     final knownProfileIds = {
       for (final request in requests)
         if (request.profileId != null) request.profileId!,
     };
 
-    final providerRows = await _client
-        .from('providers')
-        .select(
-          'id, profile_id, business_name, business_address, '
-          'identity_document_url, status, created_at, '
-          'profiles(id, full_name, email, phone_number)',
-        )
-        .inFilter('status', ['pending', 'rejected'])
-        .order('created_at', ascending: false);
+    try {
+      final providerRows = await _client
+          .from('providers')
+          .select(
+            'id, profile_id, business_name, business_address, '
+            'identity_document_url, status, created_at, '
+            'profiles(id, full_name, email, phone_number)',
+          )
+          .inFilter('status', ['pending', 'rejected'])
+          .order('created_at', ascending: false);
 
-    for (final item in providerRows) {
-      final row = Map<String, dynamic>.from(item as Map);
-      final profileId = row['profile_id'] as String?;
-      if (profileId != null && knownProfileIds.contains(profileId)) {
-        continue;
+      for (final item in providerRows) {
+        final row = Map<String, dynamic>.from(item as Map);
+        final profileId = row['profile_id'] as String?;
+        if (profileId != null && knownProfileIds.contains(profileId)) {
+          continue;
+        }
+        requests.add(_registrationRequestFromProviderRow(row));
+        if (profileId != null) {
+          knownProfileIds.add(profileId);
+        }
       }
-      requests.add(_registrationRequestFromProviderRow(row));
-      if (profileId != null) {
-        knownProfileIds.add(profileId);
-      }
+    } catch (_) {
+      // Keep the list from provider_applications if providers is blocked.
     }
 
     return requests;
+  }
+
+  Future<void> updateProviderVerificationStatus({
+    required String profileId,
+    required AccountStatus status,
+  }) async {
+    final dbStatus = _accountStatusToDb(status);
+    try {
+      await _client.rpc(
+        'app_admin_update_provider_verification',
+        params: {
+          'p_profile_id': profileId,
+          'p_status': dbStatus,
+          'p_review_note': status == AccountStatus.verified
+              ? 'Disetujui oleh Super Admin.'
+              : status == AccountStatus.rejected
+              ? 'Ditolak oleh Super Admin.'
+              : null,
+        },
+      );
+      return;
+    } catch (_) {
+      // Fall back to direct updates when the optional RLS patch is absent.
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', profileId)
+        .limit(1);
+    final providerId = providerRows.isEmpty
+        ? null
+        : (providerRows.first as Map)['id'] as String?;
+
+    await _client
+        .from('profiles')
+        .update({
+          'account_status': dbStatus,
+          'verified_at': status == AccountStatus.verified
+              ? DateTime.now().toIso8601String()
+              : null,
+        })
+        .eq('id', profileId);
+
+    await _client
+        .from('providers')
+        .update({
+          'status': dbStatus,
+          'approved_by': _client.auth.currentUser?.id,
+          'approved_at': status == AccountStatus.verified
+              ? DateTime.now().toIso8601String()
+              : null,
+          'rejection_reason': status == AccountStatus.rejected
+              ? 'Ditolak oleh Super Admin.'
+              : null,
+        })
+        .eq('profile_id', profileId);
+
+    final applicationPayload = {
+      'status': dbStatus,
+      'reviewed_by': _client.auth.currentUser?.id,
+      'reviewed_at': DateTime.now().toIso8601String(),
+      'review_note': status == AccountStatus.verified
+          ? 'Disetujui oleh Super Admin.'
+          : status == AccountStatus.rejected
+          ? 'Ditolak oleh Super Admin.'
+          : null,
+    };
+
+    await _client
+        .from('provider_applications')
+        .update(applicationPayload)
+        .eq('profile_id', profileId);
+
+    if (providerId != null) {
+      await _client
+          .from('provider_applications')
+          .update(applicationPayload)
+          .eq('provider_id', providerId);
+    }
+  }
+
+  Future<List<RegistrationRequest>>
+  _fetchProviderRegistrationRequestsFromRpc() async {
+    try {
+      final rows = await _client.rpc(
+        'app_admin_provider_verification_requests',
+      );
+      if (rows is! List) {
+        return const [];
+      }
+      return [
+        for (final item in rows)
+          if (item is Map)
+            _registrationRequestFromAdminRow(Map<String, dynamic>.from(item)),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<ManagedUserAccount>> fetchManagedUsers() async {
@@ -367,6 +481,32 @@ class SupabaseSuperAdminService {
     );
   }
 
+  RegistrationRequest _registrationRequestFromAdminRow(
+    Map<String, dynamic> row,
+  ) {
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+    return RegistrationRequest(
+      id: row['request_id'] as String? ?? row['provider_id'] as String? ?? '',
+      profileId: row['profile_id'] as String?,
+      fullName: row['full_name'] as String? ?? 'Penyedia Parkir',
+      email: row['email'] as String? ?? '-',
+      phoneNumber: row['phone_number'] as String? ?? '-',
+      role: AccountMode.provider,
+      timeLabel: createdAt == null
+          ? 'Baru'
+          : _dateTimeLabel(row['created_at'] as String?),
+      status: _accountStatusFromDb(row['status'] as String?),
+      providerApplication: ProviderApplication(
+        parkingName: row['parking_name'] as String? ?? 'Lahan parkir',
+        address: row['address'] as String? ?? '-',
+        photoLabel: row['photo_url'] as String? ?? '-',
+        locationLabel: row['location_label'] as String? ?? '-',
+        capacity: (row['capacity'] as num?)?.toInt() ?? 0,
+        identityLabel: row['identity_document_url'] as String? ?? '-',
+      ),
+    );
+  }
+
   AccountStatus _accountStatusFromDb(String? status) => switch (status) {
     'verified' => AccountStatus.verified,
     'rejected' => AccountStatus.rejected,
@@ -378,6 +518,12 @@ class SupabaseSuperAdminService {
     'parking_guard' => AccountMode.parkingGuard,
     'super_admin' => AccountMode.superAdmin,
     _ => AccountMode.customer,
+  };
+
+  String _accountStatusToDb(AccountStatus status) => switch (status) {
+    AccountStatus.verified => 'verified',
+    AccountStatus.rejected => 'rejected',
+    AccountStatus.pending => 'pending',
   };
 
   String _accessStatusToDb(UserAccessStatus status) => switch (status) {

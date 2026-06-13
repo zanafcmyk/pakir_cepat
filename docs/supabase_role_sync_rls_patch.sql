@@ -250,3 +250,129 @@ grant execute on function public.app_create_notification(uuid, text, text, text)
 grant execute on function public.app_create_notifications_for_role(public.account_role, text, text, text) to authenticated;
 grant execute on function public.app_create_provider_notification(uuid, text, text, text) to authenticated;
 grant execute on function public.app_create_guard_notifications_for_lot(uuid, text, text, text) to authenticated;
+
+create or replace function public.app_admin_provider_verification_requests()
+returns table (
+  request_id uuid,
+  provider_id uuid,
+  profile_id uuid,
+  full_name text,
+  email text,
+  phone_number text,
+  parking_name text,
+  address text,
+  photo_url text,
+  location_label text,
+  capacity integer,
+  identity_document_url text,
+  status public.account_status,
+  created_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select
+    coalesce(application.id, provider.id) as request_id,
+    provider.id as provider_id,
+    profile.id as profile_id,
+    profile.full_name,
+    profile.email,
+    profile.phone_number,
+    coalesce(application.parking_name, provider.business_name, 'Lahan parkir') as parking_name,
+    coalesce(application.address, provider.business_address, '-') as address,
+    application.photo_url,
+    application.location_label,
+    coalesce(application.capacity, 0) as capacity,
+    coalesce(application.identity_document_url, provider.identity_document_url) as identity_document_url,
+    case
+      when profile.account_status in ('pending', 'rejected') then profile.account_status
+      when provider.status in ('pending', 'rejected') then provider.status
+      when application.status in ('pending', 'rejected') then application.status
+      else coalesce(application.status, provider.status, profile.account_status)
+    end as status,
+    coalesce(application.created_at, provider.created_at, profile.created_at) as created_at
+  from public.providers provider
+  join public.profiles profile on profile.id = provider.profile_id
+  left join lateral (
+    select item.*
+    from public.provider_applications item
+    where item.provider_id = provider.id
+       or item.profile_id = provider.profile_id
+    order by item.created_at desc
+    limit 1
+  ) application on true
+  where public.is_super_admin()
+    and profile.role = 'provider'
+    and (
+      profile.account_status in ('pending', 'rejected')
+      or provider.status in ('pending', 'rejected')
+      or application.status in ('pending', 'rejected')
+    )
+  order by coalesce(application.created_at, provider.created_at, profile.created_at) desc;
+$$;
+
+create or replace function public.app_admin_update_provider_verification(
+  p_profile_id uuid,
+  p_status public.account_status,
+  p_review_note text default null
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_provider_id uuid;
+begin
+  if not public.is_super_admin() then
+    raise exception 'Only super admin can verify provider accounts.';
+  end if;
+
+  select provider.id
+  into v_provider_id
+  from public.providers provider
+  where provider.profile_id = p_profile_id
+  limit 1;
+
+  update public.profiles
+  set
+    account_status = p_status,
+    verified_at = case when p_status = 'verified' then now() else null end,
+    updated_at = now()
+  where id = p_profile_id
+    and role = 'provider';
+
+  update public.providers
+  set
+    status = p_status,
+    approved_by = auth.uid(),
+    approved_at = case when p_status = 'verified' then now() else null end,
+    rejection_reason = case
+      when p_status = 'rejected' then coalesce(nullif(trim(p_review_note), ''), 'Ditolak oleh Super Admin.')
+      else null
+    end,
+    updated_at = now()
+  where profile_id = p_profile_id;
+
+  update public.provider_applications
+  set
+    status = p_status,
+    reviewed_by = auth.uid(),
+    reviewed_at = now(),
+    review_note = case
+      when p_status = 'verified' then coalesce(nullif(trim(p_review_note), ''), 'Disetujui oleh Super Admin.')
+      when p_status = 'rejected' then coalesce(nullif(trim(p_review_note), ''), 'Ditolak oleh Super Admin.')
+      else p_review_note
+    end,
+    updated_at = now()
+  where profile_id = p_profile_id
+     or (v_provider_id is not null and provider_id = v_provider_id);
+
+  return found or v_provider_id is not null;
+end;
+$$;
+
+grant execute on function public.app_admin_provider_verification_requests() to authenticated;
+grant execute on function public.app_admin_update_provider_verification(uuid, public.account_status, text) to authenticated;

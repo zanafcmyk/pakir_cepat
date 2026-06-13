@@ -2521,6 +2521,19 @@ class AppController extends StateNotifier<AppState> {
     RegistrationRequest selected,
     AccountStatus status,
   ) async {
+    final selectedProfileId = selected.profileId;
+    if (selectedProfileId != null && selectedProfileId.isNotEmpty) {
+      try {
+        await _superAdminService.updateProviderVerificationStatus(
+          profileId: selectedProfileId,
+          status: status,
+        );
+        return;
+      } catch (_) {
+        // Fall back to email lookup below when RPC/direct profile update fails.
+      }
+    }
+
     final dbStatus = switch (status) {
       AccountStatus.verified => 'verified',
       AccountStatus.rejected => 'rejected',
@@ -4745,6 +4758,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .loadCurrentUserAvatarFromSupabase(forCustomer: false)
           .catchError((_) {});
       await controller.loadComplaintsFromSupabase().catchError((_) {});
+      await controller.loadRegistrationRequestsFromSupabase().catchError(
+        (_) {},
+      );
+      await controller.loadManagedUsersFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -6438,13 +6455,13 @@ class _SuperAdminUsersScreenState extends ConsumerState<SuperAdminUsersScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() async {
-      final controller = ref.read(appControllerProvider.notifier);
-      await controller.loadRegistrationRequestsFromSupabase().catchError(
-        (_) {},
-      );
-      await controller.loadManagedUsersFromSupabase().catchError((_) {});
-    });
+    Future.microtask(() => _reloadUsers().catchError((_) {}));
+  }
+
+  Future<void> _reloadUsers() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadRegistrationRequestsFromSupabase();
+    await controller.loadManagedUsersFromSupabase();
   }
 
   @override
@@ -6461,7 +6478,30 @@ class _SuperAdminUsersScreenState extends ConsumerState<SuperAdminUsersScreen> {
                 'Verifikasi penyedia, pelanggan, penjaga, dan akun bermasalah.',
           ),
           const SizedBox(height: 18),
-          SectionTitle(title: 'Konfirmasi pendaftaran'),
+          SectionTitle(
+            title: 'Konfirmasi pendaftaran',
+            action: 'Muat ulang',
+            onTap: () async {
+              try {
+                await _reloadUsers();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Data pengajuan penyedia dimuat ulang.'),
+                  ),
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Gagal memuat pengajuan. Cek login super admin dan RLS Supabase.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
           const SizedBox(height: 12),
           if (state.registrationRequests.isEmpty)
             const InlineNotice(
