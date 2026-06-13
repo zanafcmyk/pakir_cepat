@@ -376,3 +376,103 @@ $$;
 
 grant execute on function public.app_admin_provider_verification_requests() to authenticated;
 grant execute on function public.app_admin_update_provider_verification(uuid, public.account_status, text) to authenticated;
+
+create or replace function public.app_create_customer_booking(
+  p_parking_lot_id uuid,
+  p_parking_slot_id uuid,
+  p_vehicle_plate text,
+  p_ticket_number text,
+  p_entry_time timestamptz,
+  p_duration_hours integer,
+  p_price_per_hour integer,
+  p_estimated_cost integer
+)
+returns table (
+  ticket_number text,
+  slot_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_customer_id uuid;
+  v_vehicle_id uuid;
+  v_slot_status public.parking_slot_status;
+begin
+  if auth.uid() is null then
+    raise exception 'Customer session is required.';
+  end if;
+
+  select customer.id
+  into v_customer_id
+  from public.customers customer
+  where customer.profile_id = auth.uid()
+  limit 1;
+
+  if v_customer_id is null then
+    raise exception 'Customer profile was not found.';
+  end if;
+
+  select vehicle.id
+  into v_vehicle_id
+  from public.vehicles vehicle
+  where vehicle.customer_id = v_customer_id
+    and vehicle.plate_number = p_vehicle_plate
+  limit 1;
+
+  if v_vehicle_id is null then
+    raise exception 'Vehicle was not found.';
+  end if;
+
+  select slot.status
+  into v_slot_status
+  from public.parking_slots slot
+  where slot.id = p_parking_slot_id
+    and slot.parking_lot_id = p_parking_lot_id
+  for update;
+
+  if v_slot_status is null then
+    raise exception 'Parking slot was not found.';
+  end if;
+
+  if v_slot_status <> 'available' then
+    raise exception 'Parking slot is no longer available.';
+  end if;
+
+  update public.parking_slots
+  set status = 'reserved', updated_at = now()
+  where id = p_parking_slot_id;
+
+  insert into public.bookings (
+    ticket_number,
+    customer_id,
+    vehicle_id,
+    parking_lot_id,
+    parking_slot_id,
+    entry_time,
+    duration_hours,
+    price_per_hour,
+    estimated_cost,
+    status,
+    qr_payload
+  )
+  values (
+    p_ticket_number,
+    v_customer_id,
+    v_vehicle_id,
+    p_parking_lot_id,
+    p_parking_slot_id,
+    p_entry_time,
+    greatest(p_duration_hours, 1),
+    greatest(p_price_per_hour, 0),
+    greatest(p_estimated_cost, 0),
+    'pending_payment',
+    'PARKIRCEPAT|ENTRY_EXIT|' || p_ticket_number
+  );
+
+  return query select p_ticket_number, p_parking_slot_id;
+end;
+$$;
+
+grant execute on function public.app_create_customer_booking(uuid, uuid, text, text, timestamptz, integer, integer, integer) to authenticated;

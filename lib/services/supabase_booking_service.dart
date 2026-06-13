@@ -41,6 +41,18 @@ class SupabaseBookingService {
     final vehicleId = await _vehicleId(customerId, vehicle.plateNumber);
     final ticketNumber = _ticketNumber();
 
+    final rpcBooking = await _createBookingWithRpc(
+      lot: lot,
+      slot: slot,
+      vehicle: vehicle,
+      entryTime: entryTime,
+      estimatedCost: estimatedCost,
+      ticketNumber: ticketNumber,
+    );
+    if (rpcBooking != null) {
+      return rpcBooking;
+    }
+
     await _client
         .from('parking_slots')
         .update({'status': 'reserved'})
@@ -61,6 +73,44 @@ class SupabaseBookingService {
     });
 
     return SupabaseBookingResult(ticketNumber: ticketNumber, slotId: slot.id);
+  }
+
+  Future<SupabaseBookingResult?> _createBookingWithRpc({
+    required ParkingLot lot,
+    required ParkingSlot slot,
+    required Vehicle vehicle,
+    required DateTime entryTime,
+    required int estimatedCost,
+    required String ticketNumber,
+  }) async {
+    try {
+      final rows = await _client.rpc(
+        'app_create_customer_booking',
+        params: {
+          'p_parking_lot_id': lot.id,
+          'p_parking_slot_id': slot.id,
+          'p_vehicle_plate': vehicle.plateNumber,
+          'p_ticket_number': ticketNumber,
+          'p_entry_time': entryTime.toIso8601String(),
+          'p_duration_hours': vehicle.durationHours,
+          'p_price_per_hour': lot.pricePerHour,
+          'p_estimated_cost': estimatedCost,
+        },
+      );
+      if (rows is! List || rows.isEmpty) {
+        return null;
+      }
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      return SupabaseBookingResult(
+        ticketNumber: row['ticket_number'] as String? ?? ticketNumber,
+        slotId: row['slot_id'] as String? ?? slot.id,
+      );
+    } on PostgrestException catch (error) {
+      if (_isMissingBookingRpc(error)) {
+        return null;
+      }
+      rethrow;
+    }
   }
 
   Future<SupabaseActiveBooking?> fetchCurrentCustomerActiveBooking() async {
@@ -294,6 +344,11 @@ class SupabaseBookingService {
   bool _isMissingActivityLogsTable(PostgrestException error) {
     return error.code == '42P01' ||
         error.message.contains('parking_activity_logs');
+  }
+
+  bool _isMissingBookingRpc(PostgrestException error) {
+    return error.code == '42883' ||
+        error.message.contains('app_create_customer_booking');
   }
 
   Future<SupabaseActiveBooking> _activeBookingFromRow(

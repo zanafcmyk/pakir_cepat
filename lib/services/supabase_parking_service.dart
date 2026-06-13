@@ -160,6 +160,7 @@ class SupabaseParkingService {
       for (final row in slotRows)
         ParkingSlot(
           id: row['id'] as String,
+          lotId: row['parking_lot_id'] as String?,
           label: row['label'] as String? ?? '-',
           isAvailable: row['status'] == 'available',
         ),

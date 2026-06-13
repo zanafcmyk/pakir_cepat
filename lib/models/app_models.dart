@@ -379,17 +379,25 @@ class ManagedUserAccount {
 class ParkingSlot {
   const ParkingSlot({
     required this.id,
+    this.lotId,
     required this.label,
     required this.isAvailable,
   });
 
   final String id;
+  final String? lotId;
   final String label;
   final bool isAvailable;
 
-  ParkingSlot copyWith({String? id, String? label, bool? isAvailable}) {
+  ParkingSlot copyWith({
+    String? id,
+    String? lotId,
+    String? label,
+    bool? isAvailable,
+  }) {
     return ParkingSlot(
       id: id ?? this.id,
+      lotId: lotId ?? this.lotId,
       label: label ?? this.label,
       isAvailable: isAvailable ?? this.isAvailable,
     );

@@ -827,13 +827,28 @@ class AppState {
       ),
     ];
 
-    const slots = [
-      ParkingSlot(id: 'A1', label: 'A1', isAvailable: true),
-      ParkingSlot(id: 'A2', label: 'A2', isAvailable: true),
-      ParkingSlot(id: 'A3', label: 'A3', isAvailable: false),
-      ParkingSlot(id: 'B1', label: 'B1', isAvailable: true),
-      ParkingSlot(id: 'B2', label: 'B2', isAvailable: false),
-      ParkingSlot(id: 'B3', label: 'B3', isAvailable: true),
+    final slots = [
+      for (var index = 1; index <= 24; index++)
+        ParkingSlot(
+          id: 'lot-1-A-$index',
+          lotId: 'lot-1',
+          label: 'A-${index.toString().padLeft(2, '0')}',
+          isAvailable: !{3, 8, 14, 21}.contains(index),
+        ),
+      for (var index = 1; index <= 16; index++)
+        ParkingSlot(
+          id: 'lot-2-B-$index',
+          lotId: 'lot-2',
+          label: 'B-${index.toString().padLeft(2, '0')}',
+          isAvailable: !{2, 5, 12}.contains(index),
+        ),
+      for (var index = 1; index <= 12; index++)
+        ParkingSlot(
+          id: 'lot-3-C-$index',
+          lotId: 'lot-3',
+          label: 'C-${index.toString().padLeft(2, '0')}',
+          isAvailable: false,
+        ),
     ];
 
     const guards = [
@@ -3623,6 +3638,7 @@ class AppController extends StateNotifier<AppState> {
       for (var index = 1; index <= capacity; index++)
         ParkingSlot(
           id: '$lotId-slot-$index',
+          lotId: lotId,
           label: 'A${index.toString().padLeft(3, '0')}',
           isAvailable: true,
         ),
@@ -3735,9 +3751,10 @@ class AppController extends StateNotifier<AppState> {
       throw StateError('Lokasi parkir dan kendaraan wajib dipilih.');
     }
     final selectedSlot = state.slots.firstWhere(
-      (slot) => slot.label == slotCode,
+      (slot) => slot.lotId == lot.id && slot.label == slotCode,
       orElse: () => ParkingSlot(
         id: 'slot-${slotCode.toLowerCase()}',
+        lotId: lot.id,
         label: slotCode,
         isAvailable: true,
       ),
@@ -3766,7 +3783,11 @@ class AppController extends StateNotifier<AppState> {
 
     final updatedSlots = [
       for (final slot in state.slots)
-        if (slot.label == slotCode) slot.copyWith(isAvailable: false) else slot,
+        if (slot.id == remoteBooking.slotId ||
+            (slot.lotId == lot.id && slot.label == slotCode))
+          slot.copyWith(isAvailable: false)
+        else
+          slot,
     ];
     final customerNotice = NoticeItem(
       title: 'Booking berhasil',
@@ -3936,7 +3957,7 @@ class AppController extends StateNotifier<AppState> {
     await _bookingService.checkInBooking(ticketNumber);
     final updatedSlots = [
       for (final slot in state.slots)
-        if (slot.label == booking.slotCode)
+        if (_slotMatchesBooking(slot, booking))
           slot.copyWith(isAvailable: false)
         else
           slot,
@@ -3977,7 +3998,7 @@ class AppController extends StateNotifier<AppState> {
     await _bookingService.checkOutBooking(ticketNumber);
     final updatedSlots = [
       for (final slot in state.slots)
-        if (slot.label == booking.slotCode)
+        if (_slotMatchesBooking(slot, booking))
           slot.copyWith(isAvailable: true)
         else
           slot,
@@ -4018,7 +4039,7 @@ class AppController extends StateNotifier<AppState> {
     }
     final updatedSlots = [
       for (final slot in state.slots)
-        if (slot.label == booking.slotCode)
+        if (_slotMatchesBooking(slot, booking))
           slot.copyWith(isAvailable: true)
         else
           slot,
@@ -4037,6 +4058,62 @@ class AppController extends StateNotifier<AppState> {
         ),
         ...state.adminNotifications,
       ],
+    );
+  }
+
+  bool _slotMatchesBooking(ParkingSlot slot, Booking booking) {
+    if (slot.label != booking.slotCode) {
+      return false;
+    }
+    final bookingLot = state.lots
+        .where((lot) => lot.name == booking.locationName)
+        .firstOrNull;
+    return bookingLot == null || slot.lotId == bookingLot.id;
+  }
+
+  Future<void> addSlotToSelectedLot() async {
+    final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
+    if (lot == null) {
+      throw StateError('Pilih lokasi parkir terlebih dahulu.');
+    }
+
+    final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList();
+    final nextNumber = lotSlots.length + 1;
+    final prefix = lotSlots.isEmpty
+        ? 'A'
+        : lotSlots.first.label.split('-').first.replaceAll(RegExp(r'\d'), '');
+    final normalizedPrefix = prefix.trim().isEmpty ? 'A' : prefix.trim();
+    final label = '$normalizedPrefix-${nextNumber.toString().padLeft(2, '0')}';
+    var slotId = '${lot.id}-slot-$nextNumber';
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final row = await Supabase.instance.client
+          .from('parking_slots')
+          .insert({
+            'parking_lot_id': lot.id,
+            'label': label,
+            'status': 'available',
+          })
+          .select('id')
+          .single();
+      slotId = row['id'] as String? ?? slotId;
+    }
+
+    final updatedLot = lot.copyWith(
+      totalSlots: lot.totalSlots + 1,
+      availableSlots: lot.availableSlots + 1,
+    );
+    state = state.copyWith(
+      slots: [
+        ...state.slots,
+        ParkingSlot(id: slotId, lotId: lot.id, label: label, isAvailable: true),
+      ],
+      lots: [
+        for (final item in state.lots)
+          if (item.id == lot.id) updatedLot else item,
+      ],
+      selectedLot: updatedLot,
     );
   }
 
@@ -8124,6 +8201,12 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       );
     }
     final total = calculateParkingCost(lot, vehicle);
+    final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    final displaySlots = lotSlots;
+    final availableCount = displaySlots
+        .where((slot) => slot.isAvailable)
+        .length;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Booking parkir'),
@@ -8170,65 +8253,65 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: state.slots.map((slot) {
-                    final selected = _selectedSlot == slot.label;
-                    return GestureDetector(
-                      onTap: slot.isAvailable
-                          ? () => setState(() => _selectedSlot = slot.label)
-                          : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 260),
-                        width: 84,
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        decoration: BoxDecoration(
-                          color: !slot.isAvailable
-                              ? AppTheme.slate.withValues(alpha: 0.08)
-                              : selected
-                              ? AppTheme.blue
-                              : AppTheme.white,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: selected
-                                ? AppTheme.blue
-                                : slot.isAvailable
-                                ? AppTheme.blue.withValues(alpha: 0.15)
-                                : AppTheme.slate.withValues(alpha: 0.15),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              slot.label,
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(
-                                    color: selected
-                                        ? Colors.white
-                                        : AppTheme.ink,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              slot.isAvailable ? 'Ready' : 'Full',
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: selected
-                                        ? Colors.white
-                                        : slot.isAvailable
-                                        ? AppTheme.emerald
-                                        : AppTheme.slate,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                const SizedBox(height: 8),
+                Text(
+                  '$availableCount/${displaySlots.length} slot tersedia di ${lot.name}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  children: const [
+                    _SlotLegend(color: AppTheme.emerald, label: 'Tersedia'),
+                    SizedBox(width: 12),
+                    _SlotLegend(color: AppTheme.blue, label: 'Dipilih'),
+                    SizedBox(width: 12),
+                    _SlotLegend(color: Color(0xFFCBD5E1), label: 'Terisi'),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (displaySlots.isEmpty)
+                  const InlineNotice(
+                    icon: Icons.info_outline_rounded,
+                    accent: Color(0xFFF59E0B),
+                    message:
+                        'Lokasi ini belum punya slot parkir di Supabase. Penyedia perlu menambahkan slot dari halaman kelola slot.',
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.blueSoft.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: AppTheme.blue.withValues(alpha: 0.08),
+                      ),
+                    ),
+                    child: GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: displaySlots.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 1.32,
+                          ),
+                      itemBuilder: (context, index) {
+                        final slot = displaySlots[index];
+                        final selected = _selectedSlot == slot.label;
+                        return _ParkingSlotTile(
+                          slot: slot,
+                          selected: selected,
+                          onTap: slot.isAvailable
+                              ? () => setState(() => _selectedSlot = slot.label)
+                              : null,
+                        );
+                      },
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 MiniInfoTile(
                   icon: Icons.schedule_rounded,
@@ -8436,6 +8519,91 @@ class CustomerTicketScreen extends ConsumerWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _ParkingSlotTile extends StatelessWidget {
+  const _ParkingSlotTile({
+    required this.slot,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ParkingSlot slot;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = slot.isAvailable;
+    final color = selected
+        ? AppTheme.blue
+        : enabled
+        ? AppTheme.emerald
+        : const Color(0xFFCBD5E1);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.blue
+              : enabled
+              ? Colors.white
+              : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color, width: selected ? 2 : 1.2),
+          boxShadow: selected
+              ? [softShadow(AppTheme.blue.withValues(alpha: 0.18))]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              enabled ? Icons.directions_car_rounded : Icons.block_rounded,
+              size: 18,
+              color: selected ? Colors.white : color,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              slot.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: selected ? Colors.white : AppTheme.ink,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SlotLegend extends StatelessWidget {
+  const _SlotLegend({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }
@@ -11634,6 +11802,12 @@ class AdminMapScreen extends ConsumerWidget {
                 ref.read(appControllerProvider.notifier).selectLot(lot),
           ),
           const SizedBox(height: 18),
+          SectionTitle(
+            title: 'Daftar lokasi',
+            action: 'Edit slot',
+            onTap: () => context.push('/provider/manage-slots'),
+          ),
+          const SizedBox(height: 12),
           ...lots.map(
             (lot) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -13818,24 +13992,50 @@ class ManageSlotsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
+    final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
+    final slots =
+        lot == null
+              ? const <ParkingSlot>[]
+              : state.slots.where((slot) => slot.lotId == lot.id).toList()
+          ..sort((a, b) => a.label.compareTo(b.label));
     return Scaffold(
       appBar: AppBar(title: const Text('Kelola slot parkir')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (lot != null) ...[
+            InlineNotice(
+              icon: Icons.local_parking_rounded,
+              accent: AppTheme.blue,
+              message:
+                  'Mengelola ${slots.length} slot untuk ${lot.name}. Slot baru langsung tersimpan ke Supabase.',
+            ),
+            const SizedBox(height: 14),
+          ],
           PrimaryButton(
             label: 'Tambah slot',
             icon: Icons.add_rounded,
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Slot baru ditambahkan ke prototipe'),
-                ),
-              );
+            onPressed: () async {
+              try {
+                await ref
+                    .read(appControllerProvider.notifier)
+                    .addSlotToSelectedLot();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Slot baru berhasil ditambah.')),
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gagal menambah slot ke Supabase.'),
+                  ),
+                );
+              }
             },
           ),
           const SizedBox(height: 18),
-          ...state.slots.map(
+          ...slots.map(
             (slot) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: PremiumCard(
