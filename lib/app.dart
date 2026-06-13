@@ -3483,17 +3483,14 @@ class AppController extends StateNotifier<AppState> {
       ),
     );
     final total = calculateParkingCost(lot, vehicle);
-    final remoteBooking = await _bookingService
-        .createCurrentCustomerBooking(
-          lot: lot,
-          slot: selectedSlot,
-          vehicle: vehicle,
-          entryTime: entryTime,
-          estimatedCost: total,
-        )
-        .catchError((_) => null);
-    final ticketNumber =
-        remoteBooking?.ticketNumber ?? 'TKT-${1000 + state.history.length}';
+    final remoteBooking = await _bookingService.createCurrentCustomerBooking(
+      lot: lot,
+      slot: selectedSlot,
+      vehicle: vehicle,
+      entryTime: entryTime,
+      estimatedCost: total,
+    );
+    final ticketNumber = remoteBooking.ticketNumber;
 
     final booking = Booking(
       ticketNumber: ticketNumber,

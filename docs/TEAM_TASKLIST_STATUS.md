@@ -26,6 +26,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Booking parkir ke Supabase.
 - [x] Payment demo tersimpan ke Supabase.
 - [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
+- [x] Payment gateway hanya memakai booking yang berhasil tersimpan di Supabase; fallback booking lokal/demo dihapus.
 - [x] Load booking aktif customer dari Supabase.
 - [x] Scan QR membaca booking dari Supabase.
 - [x] Update masuk/keluar kendaraan ke Supabase.

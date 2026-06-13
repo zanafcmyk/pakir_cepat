@@ -25,7 +25,7 @@ class SupabaseBookingService {
 
   final SupabaseClient _client;
 
-  Future<SupabaseBookingResult?> createCurrentCustomerBooking({
+  Future<SupabaseBookingResult> createCurrentCustomerBooking({
     required ParkingLot lot,
     required ParkingSlot slot,
     required Vehicle vehicle,
@@ -34,7 +34,7 @@ class SupabaseBookingService {
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
-      return null;
+      throw const AuthException('Sesi customer tidak ditemukan.');
     }
 
     final customerId = await _currentCustomerId(user.id);

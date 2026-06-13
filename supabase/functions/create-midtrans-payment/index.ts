@@ -162,7 +162,7 @@ function text(value: unknown) {
 }
 
 function paymentMethod(value: string) {
-  if (["qris", "ewallet", "card", "cash"].includes(value)) {
+  if (["qris", "ewallet", "cash"].includes(value)) {
     return value;
   }
   return "qris";
