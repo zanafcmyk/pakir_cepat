@@ -71,6 +71,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pondasi realtime lokasi siap lewat listener `parking_lots`.
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
+- [x] Audit route guard/deep link dasar dengan test role route.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -141,7 +142,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] User management super admin untuk hapus akun Auth sungguhan lewat Edge Function.
 - [x] Role guard dasar dan redirect auth sudah tersedia.
-- [ ] Audit role guard dan middleware auth untuk deep link production.
+- [x] Audit role guard dan middleware auth dasar untuk deep link role.
+- [ ] Audit deep link production di perangkat asli sebelum release.
 - [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
 - [ ] Review final sebelum merge ke `development` atau `master`.
 
@@ -257,7 +259,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] SQL realtime lokasi/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] Data demo/lokal perlu dipisah dari data production.
 - [ ] Error handling koneksi Supabase perlu dibuat lebih konsisten.
-- [ ] Route protection perlu audit production lanjutan setelah semua deep link final.
+- [x] Route protection dasar punya test deep link role.
+- [ ] Route protection perlu audit production lanjutan di perangkat asli setelah semua deep link final.
 
 #### Belum Ada/Belum Production
 
@@ -282,4 +285,4 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 1. Deploy Edge Function payment dan isi secret Midtrans.
 2. Pasang Firebase config agar token push notification bisa didaftarkan dari HP.
 3. Jalankan SQL realtime slot/lokasi/notifikasi di Supabase, lalu uji dua perangkat.
-4. Audit production route protection dan deep link.
+4. Uji production route protection di perangkat asli.

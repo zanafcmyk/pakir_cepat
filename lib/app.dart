@@ -419,25 +419,27 @@ String? guardedRedirect(String location, AppState Function() readState) {
 
   final allowed = switch (state.currentMode) {
     AccountMode.customer =>
-      location.startsWith('/customer') ||
-          location == '/change-password' ||
-          location == '/delete-account',
+      isRouteInSection(location, '/customer') || isSharedAccountRoute(location),
     AccountMode.provider =>
-      location.startsWith('/provider') ||
-          location.startsWith('/admin') ||
-          location == '/change-password' ||
-          location == '/delete-account',
+      isRouteInSection(location, '/provider') ||
+          isRouteInSection(location, '/admin') ||
+          isSharedAccountRoute(location),
     AccountMode.parkingGuard =>
-      location.startsWith('/guard') ||
-          location == '/change-password' ||
-          location == '/delete-account',
+      isRouteInSection(location, '/guard') || isSharedAccountRoute(location),
     AccountMode.superAdmin =>
-      location.startsWith('/super-admin') ||
-          location == '/change-password' ||
-          location == '/delete-account',
+      isRouteInSection(location, '/super-admin') ||
+          isSharedAccountRoute(location),
   };
 
   return allowed ? null : landingRouteForState(state);
+}
+
+bool isRouteInSection(String location, String section) {
+  return location == section || location.startsWith('$section/');
+}
+
+bool isSharedAccountRoute(String location) {
+  return location == '/change-password' || location == '/delete-account';
 }
 
 String landingRouteForState(AppState value) {
@@ -11982,7 +11984,7 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     return switch (mode) {
       AccountMode.parkingGuard => '/guard/home',
       AccountMode.provider => '/provider/dashboard',
-      AccountMode.superAdmin => '/admin/dashboard',
+      AccountMode.superAdmin => '/super-admin/dashboard',
       AccountMode.customer => '/customer/home',
     };
   }
