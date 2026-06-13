@@ -16,10 +16,14 @@ class SupabaseProviderDashboardSummary {
   const SupabaseProviderDashboardSummary({
     required this.vehiclesEnteredToday,
     required this.revenueToday,
+    required this.availableSlots,
+    required this.occupiedSlots,
   });
 
   final int vehiclesEnteredToday;
   final int revenueToday;
+  final int availableSlots;
+  final int occupiedSlots;
 }
 
 class SupabaseProviderDailyRevenue {
@@ -172,6 +176,8 @@ class SupabaseParkingService {
       return const SupabaseProviderDashboardSummary(
         vehiclesEnteredToday: 0,
         revenueToday: 0,
+        availableSlots: 0,
+        occupiedSlots: 0,
       );
     }
 
@@ -185,6 +191,20 @@ class SupabaseParkingService {
 
     var vehiclesEnteredToday = 0;
     var revenueToday = 0;
+    var availableSlots = 0;
+    var occupiedSlots = 0;
+
+    final slotRows = await _client
+        .from('parking_slots')
+        .select('status')
+        .inFilter('parking_lot_id', lotIds);
+    for (final row in slotRows) {
+      if (row['status'] == 'available') {
+        availableSlots++;
+      } else {
+        occupiedSlots++;
+      }
+    }
 
     for (final row in todayRows) {
       final status = row['status'] as String?;
@@ -205,6 +225,8 @@ class SupabaseParkingService {
     return SupabaseProviderDashboardSummary(
       vehiclesEnteredToday: vehiclesEnteredToday,
       revenueToday: revenueToday,
+      availableSlots: availableSlots,
+      occupiedSlots: occupiedSlots,
     );
   }
 

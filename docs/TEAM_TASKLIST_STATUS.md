@@ -90,7 +90,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - Onboarding sudah tidak hanya state lokal sementara. Status selesai onboarding sekarang tersimpan di device dengan `SharedPreferences`.
 - Dashboard customer sudah refresh data utama dari Supabase saat dibuka: lokasi/slot, kendaraan, booking aktif, riwayat, favorit, dan notifikasi. Search/filter lokasi sekarang query Supabase.
-- Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini dan pendapatan hari ini.
+- Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini, pendapatan hari ini, slot tersedia, dan slot aktif.
 - Provider daily revenue detail sudah membaca transaksi, total, rata-rata, transaksi terbesar, dan metode pembayaran dari Supabase untuk hari ini.
 - Provider financial report sudah membaca transaksi bulan ini, total pendapatan, estimasi pengeluaran, dan laba estimasi dari Supabase.
 - Provider statistics dan grafik revenue sudah membaca pendapatan harian, bulanan, slot tersedia/penuh, dan chart 7 hari dari Supabase.
@@ -100,7 +100,9 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Dashboard super admin sudah membaca agregasi Supabase untuk jumlah user per role, pending verifikasi, akun nonaktif, komplain menunggu, lokasi aktif, kendaraan aktif, total transaksi, dan revenue.
 - Laporan super admin sudah membaca transaksi Supabase dan grafik revenue 7 hari.
 - User management super admin sudah membaca daftar `profiles` dari Supabase dan tombol aktif/nonaktif menyimpan ke `profiles.access_status`.
-- Dashboard penyedia dan penjaga masih perlu audit data per kartu/section sebelum ditandai production.
+- Dashboard penyedia sudah diaudit agar kartu utama memakai summary Supabase dan grafik tidak menampilkan revenue demo saat data kosong.
+- Error handling form/detail utama sudah diperkuat dengan notice menetap di form tambah lahan, akun penjaga, komplain customer, dan komplain penjaga.
+- Checklist deploy eksternal dibuat di `docs/production_external_deploy_checklist.md`.
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
 - Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SUPABASE_SERVICE_ROLE_KEY`.
 - Payment gateway Midtrans sudah disiapkan di kode dan Edge Function, tetapi belum production penuh sampai secret `MIDTRANS_SERVER_KEY`, deploy function, dan webhook Midtrans aktif.
@@ -175,7 +177,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Dashboard penyedia sebagian masih perlu dicek integrasi datanya.
+- [x] Dashboard penyedia diaudit dan kartu utama membaca agregasi Supabase.
 - [ ] Payment provider untuk settlement asli masih menunggu deploy Midtrans dan webhook.
 
 #### Belum Ada/Belum Production
@@ -269,7 +271,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Data demo/lokal diaudit agar seed tidak muncul di build production.
 - [x] Error handling koneksi Supabase mulai diperkuat di dashboard customer.
 - [x] Error handling koneksi Supabase dashboard utama sudah diperkuat.
-- [ ] Error handling koneksi Supabase perlu diaudit konsisten di form dan halaman detail.
+- [x] Error handling koneksi Supabase diaudit dan diperkuat di form/detail utama.
 - [x] Route protection dasar punya test deep link role.
 - [ ] Route protection perlu audit production lanjutan di perangkat asli setelah semua deep link final.
 
@@ -281,6 +283,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Edge Function `create-midtrans-payment` untuk membuat transaksi Midtrans Snap.
 - [x] Edge Function `midtrans-webhook` untuk menerima callback Midtrans.
 - [x] Edge Function `send-push-notification` untuk mengirim FCM HTTP v1.
+- [x] Checklist deploy eksternal admin-delete, Midtrans, dan Firebase dibuat di `docs/production_external_deploy_checklist.md`.
 - [x] Tabel `device_push_tokens` disiapkan di `docs/supabase_push_notifications.sql`.
 - [x] SQL realtime slot disiapkan di `docs/supabase_realtime_slots.sql`.
 - [x] SQL realtime lokasi/assignment penjaga/notifikasi disiapkan di `docs/supabase_realtime_location_notifications.sql`.

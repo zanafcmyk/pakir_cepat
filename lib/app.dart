@@ -9691,6 +9691,8 @@ class _CustomerComplaintScreenState
   final TextEditingController _descriptionController = TextEditingController();
   String _category = 'Pembayaran';
   String _priority = 'Sedang';
+  String? _errorMessage;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -9703,6 +9705,10 @@ class _CustomerComplaintScreenState
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
     try {
       await ref
           .read(appControllerProvider.notifier)
@@ -9716,6 +9722,11 @@ class _CustomerComplaintScreenState
       if (!mounted) {
         return;
       }
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage =
+            'Gagal mengirim komplain ke Supabase. Cek koneksi lalu coba lagi.';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal mengirim komplain ke Supabase')),
       );
@@ -9724,6 +9735,7 @@ class _CustomerComplaintScreenState
     if (!mounted) {
       return;
     }
+    setState(() => _isSubmitting = false);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
@@ -9755,6 +9767,14 @@ class _CustomerComplaintScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_errorMessage != null) ...[
+                    InlineNotice(
+                      icon: Icons.error_outline_rounded,
+                      accent: const Color(0xFFD97706),
+                      message: _errorMessage!,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextFormField(
                     controller: _titleController,
                     decoration: const InputDecoration(
@@ -9839,9 +9859,9 @@ class _CustomerComplaintScreenState
                   ),
                   const SizedBox(height: 20),
                   PrimaryButton(
-                    label: 'Kirim Komplain',
+                    label: _isSubmitting ? 'Mengirim...' : 'Kirim Komplain',
                     icon: Icons.send_rounded,
-                    onPressed: _submitComplaint,
+                    onPressed: _isSubmitting ? null : _submitComplaint,
                   ),
                 ],
               ),
@@ -11166,7 +11186,6 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final occupiedSlots = state.slots.where((slot) => !slot.isAvailable).length;
     return AdminShell(
       currentIndex: 0,
       child: ListView(
@@ -11204,6 +11223,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   const SupabaseProviderDashboardSummary(
                     vehiclesEnteredToday: 0,
                     revenueToday: 0,
+                    availableSlots: 0,
+                    occupiedSlots: 0,
                   );
               final summaryError = snapshot.hasError
                   ? 'Ringkasan penyedia gagal dimuat dari Supabase.'
@@ -11234,15 +11255,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                   ),
                   StatCard(
                     label: 'Slot tersedia',
-                    value:
-                        '${state.slots.where((slot) => slot.isAvailable).length}',
+                    value: '${summary.availableSlots}',
                     accent: AppTheme.slate,
                     icon: Icons.local_parking_rounded,
                     onTap: () => context.push('/provider/manage-slots'),
                   ),
                   StatCard(
                     label: 'Slot aktif',
-                    value: '$occupiedSlots',
+                    value: '${summary.occupiedSlots}',
                     accent: AppTheme.blue,
                     icon: Icons.timelapse_rounded,
                     onTap: () => context.push('/provider/manage-slots'),
@@ -11441,6 +11461,7 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   double _truckRate = 20000;
   Uint8List? _photoBytes;
   String? _photoLabel;
+  String? _formError;
   bool _isPickingPhoto = false;
   bool _isSaving = false;
 
@@ -11493,6 +11514,7 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
       setState(() {
         _photoBytes = bytes;
         _photoLabel = file.name;
+        _formError = null;
       });
     } finally {
       if (mounted) {
@@ -11513,6 +11535,14 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
           PremiumCard(
             child: Column(
               children: [
+                if (_formError != null) ...[
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFD97706),
+                    message: _formError!,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 TextField(
                   controller: _nameController,
                   decoration: const InputDecoration(
@@ -11641,12 +11671,16 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                       : () async {
                           final error = _lotFormError();
                           if (error != null) {
+                            setState(() => _formError = error);
                             ScaffoldMessenger.of(
                               context,
                             ).showSnackBar(SnackBar(content: Text(error)));
                             return;
                           }
-                          setState(() => _isSaving = true);
+                          setState(() {
+                            _isSaving = true;
+                            _formError = null;
+                          });
                           try {
                             await ref
                                 .read(appControllerProvider.notifier)
@@ -11676,6 +11710,10 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                             context.pop();
                           } catch (_) {
                             if (!context.mounted) return;
+                            setState(
+                              () => _formError =
+                                  'Gagal menyimpan lahan ke Supabase. Pastikan koneksi, SQL lahan, dan bucket foto lahan sudah siap.',
+                            );
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
@@ -11718,6 +11756,7 @@ class _ParkingGuardManagementScreenState
   bool _canManageSlots = true;
   bool _isSavingGuard = false;
   String? _editingGuardId;
+  String? _formError;
 
   @override
   void initState() {
@@ -11787,6 +11826,7 @@ class _ParkingGuardManagementScreenState
         ..addAll(lots.isEmpty ? const [] : [lots.first.id]);
       _canConfirmCash = true;
       _canManageSlots = true;
+      _formError = null;
     });
   }
 
@@ -11810,6 +11850,7 @@ class _ParkingGuardManagementScreenState
         ..addAll(guard.assignedLotIds);
       _canConfirmCash = guard.canConfirmCash;
       _canManageSlots = guard.canManageSlots;
+      _formError = null;
     });
   }
 
@@ -11820,6 +11861,7 @@ class _ParkingGuardManagementScreenState
 
     final error = _guardFormError(lots);
     if (error != null) {
+      setState(() => _formError = error);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(error)));
@@ -11828,7 +11870,10 @@ class _ParkingGuardManagementScreenState
 
     final controller = ref.read(appControllerProvider.notifier);
     final editingGuardId = _editingGuardId;
-    setState(() => _isSavingGuard = true);
+    setState(() {
+      _isSavingGuard = true;
+      _formError = null;
+    });
     try {
       if (editingGuardId == null) {
         await controller.createParkingGuard(
@@ -11863,6 +11908,10 @@ class _ParkingGuardManagementScreenState
       _resetGuardForm(lots);
     } catch (_) {
       if (!mounted) return;
+      setState(
+        () => _formError =
+            'Gagal menyimpan akun penjaga. Pastikan Edge Function create-guard-account, secret service role, dan SQL guard sudah dijalankan.',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -11932,6 +11981,14 @@ class _ParkingGuardManagementScreenState
           PremiumCard(
             child: Column(
               children: [
+                if (_formError != null) ...[
+                  InlineNotice(
+                    icon: Icons.error_outline_rounded,
+                    accent: const Color(0xFFD97706),
+                    message: _formError!,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -15329,6 +15386,8 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
   final TextEditingController _descriptionController = TextEditingController();
   String _category = 'QR Scanner';
   String _priority = 'Sedang';
+  String? _errorMessage;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -15341,6 +15400,10 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
+    setState(() {
+      _isSubmitting = true;
+      _errorMessage = null;
+    });
     try {
       await ref
           .read(appControllerProvider.notifier)
@@ -15354,6 +15417,11 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
       if (!mounted) {
         return;
       }
+      setState(() {
+        _isSubmitting = false;
+        _errorMessage =
+            'Gagal mengirim komplain ke Supabase. Cek koneksi lalu coba lagi.';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal mengirim komplain ke Supabase')),
       );
@@ -15362,6 +15430,7 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
     if (!mounted) {
       return;
     }
+    setState(() => _isSubmitting = false);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Komplain berhasil dikirim')));
@@ -15393,6 +15462,14 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_errorMessage != null) ...[
+                    InlineNotice(
+                      icon: Icons.error_outline_rounded,
+                      accent: const Color(0xFFD97706),
+                      message: _errorMessage!,
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   TextFormField(
                     controller: _titleController,
                     decoration: const InputDecoration(
@@ -15473,9 +15550,9 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
                   ),
                   const SizedBox(height: 20),
                   PrimaryButton(
-                    label: 'Kirim Komplain',
+                    label: _isSubmitting ? 'Mengirim...' : 'Kirim Komplain',
                     icon: Icons.send_rounded,
-                    onPressed: _submitComplaint,
+                    onPressed: _isSubmitting ? null : _submitComplaint,
                   ),
                 ],
               ),
@@ -17561,17 +17638,36 @@ class RevenueChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chartPoints = points.isEmpty
-        ? const [
-            SupabaseRevenuePoint(label: 'Sen', amount: 3500000),
-            SupabaseRevenuePoint(label: 'Sel', amount: 5200000),
-            SupabaseRevenuePoint(label: 'Rab', amount: 4600000),
-            SupabaseRevenuePoint(label: 'Kam', amount: 8400000),
-            SupabaseRevenuePoint(label: 'Jum', amount: 7800000),
-            SupabaseRevenuePoint(label: 'Sab', amount: 9600000),
-            SupabaseRevenuePoint(label: 'Min', amount: 11000000),
-          ]
-        : points;
+    final chartPoints = points;
+    if (chartPoints.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.show_chart_rounded,
+              color: AppTheme.slate.withValues(alpha: 0.7),
+              size: 34,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Belum ada data revenue',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Grafik akan tampil setelah transaksi Supabase tersedia.',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+            ),
+          ],
+        ),
+      );
+    }
     final maxAmount = chartPoints.fold<int>(
       0,
       (maxValue, point) => math.max(maxValue, point.amount),
