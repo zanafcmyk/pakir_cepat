@@ -45,10 +45,29 @@ class SupabaseSuperAdminService {
 
   final SupabaseClient _client;
 
+  Future<List<RegistrationRequest>> fetchProviderRegistrationRequests() async {
+    final rows = await _client
+        .from('provider_applications')
+        .select(
+          'id, parking_name, address, photo_url, location_label, capacity, '
+          'identity_document_url, status, created_at, '
+          'profiles(full_name, email, phone_number)',
+        )
+        .inFilter('status', ['pending', 'rejected'])
+        .order('created_at', ascending: false);
+
+    return [
+      for (final item in rows)
+        _registrationRequestFromRow(Map<String, dynamic>.from(item as Map)),
+    ];
+  }
+
   Future<List<ManagedUserAccount>> fetchManagedUsers() async {
     final rows = await _client
         .from('profiles')
-        .select('id, full_name, email, role, access_status, note, created_at')
+        .select(
+          'id, full_name, email, role, account_status, access_status, note, created_at',
+        )
         .neq('role', 'super_admin')
         .order('created_at', ascending: false);
 
@@ -240,20 +259,60 @@ class SupabaseSuperAdminService {
     final accessStatus = row['access_status'] == 'suspended'
         ? UserAccessStatus.suspended
         : UserAccessStatus.active;
+    final accountStatus = _accountStatusFromDb(
+      row['account_status'] as String?,
+    );
+    final role = _roleFromDb(row['role'] as String?);
 
     return ManagedUserAccount(
       id: row['id'] as String? ?? '',
       name: row['full_name'] as String? ?? '-',
       email: row['email'] as String? ?? '-',
-      role: _roleFromDb(row['role'] as String?),
+      role: role,
       status: accessStatus,
       note:
           row['note'] as String? ??
+          (role == AccountMode.provider &&
+                  accountStatus == AccountStatus.pending
+              ? 'Menunggu verifikasi Super Admin.'
+              : null) ??
           (accessStatus == UserAccessStatus.suspended
               ? 'Akun sedang dinonaktifkan.'
               : 'Akun aktif.'),
     );
   }
+
+  RegistrationRequest _registrationRequestFromRow(Map<String, dynamic> row) {
+    final profile = row['profiles'] is Map
+        ? Map<String, dynamic>.from(row['profiles'] as Map)
+        : <String, dynamic>{};
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+    return RegistrationRequest(
+      id: row['id'] as String? ?? '',
+      fullName: profile['full_name'] as String? ?? 'Penyedia Parkir',
+      email: profile['email'] as String? ?? '-',
+      phoneNumber: profile['phone_number'] as String? ?? '-',
+      role: AccountMode.provider,
+      timeLabel: createdAt == null
+          ? 'Baru'
+          : _dateTimeLabel(row['created_at'] as String?),
+      status: _accountStatusFromDb(row['status'] as String?),
+      providerApplication: ProviderApplication(
+        parkingName: row['parking_name'] as String? ?? 'Lahan parkir',
+        address: row['address'] as String? ?? '-',
+        photoLabel: row['photo_url'] as String? ?? '-',
+        locationLabel: row['location_label'] as String? ?? '-',
+        capacity: (row['capacity'] as num?)?.toInt() ?? 0,
+        identityLabel: row['identity_document_url'] as String? ?? '-',
+      ),
+    );
+  }
+
+  AccountStatus _accountStatusFromDb(String? status) => switch (status) {
+    'verified' => AccountStatus.verified,
+    'rejected' => AccountStatus.rejected,
+    _ => AccountStatus.pending,
+  };
 
   AccountMode _roleFromDb(String? role) => switch (role) {
     'provider' => AccountMode.provider,

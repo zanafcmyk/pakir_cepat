@@ -2074,6 +2074,12 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(managedUsers: users);
   }
 
+  Future<void> loadRegistrationRequestsFromSupabase() async {
+    final requests = await _superAdminService
+        .fetchProviderRegistrationRequests();
+    state = state.copyWith(registrationRequests: requests);
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -6229,12 +6235,13 @@ class _SuperAdminUsersScreenState extends ConsumerState<SuperAdminUsersScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref
-          .read(appControllerProvider.notifier)
-          .loadManagedUsersFromSupabase()
-          .catchError((_) {}),
-    );
+    Future.microtask(() async {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadRegistrationRequestsFromSupabase().catchError(
+        (_) {},
+      );
+      await controller.loadManagedUsersFromSupabase().catchError((_) {});
+    });
   }
 
   @override
