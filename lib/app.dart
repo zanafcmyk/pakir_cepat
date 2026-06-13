@@ -4291,17 +4291,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   height: 110,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(32),
-                    gradient: const LinearGradient(
-                      colors: [AppTheme.blue, AppTheme.emerald],
-                    ),
+                    color: Colors.white,
                     boxShadow: [
                       softShadow(AppTheme.blue.withValues(alpha: 0.2)),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.local_parking_rounded,
-                    color: Colors.white,
-                    size: 54,
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 28),
