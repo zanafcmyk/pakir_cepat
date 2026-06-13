@@ -1638,6 +1638,80 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  void _syncProviderNotificationForLot({
+    required ParkingLot lot,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) {
+    unawaited(
+      (() async {
+        try {
+          final sent = await _notificationService.saveProviderNotification(
+            providerId: lot.providerId,
+            title: title,
+            message: message,
+            type: type,
+          );
+          if (sent) {
+            return;
+          }
+        } catch (_) {
+          // Fall back to role-level notification below.
+        }
+
+        await _notificationService.saveRoleNotification(
+          role: AccountMode.provider,
+          title: title,
+          message: message,
+          type: type,
+        );
+      })().catchError((_) {}),
+    );
+  }
+
+  void _syncAssignedGuardNotificationsForLot({
+    required ParkingLot lot,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) {
+    unawaited(
+      (() async {
+        try {
+          final sent = await _notificationService
+              .saveAssignedGuardNotifications(
+                parkingLotId: lot.id,
+                title: title,
+                message: message,
+                type: type,
+              );
+          if (sent) {
+            return;
+          }
+        } catch (_) {
+          // Fall back to role-level notification below.
+        }
+
+        await _notificationService.saveRoleNotification(
+          role: AccountMode.parkingGuard,
+          title: title,
+          message: message,
+          type: type,
+        );
+      })().catchError((_) {}),
+    );
+  }
+
+  ParkingLot? _lotForBooking(Booking booking) {
+    for (final lot in state.lots) {
+      if (lot.name == booking.locationName) {
+        return lot;
+      }
+    }
+    return null;
+  }
+
   Future<void> loadChatMessagesFromSupabase({
     required AccountMode mode,
     required String roomId,
@@ -3667,14 +3741,14 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     _syncCurrentUserNotification(customerNotice, type: 'booking');
-    _syncRoleNotification(
-      role: AccountMode.provider,
+    _syncProviderNotificationForLot(
+      lot: lot,
       title: 'Booking baru',
       message: '${vehicle.plateNumber} booking slot $slotCode di ${lot.name}.',
       type: 'booking',
     );
-    _syncRoleNotification(
-      role: AccountMode.parkingGuard,
+    _syncAssignedGuardNotificationsForLot(
+      lot: lot,
       title: 'Booking baru untuk dicek',
       message:
           'Tiket $ticketNumber menunggu pembayaran dan scan di ${lot.name}.',
@@ -3728,19 +3802,36 @@ class AppController extends StateNotifier<AppState> {
       ],
     );
     _syncCurrentUserNotification(customerNotice, type: 'payment');
-    _syncRoleNotification(
-      role: AccountMode.provider,
-      title: 'Pembayaran terkonfirmasi',
-      message:
-          '${booking.plateNumber} membayar ${formatCurrency(booking.estimatedCost)} untuk ${booking.locationName}.',
-      type: 'payment',
-    );
-    _syncRoleNotification(
-      role: AccountMode.parkingGuard,
-      title: 'Pembayaran tiket lunas',
-      message: 'Tiket ${booking.ticketNumber} siap diverifikasi penjaga.',
-      type: 'payment',
-    );
+    final lot = _lotForBooking(booking);
+    if (lot == null) {
+      _syncRoleNotification(
+        role: AccountMode.provider,
+        title: 'Pembayaran terkonfirmasi',
+        message:
+            '${booking.plateNumber} membayar ${formatCurrency(booking.estimatedCost)} untuk ${booking.locationName}.',
+        type: 'payment',
+      );
+      _syncRoleNotification(
+        role: AccountMode.parkingGuard,
+        title: 'Pembayaran tiket lunas',
+        message: 'Tiket ${booking.ticketNumber} siap diverifikasi penjaga.',
+        type: 'payment',
+      );
+    } else {
+      _syncProviderNotificationForLot(
+        lot: lot,
+        title: 'Pembayaran terkonfirmasi',
+        message:
+            '${booking.plateNumber} membayar ${formatCurrency(booking.estimatedCost)} untuk ${booking.locationName}.',
+        type: 'payment',
+      );
+      _syncAssignedGuardNotificationsForLot(
+        lot: lot,
+        title: 'Pembayaran tiket lunas',
+        message: 'Tiket ${booking.ticketNumber} siap diverifikasi penjaga.',
+        type: 'payment',
+      );
+    }
   }
 
   Future<SupabaseGatewayPaymentResult?> createGatewayPayment(

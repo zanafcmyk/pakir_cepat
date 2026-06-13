@@ -76,6 +76,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Realtime assignment penjaga siap lewat listener `parking_guards`.
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
 - [x] Sinkron notifikasi in-app antar role untuk booking, pembayaran, verifikasi akun, dan komplain dasar.
+- [x] Notifikasi booking dan pembayaran diarahkan ke penyedia pemilik lokasi dan penjaga yang ditugaskan, dengan fallback role-level.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
@@ -87,7 +88,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
-- [ ] Notifikasi in-app antar role masih role-level; perlu ditargetkan ke `profile_id` penerima spesifik saat aplikasi punya banyak penyedia/penjaga.
+- [ ] Notifikasi komplain/verifikasi masih role-level; perlu ditargetkan ke `profile_id` penerima spesifik saat aplikasi punya banyak akun dalam role sama.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.

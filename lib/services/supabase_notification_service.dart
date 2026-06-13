@@ -69,6 +69,102 @@ class SupabaseNotificationService {
     ]);
   }
 
+  Future<bool> saveProviderNotification({
+    required String providerId,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) async {
+    final rows = await _client
+        .from('providers')
+        .select('profiles(id, access_status)')
+        .eq('id', providerId)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return false;
+    }
+
+    final provider = Map<String, dynamic>.from(rows.first as Map);
+    final profileValue = provider['profiles'];
+    if (profileValue is! Map) {
+      return false;
+    }
+
+    final profile = Map<String, dynamic>.from(profileValue);
+    if (profile['access_status'] != 'active') {
+      return false;
+    }
+
+    await saveProfileNotification(
+      profileId: profile['id'] as String,
+      title: title,
+      message: message,
+      type: type,
+    );
+    return true;
+  }
+
+  Future<bool> saveAssignedGuardNotifications({
+    required String parkingLotId,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) async {
+    final rows = await _client
+        .from('guard_lot_assignments')
+        .select('parking_guards(profiles(id, access_status))')
+        .eq('parking_lot_id', parkingLotId);
+
+    final notificationRows = <Map<String, dynamic>>[];
+    for (final row in rows) {
+      final assignment = Map<String, dynamic>.from(row as Map);
+      final guardValue = assignment['parking_guards'];
+      if (guardValue is! Map) {
+        continue;
+      }
+
+      final guard = Map<String, dynamic>.from(guardValue);
+      final profileValue = guard['profiles'];
+      if (profileValue is! Map) {
+        continue;
+      }
+
+      final profile = Map<String, dynamic>.from(profileValue);
+      if (profile['access_status'] != 'active') {
+        continue;
+      }
+
+      notificationRows.add({
+        'profile_id': profile['id'],
+        'title': title,
+        'message': message,
+        'type': type,
+      });
+    }
+
+    if (notificationRows.isEmpty) {
+      return false;
+    }
+
+    await _client.from('notifications').insert(notificationRows);
+    return true;
+  }
+
+  Future<void> saveProfileNotification({
+    required String profileId,
+    required String title,
+    required String message,
+    String type = 'info',
+  }) async {
+    await _client.from('notifications').insert({
+      'profile_id': profileId,
+      'title': title,
+      'message': message,
+      'type': type,
+    });
+  }
+
   String _roleToDb(AccountMode mode) => switch (mode) {
     AccountMode.superAdmin => 'super_admin',
     AccountMode.provider => 'provider',
