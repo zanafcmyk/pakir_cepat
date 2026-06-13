@@ -7928,6 +7928,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     await _startGatewayPayment();
   }
 
+  void _requestCashPaymentConfirmation(Booking booking) {
+    final roomId = ref
+        .read(appControllerProvider.notifier)
+        .createCustomerGuardChatRoomForBooking(booking);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Minta penjaga konfirmasi pembayaran tunai di lokasi.'),
+      ),
+    );
+    context.push('/customer/chat-room?roomId=$roomId');
+  }
+
   Future<void> _startGatewayPayment() async {
     if (_isStartingGateway) {
       return;
@@ -7996,7 +8008,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         await _startGatewayPayment();
       case PaymentMethod.cash:
         setState(() => _paymentError = null);
-        await _completePayment(booking);
+        _requestCashPaymentConfirmation(booking);
       case PaymentMethod.ewallet:
         await _payWithEWallet(booking);
       case PaymentMethod.card:
@@ -8165,10 +8177,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   label: _isStartingGateway
                       ? 'Membuka gateway...'
                       : _method == PaymentMethod.cash
-                      ? 'Konfirmasi tunai'
+                      ? 'Hubungi penjaga'
                       : 'Bayar lewat gateway',
                   icon: _method == PaymentMethod.cash
-                      ? Icons.payments_rounded
+                      ? Icons.support_agent_rounded
                       : Icons.open_in_new_rounded,
                   onPressed: isPayable
                       ? _isStartingGateway
@@ -8289,12 +8301,12 @@ class _PaymentInstructionCard extends StatelessWidget {
           icon: Icons.payments_rounded,
           title: 'Tunai di Loket',
           subtitle:
-              'Pembayaran tunai perlu dikonfirmasi penjaga di lokasi. Flow ini masih manual sampai kas production dibuat.',
+              'Customer tidak bisa melunasi tunai sendiri. Hubungi penjaga, lalu penjaga yang berwenang mengonfirmasi pembayaran di aplikasi.',
           child: const InlineNotice(
             icon: Icons.support_agent_rounded,
             accent: AppTheme.emerald,
             message:
-                'Untuk production, gunakan hak penjaga agar konfirmasi tunai tidak bisa dilakukan customer sendiri.',
+                'Siapkan uang tunai sesuai total pembayaran dan tunjukkan tiket ke penjaga parkir.',
           ),
         ),
         PaymentMethod.card => _PaymentMethodBox(
@@ -14528,6 +14540,8 @@ class GuardVehiclesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
     final selectedLot = _selectedGuardLot(state);
+    final guard = activeGuard(state);
+    final canConfirmCash = guard?.canConfirmCash ?? false;
     final activeBooking = state.activeBooking;
     final booking =
         selectedLot == null || activeBooking?.locationName == selectedLot.name
@@ -14582,14 +14596,24 @@ class GuardVehiclesScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   SecondaryButton(
-                    label: 'Konfirmasi pembayaran tunai',
+                    label: canConfirmCash
+                        ? 'Konfirmasi pembayaran tunai'
+                        : 'Tidak punya izin tunai',
                     icon: Icons.payments_rounded,
-                    onPressed: booking.isPaid
+                    onPressed: booking.isPaid || !canConfirmCash
                         ? null
                         : () async {
                             await ref
                                 .read(appControllerProvider.notifier)
                                 .payBooking(PaymentMethod.cash);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Pembayaran tunai berhasil dikonfirmasi.',
+                                ),
+                              ),
+                            );
                           },
                   ),
                 ],

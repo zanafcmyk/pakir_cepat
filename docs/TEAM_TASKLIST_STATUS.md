@@ -72,6 +72,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
+- [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -197,7 +198,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] Pembatasan route penjaga dasar sudah ada.
 - [ ] Pembatasan route penjaga perlu audit deep link production.
-- [ ] Pembayaran tunai/manual masih bagian dari flow demo.
+- [x] Pembayaran tunai/manual hanya bisa dikonfirmasi penjaga yang punya izin.
+- [ ] Pembayaran tunai/manual perlu audit kas/settlement production.
 
 #### Belum Ada/Belum Production
 
@@ -230,7 +232,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [ ] Payment online sudah diarahkan ke pondasi Midtrans, tetapi belum production sampai Edge Function, secret, dan webhook aktif.
-- [ ] Payment tunai/manual masih perlu flow production agar hanya penjaga yang bisa konfirmasi.
+- [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
+- [ ] Payment tunai/manual perlu audit kas/settlement production.
 
 #### Belum Ada/Belum Production
 
