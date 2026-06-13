@@ -82,8 +82,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
-- [ ] Realtime slot perlu SQL `docs/supabase_realtime_slots.sql` dijalankan di Supabase production.
-- [ ] Realtime lokasi/assignment penjaga/notifikasi perlu SQL `docs/supabase_realtime_location_notifications.sql` dijalankan di Supabase production.
+- [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
+- [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
@@ -94,6 +94,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Provider daily revenue detail sudah membaca transaksi, total, rata-rata, transaksi terbesar, dan metode pembayaran dari Supabase untuk hari ini.
 - Provider financial report sudah membaca transaksi bulan ini, total pendapatan, estimasi pengeluaran, dan laba estimasi dari Supabase.
 - Provider statistics dan grafik revenue sudah membaca pendapatan harian, bulanan, slot tersedia/penuh, dan chart 7 hari dari Supabase.
+- Data demo/seed sekarang hanya aktif di debug/profile. Build release mulai dari state kosong dan menunggu data Supabase.
 - Dashboard penjaga sudah memuat akun penjaga dan lokasi assignment dari Supabase saat dibuka; hitungan slot dashboard dibatasi ke lokasi assigned.
 - Monitoring kendaraan penyedia sudah memuat transaksi penyedia dari Supabase saat halaman dibuka.
 - Dashboard super admin sudah membaca agregasi Supabase untuk jumlah user per role, pending verifikasi, akun nonaktif, komplain menunggu, lokasi aktif, kendaraan aktif, total transaksi, dan revenue.
@@ -262,10 +263,10 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [ ] Policy RLS perlu dicek ulang per role sebelum production.
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
-- [ ] SQL realtime slot perlu dipastikan sudah dijalankan di Supabase production.
-- [ ] SQL realtime lokasi/assignment penjaga/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
+- [x] SQL realtime slot sudah dijalankan di Supabase production.
+- [x] SQL realtime lokasi/assignment penjaga/notifikasi sudah dijalankan di Supabase production.
 - [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
-- [ ] Data demo/lokal perlu audit lanjutan agar seed tidak muncul di build production.
+- [x] Data demo/lokal diaudit agar seed tidak muncul di build production.
 - [x] Error handling koneksi Supabase mulai diperkuat di dashboard customer.
 - [x] Error handling koneksi Supabase dashboard utama sudah diperkuat.
 - [ ] Error handling koneksi Supabase perlu diaudit konsisten di form dan halaman detail.
@@ -294,5 +295,5 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 1. Deploy Edge Function payment dan isi secret Midtrans.
 2. Pasang Firebase config agar token push notification bisa didaftarkan dari HP.
-3. Jalankan SQL realtime slot/lokasi/notifikasi di Supabase, lalu uji dua perangkat.
+3. Uji realtime slot/lokasi/notifikasi di dua perangkat.
 4. Uji production route protection di perangkat asli.

@@ -2,10 +2,10 @@
 
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -602,6 +602,7 @@ class AppState {
     bool clearSelectedLot = false,
     List<Vehicle>? vehicles,
     Vehicle? selectedVehicle,
+    bool clearSelectedVehicle = false,
     List<ParkingSlot>? slots,
     Booking? activeBooking,
     DateTime? reservationLockedUntil,
@@ -664,7 +665,9 @@ class AppState {
       lots: lots ?? this.lots,
       selectedLot: clearSelectedLot ? null : (selectedLot ?? this.selectedLot),
       vehicles: vehicles ?? this.vehicles,
-      selectedVehicle: selectedVehicle ?? this.selectedVehicle,
+      selectedVehicle: clearSelectedVehicle
+          ? null
+          : (selectedVehicle ?? this.selectedVehicle),
       slots: slots ?? this.slots,
       activeBooking: clearBooking
           ? null
@@ -699,6 +702,51 @@ class AppState {
       complaints: complaints ?? this.complaints,
       registrationRequests: registrationRequests ?? this.registrationRequests,
       managedUsers: managedUsers ?? this.managedUsers,
+    );
+  }
+
+  static AppState initial() {
+    if (!kReleaseMode) {
+      return seeded();
+    }
+
+    return seeded().copyWith(
+      isUsingDemoData: false,
+      userName: '',
+      email: '',
+      phoneNumber: '',
+      customerName: '',
+      customerEmail: '',
+      customerPhone: '',
+      removeCustomerAvatar: true,
+      removeRoleAvatar: true,
+      lots: const [],
+      clearSelectedLot: true,
+      vehicles: const [],
+      clearSelectedVehicle: true,
+      slots: const [],
+      clearBooking: true,
+      favoriteLotIds: const [],
+      clearProviderApplication: true,
+      parkingGuards: const [],
+      clearActiveGuard: true,
+      history: const [],
+      customerNotifications: const [],
+      adminNotifications: const [],
+      customerChatRooms: const [],
+      customerChatMessages: const [],
+      customerComplaints: const [],
+      guardChatRooms: const [],
+      guardChatMessages: const [],
+      guardComplaints: const [],
+      providerChatRooms: const [],
+      providerChatMessages: const [],
+      superAdminChatRooms: const [],
+      superAdminChatMessages: const [],
+      superAdminNotifications: const [],
+      complaints: const [],
+      registrationRequests: const [],
+      managedUsers: const [],
     );
   }
 
@@ -1410,7 +1458,7 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 }
 
 class AppController extends StateNotifier<AppState> {
-  AppController() : super(AppState.seeded()) {
+  AppController() : super(AppState.initial()) {
     _loadOnboardingPreference();
   }
 
@@ -2070,8 +2118,7 @@ class AppController extends StateNotifier<AppState> {
     await Supabase.instance.client.functions.invoke('delete-account');
     await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
-    final seeded = AppState.seeded();
-    state = seeded;
+    state = AppState.initial();
   }
 
   void switchMode(AccountMode mode) {
@@ -3422,8 +3469,11 @@ class AppController extends StateNotifier<AppState> {
     required String slotCode,
     required DateTime entryTime,
   }) async {
-    final lot = state.selectedLot ?? state.lots.first;
-    final vehicle = state.selectedVehicle ?? state.vehicles.first;
+    final lot = state.selectedLot ?? state.lots.firstOrNull;
+    final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
+    if (lot == null || vehicle == null) {
+      throw StateError('Lokasi parkir dan kendaraan wajib dipilih.');
+    }
     final selectedSlot = state.slots.firstWhere(
       (slot) => slot.label == slotCode,
       orElse: () => ParkingSlot(
@@ -3728,7 +3778,10 @@ class AppController extends StateNotifier<AppState> {
       for (final item in state.vehicles)
         if (item.id == vehicle.id) updatedVehicle else item,
     ];
-    final lot = state.selectedLot ?? state.lots.first;
+    final lot = state.selectedLot ?? state.lots.firstOrNull;
+    if (lot == null) {
+      return;
+    }
     final currentCost = calculateParkingCost(lot, vehicle);
     final updatedCost = calculateParkingCost(lot, updatedVehicle);
     state = state.copyWith(
@@ -4760,24 +4813,32 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Dio Pratama');
-    _emailController = TextEditingController(text: 'dio@parkircepat.app');
-    _phoneController = TextEditingController(text: '+62 812 7788 9911');
+    _nameController = TextEditingController(
+      text: kReleaseMode ? '' : 'Dio Pratama',
+    );
+    _emailController = TextEditingController(
+      text: kReleaseMode ? '' : 'dio@parkircepat.app',
+    );
+    _phoneController = TextEditingController(
+      text: kReleaseMode ? '' : '+62 812 7788 9911',
+    );
     _passwordController = TextEditingController();
     _confirmPasswordController = TextEditingController();
     _parkingNameController = TextEditingController(
-      text: 'Parkir Cepat Sudirman Hub',
+      text: kReleaseMode ? '' : 'Parkir Cepat Sudirman Hub',
     );
     _parkingAddressController = TextEditingController(
-      text: 'Jl. Sudirman Smart Gate Kav. 18',
+      text: kReleaseMode ? '' : 'Jl. Sudirman Smart Gate Kav. 18',
     );
     _parkingPhotoController = TextEditingController(
-      text: 'lahan_parkir_sudirman.jpg',
+      text: kReleaseMode ? '' : 'lahan_parkir_sudirman.jpg',
     );
     _locationPointController = TextEditingController(
-      text: 'Lat -6.2088, Lng 106.8456',
+      text: kReleaseMode ? '' : 'Lat -6.2088, Lng 106.8456',
     );
-    _identityController = TextEditingController(text: 'ktp_provider_dio.png');
+    _identityController = TextEditingController(
+      text: kReleaseMode ? '' : 'ktp_provider_dio.png',
+    );
   }
 
   @override
@@ -7255,7 +7316,29 @@ class CustomerMapScreen extends ConsumerWidget {
     final state = ref.watch(appControllerProvider);
     final selectedLot = state.lots.any((lot) => lot.id == state.selectedLot?.id)
         ? state.selectedLot!
-        : state.lots.first;
+        : state.lots.firstOrNull;
+    if (selectedLot == null) {
+      return CustomerShell(
+        currentIndex: 1,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            const HeaderSection(
+              title: 'Map lokasi parkir',
+              subtitle: 'Marker realtime, radius terdekat, dan ETA perjalanan.',
+            ),
+            const SizedBox(height: 18),
+            EmptyStateCard(
+              title: 'Belum ada lokasi parkir',
+              body:
+                  'Map akan tampil setelah data lokasi dari Supabase berhasil dimuat.',
+              actionLabel: 'Ke Dashboard',
+              onPressed: () => context.go('/customer/home'),
+            ),
+          ],
+        ),
+      );
+    }
     return CustomerShell(
       currentIndex: 1,
       child: ListView(
@@ -7384,7 +7467,24 @@ class ParkingDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(appControllerProvider);
-    final lot = state.selectedLot ?? state.lots.first;
+    final lot = state.selectedLot ?? state.lots.firstOrNull;
+    if (lot == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detail lokasi parkir')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            EmptyStateCard(
+              title: 'Lokasi belum tersedia',
+              body:
+                  'Data lokasi parkir belum dimuat dari Supabase. Kembali ke dashboard lalu muat ulang.',
+              actionLabel: 'Kembali',
+              onPressed: () => context.go('/customer/home'),
+            ),
+          ],
+        ),
+      );
+    }
     final isFavorite = state.favoriteLotIds.contains(lot.id);
     return Scaffold(
       appBar: AppBar(title: const Text('Detail lokasi parkir')),
@@ -7539,7 +7639,9 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
   @override
   void initState() {
     super.initState();
-    _plateController = TextEditingController(text: 'B 5678 PCP');
+    _plateController = TextEditingController(
+      text: kReleaseMode ? '' : 'B 5678 PCP',
+    );
   }
 
   @override
@@ -7682,8 +7784,30 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final lot = state.selectedLot ?? state.lots.first;
-    final vehicle = state.selectedVehicle ?? state.vehicles.first;
+    final lot = state.selectedLot ?? state.lots.firstOrNull;
+    final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
+    if (lot == null || vehicle == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Booking parkir')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            EmptyStateCard(
+              title: lot == null
+                  ? 'Pilih lokasi parkir dulu'
+                  : 'Tambahkan kendaraan dulu',
+              body: lot == null
+                  ? 'Data lokasi parkir belum tersedia. Muat ulang dashboard lalu pilih lokasi parkir.'
+                  : 'Booking membutuhkan kendaraan yang tersimpan di akun customer.',
+              actionLabel: lot == null ? 'Ke Dashboard' : 'Tambah kendaraan',
+              onPressed: () => lot == null
+                  ? context.go('/customer/home')
+                  : context.push('/customer/add-vehicle'),
+            ),
+          ],
+        ),
+      );
+    }
     final total = calculateParkingCost(lot, vehicle);
     return Scaffold(
       appBar: AppBar(
@@ -8340,7 +8464,7 @@ int _hourlyRateFor(AppState state, Booking booking) {
       return lot.pricePerHour;
     }
   }
-  return state.selectedLot?.pricePerHour ?? state.lots.first.pricePerHour;
+  return state.selectedLot?.pricePerHour ?? booking.estimatedCost;
 }
 
 int _durationHoursFor(AppState state, Booking booking) {
@@ -11229,7 +11353,29 @@ class AdminMapScreen extends ConsumerWidget {
     final lots = visibleLotsFor(state);
     final selectedLot = lots.contains(state.selectedLot)
         ? state.selectedLot!
-        : lots.first;
+        : lots.firstOrNull;
+    if (selectedLot == null) {
+      return AdminShell(
+        currentIndex: 1,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+          children: [
+            const HeaderSection(
+              title: 'Map monitoring area',
+              subtitle: 'Kelola multi cabang, marker lokasi, dan status slot.',
+            ),
+            const SizedBox(height: 18),
+            EmptyStateCard(
+              title: 'Belum ada lokasi parkir',
+              body:
+                  'Map monitoring akan tampil setelah data lokasi dari Supabase tersedia.',
+              actionLabel: 'Ke Dashboard',
+              onPressed: () => context.go('/provider/dashboard'),
+            ),
+          ],
+        ),
+      );
+    }
     return AdminShell(
       currentIndex: 1,
       child: ListView(
@@ -11301,9 +11447,11 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Neo Smart Parking Hub');
+    _nameController = TextEditingController(
+      text: kReleaseMode ? '' : 'Neo Smart Parking Hub',
+    );
     _addressController = TextEditingController(
-      text: 'Jl. Gatot Subroto Smart Gate 8',
+      text: kReleaseMode ? '' : 'Jl. Gatot Subroto Smart Gate 8',
     );
   }
 
@@ -11574,11 +11722,15 @@ class _ParkingGuardManagementScreenState
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: 'Sinta Penjaga');
-    _emailController = TextEditingController(
-      text: 'sinta.guard@parkircepat.app',
+    _nameController = TextEditingController(
+      text: kReleaseMode ? '' : 'Sinta Penjaga',
     );
-    _phoneController = TextEditingController(text: '+62 812 4455 6677');
+    _emailController = TextEditingController(
+      text: kReleaseMode ? '' : 'sinta.guard@parkircepat.app',
+    );
+    _phoneController = TextEditingController(
+      text: kReleaseMode ? '' : '+62 812 4455 6677',
+    );
     _passwordController = TextEditingController();
     final lots = visibleLotsFor(ref.read(appControllerProvider));
     if (lots.isNotEmpty) {
@@ -12698,7 +12850,24 @@ class TransactionDetailScreen extends ConsumerWidget {
       return const ProviderFinancialReportScreen();
     }
 
-    final transaction = state.history.first;
+    final transaction = state.history.firstOrNull;
+    if (transaction == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detail transaksi')),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            EmptyStateCard(
+              title: 'Belum ada transaksi',
+              body:
+                  'Riwayat transaksi akan tampil setelah data Supabase berhasil dimuat.',
+              actionLabel: 'Kembali',
+              onPressed: () => context.pop(),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Detail transaksi')),
       body: ListView(
