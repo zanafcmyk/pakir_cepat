@@ -70,6 +70,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Pondasi realtime slot siap lewat listener `parking_slots`.
 - [x] Pondasi realtime lokasi siap lewat listener `parking_lots`.
 - [x] Pondasi realtime notifikasi in-app siap lewat listener `notifications`.
+- [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -77,6 +78,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 - [ ] Realtime slot perlu SQL `docs/supabase_realtime_slots.sql` dijalankan di Supabase production.
 - [ ] Realtime lokasi/notifikasi perlu SQL `docs/supabase_realtime_location_notifications.sql` dijalankan di Supabase production.
+- [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
 
@@ -116,7 +118,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Realtime lokasi dari tabel `parking_lots` di aplikasi.
 - [x] Realtime notifikasi in-app dari tabel `notifications` di aplikasi.
 - [x] Super admin user management ke Supabase untuk lihat user dan aktif/nonaktif akun.
-- [ ] Super admin hapus akun Auth sungguhan lewat admin action.
+- [x] Super admin hapus akun Auth sungguhan lewat admin action.
 
 ## Pembagian Tim
 
@@ -137,7 +139,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Belum Ada/Belum Production
 
-- [ ] User management super admin untuk hapus akun Auth sungguhan perlu Edge Function.
+- [x] User management super admin untuk hapus akun Auth sungguhan lewat Edge Function.
 - [x] Role guard dasar dan redirect auth sudah tersedia.
 - [ ] Audit role guard dan middleware auth untuk deep link production.
 - [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
@@ -261,6 +263,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] Edge Function untuk membuat akun penjaga.
 - [x] Edge Function/admin flow untuk hapus akun sungguhan.
+- [x] Edge Function `admin-delete-user` untuk super admin menghapus akun Auth user lain.
 - [x] Edge Function `create-midtrans-payment` untuk membuat transaksi Midtrans Snap.
 - [x] Edge Function `midtrans-webhook` untuk menerima callback Midtrans.
 - [x] Edge Function `send-push-notification` untuk mengirim FCM HTTP v1.

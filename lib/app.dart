@@ -2301,6 +2301,39 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<void> deleteManagedUserAccount(String id) async {
+    ManagedUserAccount? target;
+    for (final user in state.managedUsers) {
+      if (user.id == id) {
+        target = user;
+        break;
+      }
+    }
+    if (target == null) {
+      return;
+    }
+
+    await _superAdminService.deleteManagedUser(id);
+
+    state = state.copyWith(
+      managedUsers: [
+        for (final user in state.managedUsers)
+          if (user.id != id) user,
+      ],
+      superAdminNotifications: [
+        NoticeItem(
+          title: 'Akun dihapus',
+          message:
+              '${target.name} (${roleLabel(target.role)}) sudah dihapus dari Supabase Auth.',
+          timeLabel: 'Baru saja',
+          icon: Icons.delete_forever_rounded,
+          accent: const Color(0xFFDC2626),
+        ),
+        ...state.superAdminNotifications,
+      ],
+    );
+  }
+
   Future<void> suspendFirstActiveManagedUser() async {
     final activeUsers = state.managedUsers.where(
       (user) => user.status == UserAccessStatus.active,
@@ -6440,38 +6473,110 @@ class ManagedUserAccountCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          PrimaryButton(
-            label: isSuspended ? 'Aktifkan akun' : 'Nonaktifkan akun',
-            icon: isSuspended
-                ? Icons.check_circle_rounded
-                : Icons.block_rounded,
-            color: isSuspended ? AppTheme.emerald : const Color(0xFFDC2626),
-            onPressed: () async {
-              try {
-                await ref
-                    .read(appControllerProvider.notifier)
-                    .toggleManagedUserAccess(user.id);
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      isSuspended
-                          ? 'Akun berhasil diaktifkan kembali.'
-                          : 'Akun berhasil dinonaktifkan.',
-                    ),
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryButton(
+                  label: 'Hapus akun',
+                  icon: Icons.delete_forever_rounded,
+                  onPressed: () => _confirmDeleteManagedUser(
+                    context: context,
+                    ref: ref,
+                    user: user,
                   ),
-                );
-              } catch (_) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Gagal memperbarui akses di Supabase.'),
-                  ),
-                );
-              }
-            },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: PrimaryButton(
+                  label: isSuspended ? 'Aktifkan' : 'Nonaktifkan',
+                  icon: isSuspended
+                      ? Icons.check_circle_rounded
+                      : Icons.block_rounded,
+                  color: isSuspended
+                      ? AppTheme.emerald
+                      : const Color(0xFFDC2626),
+                  onPressed: () async {
+                    try {
+                      await ref
+                          .read(appControllerProvider.notifier)
+                          .toggleManagedUserAccess(user.id);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isSuspended
+                                ? 'Akun berhasil diaktifkan kembali.'
+                                : 'Akun berhasil dinonaktifkan.',
+                          ),
+                        ),
+                      );
+                    } catch (_) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Gagal memperbarui akses di Supabase.'),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+Future<void> _confirmDeleteManagedUser({
+  required BuildContext context,
+  required WidgetRef ref,
+  required ManagedUserAccount user,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Hapus akun?'),
+      content: Text(
+        'Akun ${user.name} (${user.email}) akan dihapus dari Supabase Auth. Tindakan ini tidak bisa dibatalkan.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Batal'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Hapus'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true) {
+    return;
+  }
+
+  try {
+    await ref
+        .read(appControllerProvider.notifier)
+        .deleteManagedUserAccount(user.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Akun ${user.email} berhasil dihapus.')),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Gagal menghapus akun. Pastikan Edge Function admin-delete-user sudah deploy.',
+        ),
       ),
     );
   }

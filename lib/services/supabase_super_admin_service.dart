@@ -74,6 +74,13 @@ class SupabaseSuperAdminService {
         .eq('id', profileId);
   }
 
+  Future<void> deleteManagedUser(String profileId) {
+    return _client.functions.invoke(
+      'admin-delete-user',
+      body: {'profileId': profileId},
+    );
+  }
+
   Future<SupabaseSuperAdminOverview> fetchOverview() async {
     final profiles = await _client
         .from('profiles')
