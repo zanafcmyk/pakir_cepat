@@ -48,6 +48,21 @@ class SupabaseNotificationService {
     required String message,
     String type = 'info',
   }) async {
+    try {
+      await _client.rpc(
+        'app_create_notifications_for_role',
+        params: {
+          'p_role': _roleToDb(role),
+          'p_title': title,
+          'p_message': message,
+          'p_type': type,
+        },
+      );
+      return;
+    } catch (_) {
+      // Fall back to direct table access when the optional RLS patch is absent.
+    }
+
     final rows = await _client
         .from('profiles')
         .select('id')
@@ -75,6 +90,21 @@ class SupabaseNotificationService {
     required String message,
     String type = 'info',
   }) async {
+    try {
+      final result = await _client.rpc(
+        'app_create_provider_notification',
+        params: {
+          'p_provider_id': providerId,
+          'p_title': title,
+          'p_message': message,
+          'p_type': type,
+        },
+      );
+      return result == true;
+    } catch (_) {
+      // Fall back to direct table access when the optional RLS patch is absent.
+    }
+
     final rows = await _client
         .from('providers')
         .select('profiles(id, access_status)')
@@ -111,6 +141,21 @@ class SupabaseNotificationService {
     required String message,
     String type = 'info',
   }) async {
+    try {
+      final result = await _client.rpc(
+        'app_create_guard_notifications_for_lot',
+        params: {
+          'p_parking_lot_id': parkingLotId,
+          'p_title': title,
+          'p_message': message,
+          'p_type': type,
+        },
+      );
+      return (result as num?)?.toInt() != 0;
+    } catch (_) {
+      // Fall back to direct table access when the optional RLS patch is absent.
+    }
+
     final rows = await _client
         .from('guard_lot_assignments')
         .select('parking_guards(profiles(id, access_status))')
@@ -157,6 +202,21 @@ class SupabaseNotificationService {
     required String message,
     String type = 'info',
   }) async {
+    try {
+      await _client.rpc(
+        'app_create_notification',
+        params: {
+          'p_profile_id': profileId,
+          'p_title': title,
+          'p_message': message,
+          'p_type': type,
+        },
+      );
+      return;
+    } catch (_) {
+      // Fall back to direct table access when the optional RLS patch is absent.
+    }
+
     await _client.from('notifications').insert({
       'profile_id': profileId,
       'title': title,

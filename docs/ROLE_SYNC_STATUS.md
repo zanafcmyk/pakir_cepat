@@ -23,10 +23,12 @@ Dokumen ini mencatat sinkron fitur antar role Parkir Cepat. Status dibuat per ar
 - [x] Chat customer-penjaga mencoba menargetkan penjaga assignment dari tiket booking.
 - [x] Chat penjaga-customer mencoba menargetkan customer pemilik tiket booking.
 - [x] Chat penyedia-penjaga mencoba menargetkan penjaga milik penyedia atau penyedia milik penjaga.
+- [x] Kode chat/notifikasi memakai RPC optional agar tetap cocok dengan RLS ketat.
 
 ## Perlu Dicek Saat Uji Perangkat
 
 - [ ] Chat antar role sudah ditingkatkan ke target berbasis konteks, tetapi tetap perlu uji apakah setiap percakapan masuk ke orang/lokasi yang tepat saat ada banyak penyedia atau banyak penjaga.
+- [ ] Jalankan `docs/supabase_role_sync_rls_patch.sql` agar RPC target chat/notifikasi tersedia di Supabase production.
 - [x] Notifikasi booking/payment sudah ditargetkan berdasarkan lokasi parkir dan assignment penjaga.
 - [x] Notifikasi balasan komplain sudah ditargetkan ke `sender_profile_id`.
 - [x] Notifikasi verifikasi sudah ditargetkan ke `profile_id` saat data berasal dari Supabase.

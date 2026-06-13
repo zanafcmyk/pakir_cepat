@@ -80,6 +80,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Notifikasi balasan komplain diarahkan ke profil pengirim komplain, dengan fallback role-level untuk data lama/demo.
 - [x] Notifikasi verifikasi akun penyedia diarahkan ke profil penyedia yang diverifikasi, dengan fallback role-level untuk data lama/demo.
 - [x] Chat room mencoba menargetkan member spesifik dari konteks lokasi/tiket/provider-guard sebelum fallback role-level.
+- [x] Audit RLS sinkron antar-role dibuat dan kode memakai RPC optional untuk chat/notifikasi.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
@@ -95,6 +96,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
+- [ ] SQL RLS patch `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan di Supabase production.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
@@ -125,6 +127,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SERVICE_ROLE_KEY`.
 - Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
 - Matriks sinkron antar role dicatat di `docs/ROLE_SYNC_STATUS.md`.
+- Audit RLS sinkron antar role dicatat di `docs/RLS_AUDIT_STATUS.md`.
 
 ### Belum Ada atau Belum Production
 

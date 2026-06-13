@@ -132,6 +132,13 @@ class SupabaseChatService {
   }
 
   Future<List<Map<String, dynamic>>> _profilesByRole(AccountMode role) async {
+    final rpcProfiles = await _profilesFromRpc('app_active_profiles_by_role', {
+      'p_role': _roleToDb(role),
+    });
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
+    }
+
     final rows = await _client
         .from('profiles')
         .select('id, full_name, role')
@@ -206,6 +213,13 @@ class SupabaseChatService {
       return const [];
     }
 
+    final rpcProfiles = await _profilesFromRpc('app_provider_profile_for_lot', {
+      'p_parking_lot_id': lotId,
+    });
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
+    }
+
     final rows = await _client
         .from('parking_lots')
         .select('providers(profiles(id, full_name, role, access_status))')
@@ -237,6 +251,14 @@ class SupabaseChatService {
   Future<List<Map<String, dynamic>>> _guardProfilesForTicket(
     String ticketNumber,
   ) async {
+    final rpcProfiles = await _profilesFromRpc(
+      'app_guard_profiles_for_ticket',
+      {'p_ticket_number': ticketNumber},
+    );
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
+    }
+
     final lotId = await _parkingLotIdForTicket(ticketNumber);
     if (lotId == null) {
       return const [];
@@ -255,6 +277,14 @@ class SupabaseChatService {
   ) async {
     if (ticketNumber.isEmpty) {
       return const [];
+    }
+
+    final rpcProfiles = await _profilesFromRpc(
+      'app_customer_profile_for_ticket',
+      {'p_ticket_number': ticketNumber},
+    );
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
     }
 
     final rows = await _client
@@ -286,6 +316,13 @@ class SupabaseChatService {
   }
 
   Future<List<Map<String, dynamic>>> _currentProviderGuardProfiles() async {
+    final rpcProfiles = await _profilesFromRpc(
+      'app_current_provider_guard_profiles',
+    );
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
+    }
+
     final user = _client.auth.currentUser;
     if (user == null) {
       return const [];
@@ -314,6 +351,13 @@ class SupabaseChatService {
   }
 
   Future<List<Map<String, dynamic>>> _currentGuardProviderProfile() async {
+    final rpcProfiles = await _profilesFromRpc(
+      'app_current_guard_provider_profile',
+    );
+    if (rpcProfiles.isNotEmpty) {
+      return rpcProfiles;
+    }
+
     final user = _client.auth.currentUser;
     if (user == null) {
       return const [];
@@ -361,6 +405,24 @@ class SupabaseChatService {
       return null;
     }
     return (rows.first as Map)['parking_lot_id'] as String?;
+  }
+
+  Future<List<Map<String, dynamic>>> _profilesFromRpc(
+    String functionName, [
+    Map<String, dynamic>? params,
+  ]) async {
+    try {
+      final value = await _client.rpc(functionName, params: params);
+      if (value is! List) {
+        return const [];
+      }
+      return [
+        for (final row in value)
+          if (row is Map) Map<String, dynamic>.from(row),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   List<Map<String, dynamic>> _profilesFromGuardRows(List<dynamic> rows) {
