@@ -51,7 +51,7 @@ class SupabaseSuperAdminService {
         .select(
           'id, parking_name, address, photo_url, location_label, capacity, '
           'identity_document_url, status, created_at, '
-          'profiles(full_name, email, phone_number)',
+          'profiles(id, full_name, email, phone_number)',
         )
         .inFilter('status', ['pending', 'rejected'])
         .order('created_at', ascending: false);
@@ -289,6 +289,7 @@ class SupabaseSuperAdminService {
     final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
     return RegistrationRequest(
       id: row['id'] as String? ?? '',
+      profileId: profile['id'] as String?,
       fullName: profile['full_name'] as String? ?? 'Penyedia Parkir',
       email: profile['email'] as String? ?? '-',
       phoneNumber: profile['phone_number'] as String? ?? '-',

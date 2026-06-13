@@ -2452,16 +2452,28 @@ class AppController extends StateNotifier<AppState> {
 
     if (selected != null) {
       await _syncRegistrationStatus(selected, status);
-      _syncRoleNotification(
-        role: selected.role,
-        title: status == AccountStatus.verified
-            ? 'Akun disetujui'
-            : 'Akun ditolak',
-        message: status == AccountStatus.verified
-            ? 'Akun ${roleLabel(selected.role)} kamu sudah diverifikasi Super Admin.'
-            : 'Pengajuan akun ${roleLabel(selected.role)} perlu diperbarui.',
-        type: 'verification',
-      );
+      final title = status == AccountStatus.verified
+          ? 'Akun disetujui'
+          : 'Akun ditolak';
+      final message = status == AccountStatus.verified
+          ? 'Akun ${roleLabel(selected.role)} kamu sudah diverifikasi Super Admin.'
+          : 'Pengajuan akun ${roleLabel(selected.role)} perlu diperbarui.';
+      final profileId = selected.profileId;
+      if (profileId == null || profileId.isEmpty) {
+        _syncRoleNotification(
+          role: selected.role,
+          title: title,
+          message: message,
+          type: 'verification',
+        );
+      } else {
+        _syncProfileNotification(
+          profileId: profileId,
+          title: title,
+          message: message,
+          type: 'verification',
+        );
+      }
     }
 
     final notices = [

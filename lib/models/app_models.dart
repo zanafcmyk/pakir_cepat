@@ -295,6 +295,7 @@ class ComplaintItem {
 class RegistrationRequest {
   const RegistrationRequest({
     required this.id,
+    this.profileId,
     required this.fullName,
     required this.email,
     required this.phoneNumber,
@@ -305,6 +306,7 @@ class RegistrationRequest {
   });
 
   final String id;
+  final String? profileId;
   final String fullName;
   final String email;
   final String phoneNumber;
@@ -315,6 +317,7 @@ class RegistrationRequest {
 
   RegistrationRequest copyWith({
     String? id,
+    String? profileId,
     String? fullName,
     String? email,
     String? phoneNumber,
@@ -325,6 +328,7 @@ class RegistrationRequest {
   }) {
     return RegistrationRequest(
       id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
       fullName: fullName ?? this.fullName,
       email: email ?? this.email,
       phoneNumber: phoneNumber ?? this.phoneNumber,

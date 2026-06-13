@@ -18,14 +18,14 @@ Dokumen ini mencatat sinkron fitur antar role Parkir Cepat. Status dibuat per ar
 - [x] Super admin ke penjaga: user management, hapus akun, balasan komplain, dan chat memakai Supabase.
 - [x] Notifikasi in-app booking dan pembayaran dibuat ke tabel `notifications` untuk penyedia pemilik lokasi dan penjaga yang ditugaskan.
 - [x] Notifikasi in-app balasan komplain dibuat ke tabel `notifications` untuk profil pengirim komplain.
-- [x] Notifikasi in-app verifikasi dibuat ke tabel `notifications` untuk role penerima.
+- [x] Notifikasi in-app verifikasi dibuat ke tabel `notifications` untuk profil penyedia yang diverifikasi.
 
 ## Perlu Dicek Saat Uji Perangkat
 
 - [ ] Chat antar role sudah realtime, tetapi target penerima masih berdasarkan role/room. Perlu uji apakah setiap percakapan sudah masuk ke orang/lokasi yang tepat saat ada banyak penyedia atau banyak penjaga.
 - [x] Notifikasi booking/payment sudah ditargetkan berdasarkan lokasi parkir dan assignment penjaga.
 - [x] Notifikasi balasan komplain sudah ditargetkan ke `sender_profile_id`.
-- [ ] Notifikasi verifikasi masih dikirim ke semua akun aktif dalam role yang sama. Nanti perlu dibuat target per `profile_id` agar lebih presisi.
+- [x] Notifikasi verifikasi sudah ditargetkan ke `profile_id` saat data berasal dari Supabase.
 - [ ] Push notification HP masih belum production penuh sampai Firebase config, token device, secret FCM, dan trigger pengiriman aktif.
 - [ ] RLS/policy Supabase perlu audit akhir supaya setiap role hanya bisa melihat data miliknya.
 - [ ] Payment Midtrans perlu webhook production agar perubahan status pembayaran dari Midtrans otomatis balik ke Supabase.
@@ -33,5 +33,5 @@ Dokumen ini mencatat sinkron fitur antar role Parkir Cepat. Status dibuat per ar
 ## Rekomendasi Berikutnya
 
 1. Uji chat dan notifikasi dengan minimal 1 customer, 1 penyedia, 1 penjaga, dan 1 super admin.
-2. Perketat target notifikasi verifikasi dari role-level menjadi profile-level.
+2. Audit target room chat agar percakapan masuk ke penyedia/penjaga spesifik saat data pengguna sudah banyak.
 3. Audit RLS Supabase per role sebelum aplikasi dipakai publik.
