@@ -74,6 +74,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
 - [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
+- [x] Error handling dashboard penyedia, penjaga, dan super admin menampilkan kegagalan data Supabase.
+- [x] Data demo/lokal mulai dipisah dengan flag `isUsingDemoData` dan notice dashboard.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
@@ -261,9 +263,11 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] SQL realtime slot perlu dipastikan sudah dijalankan di Supabase production.
 - [ ] SQL realtime lokasi/notifikasi perlu dipastikan sudah dijalankan di Supabase production.
-- [ ] Data demo/lokal perlu dipisah dari data production.
+- [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
+- [ ] Data demo/lokal perlu audit lanjutan agar seed tidak muncul di build production.
 - [x] Error handling koneksi Supabase mulai diperkuat di dashboard customer.
-- [ ] Error handling koneksi Supabase perlu diaudit konsisten di semua layar.
+- [x] Error handling koneksi Supabase dashboard utama sudah diperkuat.
+- [ ] Error handling koneksi Supabase perlu diaudit konsisten di form dan halaman detail.
 - [x] Route protection dasar punya test deep link role.
 - [ ] Route protection perlu audit production lanjutan di perangkat asli setelah semua deep link final.
 

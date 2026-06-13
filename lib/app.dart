@@ -475,6 +475,7 @@ class AppState {
     required this.onboardingIndex,
     required this.onboardingDone,
     required this.isAuthenticated,
+    required this.isUsingDemoData,
     required this.currentMode,
     required this.accountStatus,
     required this.userName,
@@ -525,6 +526,7 @@ class AppState {
   final int onboardingIndex;
   final bool onboardingDone;
   final bool isAuthenticated;
+  final bool isUsingDemoData;
   final AccountMode currentMode;
   final AccountStatus accountStatus;
   final String userName;
@@ -575,6 +577,7 @@ class AppState {
     int? onboardingIndex,
     bool? onboardingDone,
     bool? isAuthenticated,
+    bool? isUsingDemoData,
     AccountMode? currentMode,
     AccountStatus? accountStatus,
     String? userName,
@@ -630,6 +633,7 @@ class AppState {
       onboardingIndex: onboardingIndex ?? this.onboardingIndex,
       onboardingDone: onboardingDone ?? this.onboardingDone,
       isAuthenticated: isAuthenticated ?? this.isAuthenticated,
+      isUsingDemoData: isUsingDemoData ?? this.isUsingDemoData,
       currentMode: currentMode ?? this.currentMode,
       accountStatus: accountStatus ?? this.accountStatus,
       userName: userName ?? this.userName,
@@ -1285,6 +1289,7 @@ class AppState {
       onboardingIndex: 0,
       onboardingDone: false,
       isAuthenticated: false,
+      isUsingDemoData: true,
       currentMode: AccountMode.customer,
       accountStatus: AccountStatus.verified,
       userName: 'Dio Pratama',
@@ -1639,6 +1644,7 @@ class AppController extends StateNotifier<AppState> {
       lots: data.lots,
       selectedLot: selectedLot,
       slots: data.slots.isEmpty ? state.slots : data.slots,
+      isUsingDemoData: false,
     );
     startParkingSlotRealtime();
     startParkingLocationRealtime();
@@ -1699,6 +1705,7 @@ class AppController extends StateNotifier<AppState> {
         lots: data.lots,
         selectedLot: selectedLot,
         slots: data.slots.isEmpty ? state.slots : data.slots,
+        isUsingDemoData: false,
       );
     } catch (_) {
       // Realtime refresh is best-effort; manual reload still works.
@@ -1711,6 +1718,7 @@ class AppController extends StateNotifier<AppState> {
       lots: data.lots,
       selectedLot: data.lots.isEmpty ? state.selectedLot : data.lots.first,
       slots: data.slots.isEmpty ? state.slots : data.slots,
+      isUsingDemoData: data.lots.isEmpty ? state.isUsingDemoData : false,
     );
   }
 
@@ -5802,6 +5810,7 @@ class SuperAdminDashboardScreen extends ConsumerStatefulWidget {
 class _SuperAdminDashboardScreenState
     extends ConsumerState<SuperAdminDashboardScreen> {
   late Future<SupabaseSuperAdminOverview> _overviewFuture;
+  String? _loadError;
 
   @override
   void initState() {
@@ -5809,12 +5818,20 @@ class _SuperAdminDashboardScreenState
     _overviewFuture = ref
         .read(appControllerProvider.notifier)
         .fetchSuperAdminOverviewFromSupabase();
-    Future.microtask(
-      () => ref
-          .read(appControllerProvider.notifier)
-          .loadComplaintsFromSupabase()
-          .catchError((_) {}),
-    );
+    Future.microtask(() async {
+      try {
+        await ref
+            .read(appControllerProvider.notifier)
+            .loadComplaintsFromSupabase();
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () =>
+                _loadError = 'Komplain super admin gagal dimuat dari Supabase.',
+          );
+        }
+      }
+    });
   }
 
   @override
@@ -5839,6 +5856,9 @@ class _SuperAdminDashboardScreenState
                 totalTransactionCount: 0,
                 totalRevenue: 0,
               );
+          final overviewError = snapshot.hasError
+              ? 'Ringkasan super admin gagal dimuat dari Supabase.'
+              : null;
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
@@ -5848,6 +5868,17 @@ class _SuperAdminDashboardScreenState
                     'Pantau pengguna, verifikasi akun, laporan lintas lokasi, transaksi, dan komplain.',
               ),
               const SizedBox(height: 18),
+              if (overviewError != null || _loadError != null) ...[
+                InlineNotice(
+                  icon: Icons.wifi_off_rounded,
+                  accent: const Color(0xFFD97706),
+                  message: [
+                    overviewError,
+                    _loadError,
+                  ].whereType<String>().join(' '),
+                ),
+                const SizedBox(height: 18),
+              ],
               Wrap(
                 spacing: 14,
                 runSpacing: 14,
@@ -10934,15 +10965,24 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   late Future<SupabaseProviderDashboardSummary> _summaryFuture;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
     final controller = ref.read(appControllerProvider.notifier);
     _summaryFuture = controller.fetchProviderDashboardSummaryFromSupabase();
-    Future.microtask(
-      () => controller.loadParkingDataFromSupabase().catchError((_) {}),
-    );
+    Future.microtask(() async {
+      try {
+        await controller.loadParkingDataFromSupabase();
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () => _loadError = 'Data lokasi/slot gagal dimuat dari Supabase.',
+          );
+        }
+      }
+    });
   }
 
   @override
@@ -10964,6 +11004,20 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
             ),
           ),
           const SizedBox(height: 18),
+          if (state.isUsingDemoData || _loadError != null) ...[
+            InlineNotice(
+              icon: _loadError == null
+                  ? Icons.science_rounded
+                  : Icons.wifi_off_rounded,
+              accent: _loadError == null
+                  ? AppTheme.blue
+                  : const Color(0xFFD97706),
+              message:
+                  _loadError ??
+                  'Dashboard masih memakai data demo/lokal sampai data Supabase berhasil dimuat.',
+            ),
+            const SizedBox(height: 18),
+          ],
           FutureBuilder<SupabaseProviderDashboardSummary>(
             future: _summaryFuture,
             builder: (context, snapshot) {
@@ -10973,10 +11027,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                     vehiclesEnteredToday: 0,
                     revenueToday: 0,
                   );
+              final summaryError = snapshot.hasError
+                  ? 'Ringkasan penyedia gagal dimuat dari Supabase.'
+                  : null;
               return Wrap(
                 spacing: 14,
                 runSpacing: 14,
                 children: [
+                  if (summaryError != null)
+                    InlineNotice(
+                      icon: Icons.wifi_off_rounded,
+                      accent: const Color(0xFFD97706),
+                      message: summaryError,
+                    ),
                   StatCard(
                     label: 'Kendaraan masuk',
                     value: '${summary.vehiclesEnteredToday}',
@@ -13880,13 +13943,30 @@ class ParkingGuardDashboardScreen extends ConsumerStatefulWidget {
 
 class _ParkingGuardDashboardScreenState
     extends ConsumerState<ParkingGuardDashboardScreen> {
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() async {
       final controller = ref.read(appControllerProvider.notifier);
-      await controller.loadParkingDataFromSupabase().catchError((_) {});
-      await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+      final failures = <String>[];
+      try {
+        await controller.loadParkingDataFromSupabase();
+      } catch (_) {
+        failures.add('lokasi/slot');
+      }
+      try {
+        await controller.loadCurrentGuardFromSupabase();
+      } catch (_) {
+        failures.add('akun penjaga');
+      }
+      if (mounted && failures.isNotEmpty) {
+        setState(
+          () => _loadError =
+              'Sebagian data penjaga gagal dimuat: ${failures.join(', ')}.',
+        );
+      }
     });
   }
 
@@ -13924,6 +14004,20 @@ class _ParkingGuardDashboardScreenState
                 '${guard?.name ?? 'Penjaga'} hanya dapat mengakses ${lots.length} lokasi dari penyedia.',
           ),
           const SizedBox(height: 18),
+          if (state.isUsingDemoData || _loadError != null) ...[
+            InlineNotice(
+              icon: _loadError == null
+                  ? Icons.science_rounded
+                  : Icons.wifi_off_rounded,
+              accent: _loadError == null
+                  ? AppTheme.blue
+                  : const Color(0xFFD97706),
+              message:
+                  _loadError ??
+                  'Dashboard masih memakai data demo/lokal sampai assignment Supabase berhasil dimuat.',
+            ),
+            const SizedBox(height: 18),
+          ],
           Wrap(
             spacing: 14,
             runSpacing: 14,
