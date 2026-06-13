@@ -17,7 +17,7 @@ supabase functions deploy send-push-notification
 Secrets yang perlu diisi di Supabase:
 
 ```text
-SUPABASE_SERVICE_ROLE_KEY
+SERVICE_ROLE_KEY
 MIDTRANS_SERVER_KEY
 MIDTRANS_IS_PRODUCTION
 APP_PAYMENT_FINISH_URL
@@ -28,7 +28,7 @@ PUSH_FUNCTION_SECRET
 
 Catatan:
 
-- `SUPABASE_SERVICE_ROLE_KEY` jangan dimasukkan ke Flutter.
+- `SERVICE_ROLE_KEY` berisi service role key Supabase dan jangan dimasukkan ke Flutter.
 - `MIDTRANS_IS_PRODUCTION=false` untuk sandbox.
 - `midtrans-webhook` perlu `--no-verify-jwt` agar Midtrans bisa memanggil webhook.
 - `APP_PAYMENT_FINISH_URL` boleh kosong jika belum punya deep link final.
@@ -67,4 +67,3 @@ Langkah production:
 5. Minta permission notifikasi di aplikasi.
 6. Simpan FCM token ke `device_push_tokens`.
 7. Panggil `send-push-notification` dari trigger/event booking, payment, komplain, atau tugas penjaga.
-

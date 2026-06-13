@@ -11,7 +11,7 @@ supabase/functions/admin-delete-user
 Secret yang wajib ada di Supabase:
 
 ```text
-SUPABASE_SERVICE_ROLE_KEY
+SERVICE_ROLE_KEY
 ```
 
 Deploy function:

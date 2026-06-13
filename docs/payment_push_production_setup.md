@@ -16,7 +16,7 @@ Secret Supabase yang dibutuhkan:
 - `MIDTRANS_SERVER_KEY`
 - `MIDTRANS_IS_PRODUCTION`
 - `APP_PAYMENT_FINISH_URL` opsional
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SERVICE_ROLE_KEY`
 
 Function yang perlu dideploy:
 
@@ -53,7 +53,7 @@ Secret Supabase yang dibutuhkan:
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_SERVICE_ACCOUNT_JSON`
 - `PUSH_FUNCTION_SECRET`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SERVICE_ROLE_KEY`
 
 SQL yang perlu dijalankan:
 

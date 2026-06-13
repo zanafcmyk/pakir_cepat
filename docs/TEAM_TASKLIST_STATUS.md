@@ -85,7 +85,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
-- [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
+- [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
 
@@ -105,14 +105,14 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Error handling form/detail utama sudah diperkuat dengan notice menetap di form tambah lahan, akun penjaga, komplain customer, dan komplain penjaga.
 - Checklist deploy eksternal dibuat di `docs/production_external_deploy_checklist.md`.
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
-- Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SUPABASE_SERVICE_ROLE_KEY`.
+- Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SERVICE_ROLE_KEY`.
 - Payment gateway Midtrans sudah disiapkan di kode dan Edge Function, tetapi belum production penuh sampai secret `MIDTRANS_SERVER_KEY`, deploy function, dan webhook Midtrans aktif.
 - Payment gateway ditampung dulu; pilihan debit/kredit sudah dihapus dari aplikasi sesuai keputusan terbaru.
 - Receipt sudah baca Supabase dan tombol cetak/export sekarang menghasilkan PDF.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
-- Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SUPABASE_SERVICE_ROLE_KEY`.
+- Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SERVICE_ROLE_KEY`.
 - Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
 
 ### Belum Ada atau Belum Production
