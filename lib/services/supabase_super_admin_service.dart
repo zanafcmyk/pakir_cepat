@@ -46,7 +46,7 @@ class SupabaseSuperAdminService {
   final SupabaseClient _client;
 
   Future<List<RegistrationRequest>> fetchProviderRegistrationRequests() async {
-    final rows = await _client
+    final applicationRows = await _client
         .from('provider_applications')
         .select(
           'id, parking_name, address, photo_url, location_label, capacity, '
@@ -56,10 +56,39 @@ class SupabaseSuperAdminService {
         .inFilter('status', ['pending', 'rejected'])
         .order('created_at', ascending: false);
 
-    return [
-      for (final item in rows)
+    final requests = [
+      for (final item in applicationRows)
         _registrationRequestFromRow(Map<String, dynamic>.from(item as Map)),
     ];
+
+    final knownProfileIds = {
+      for (final request in requests)
+        if (request.profileId != null) request.profileId!,
+    };
+
+    final providerRows = await _client
+        .from('providers')
+        .select(
+          'id, profile_id, business_name, business_address, '
+          'identity_document_url, status, created_at, '
+          'profiles(id, full_name, email, phone_number)',
+        )
+        .inFilter('status', ['pending', 'rejected'])
+        .order('created_at', ascending: false);
+
+    for (final item in providerRows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final profileId = row['profile_id'] as String?;
+      if (profileId != null && knownProfileIds.contains(profileId)) {
+        continue;
+      }
+      requests.add(_registrationRequestFromProviderRow(row));
+      if (profileId != null) {
+        knownProfileIds.add(profileId);
+      }
+    }
+
+    return requests;
   }
 
   Future<List<ManagedUserAccount>> fetchManagedUsers() async {
@@ -304,6 +333,35 @@ class SupabaseSuperAdminService {
         photoLabel: row['photo_url'] as String? ?? '-',
         locationLabel: row['location_label'] as String? ?? '-',
         capacity: (row['capacity'] as num?)?.toInt() ?? 0,
+        identityLabel: row['identity_document_url'] as String? ?? '-',
+      ),
+    );
+  }
+
+  RegistrationRequest _registrationRequestFromProviderRow(
+    Map<String, dynamic> row,
+  ) {
+    final profile = row['profiles'] is Map
+        ? Map<String, dynamic>.from(row['profiles'] as Map)
+        : <String, dynamic>{};
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+    return RegistrationRequest(
+      id: row['id'] as String? ?? '',
+      profileId: profile['id'] as String? ?? row['profile_id'] as String?,
+      fullName: profile['full_name'] as String? ?? 'Penyedia Parkir',
+      email: profile['email'] as String? ?? '-',
+      phoneNumber: profile['phone_number'] as String? ?? '-',
+      role: AccountMode.provider,
+      timeLabel: createdAt == null
+          ? 'Baru'
+          : _dateTimeLabel(row['created_at'] as String?),
+      status: _accountStatusFromDb(row['status'] as String?),
+      providerApplication: ProviderApplication(
+        parkingName: row['business_name'] as String? ?? 'Lahan parkir',
+        address: row['business_address'] as String? ?? '-',
+        photoLabel: '-',
+        locationLabel: '-',
+        capacity: 0,
         identityLabel: row['identity_document_url'] as String? ?? '-',
       ),
     );
