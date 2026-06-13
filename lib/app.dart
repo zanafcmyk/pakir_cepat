@@ -1415,6 +1415,64 @@ AccountStatus accountStatusFromDb(String? value) => switch (value) {
   _ => AccountStatus.pending,
 };
 
+Future<AccountStatus> currentProviderStatusFromSupabase(
+  String profileId, {
+  String? profileStatus,
+}) async {
+  final statuses = <AccountStatus>[accountStatusFromDb(profileStatus)];
+  final supabase = Supabase.instance.client;
+
+  final providerRows = await supabase
+      .from('providers')
+      .select('status')
+      .eq('profile_id', profileId)
+      .limit(1);
+  if (providerRows.isNotEmpty) {
+    statuses.add(accountStatusFromDb(providerRows.first['status'] as String?));
+  }
+
+  final applicationRows = await supabase
+      .from('provider_applications')
+      .select('status')
+      .eq('profile_id', profileId)
+      .order('created_at', ascending: false)
+      .limit(1);
+  if (applicationRows.isNotEmpty) {
+    statuses.add(
+      accountStatusFromDb(applicationRows.first['status'] as String?),
+    );
+  }
+
+  return strongestAccountStatus(statuses);
+}
+
+Future<ProviderApplication?> providerApplicationFromSupabase(
+  String profileId,
+) async {
+  final rows = await Supabase.instance.client
+      .from('provider_applications')
+      .select(
+        'parking_name, address, photo_url, location_label, capacity, identity_document_url',
+      )
+      .eq('profile_id', profileId)
+      .order('created_at', ascending: false)
+      .limit(1);
+
+  if (rows.isEmpty) {
+    return null;
+  }
+
+  final row = rows.first;
+  return ProviderApplication(
+    parkingName: (row['parking_name'] as String?) ?? 'Lahan parkir',
+    address: (row['address'] as String?) ?? '-',
+    photoLabel: (row['photo_url'] as String?) ?? '-',
+    locationLabel: (row['location_label'] as String?) ?? '-',
+    capacity: (row['capacity'] as num?)?.toInt() ?? 0,
+    identityLabel: (row['identity_document_url'] as String?) ?? '-',
+  );
+}
+
 String complaintStatusLabel(ComplaintStatus status) => switch (status) {
   ComplaintStatus.waiting => 'Menunggu jawaban',
   ComplaintStatus.answered => 'Terjawab',
@@ -1436,6 +1494,16 @@ Color userAccessStatusColor(UserAccessStatus status) => switch (status) {
   UserAccessStatus.active => AppTheme.emerald,
   UserAccessStatus.suspended => const Color(0xFFDC2626),
 };
+
+AccountStatus strongestAccountStatus(Iterable<AccountStatus> statuses) {
+  if (statuses.contains(AccountStatus.verified)) {
+    return AccountStatus.verified;
+  }
+  if (statuses.contains(AccountStatus.rejected)) {
+    return AccountStatus.rejected;
+  }
+  return AccountStatus.pending;
+}
 
 ParkingGuardAccount? activeGuard(AppState state) {
   for (final guard in state.parkingGuards) {
@@ -2243,6 +2311,17 @@ class AppController extends StateNotifier<AppState> {
 
   void setProviderStatus(AccountStatus status) {
     state = state.copyWith(accountStatus: status);
+  }
+
+  void setProviderVerificationState({
+    required AccountStatus status,
+    ProviderApplication? application,
+  }) {
+    state = state.copyWith(
+      accountStatus: status,
+      providerApplication: application,
+      clearProviderApplication: application == null,
+    );
   }
 
   Future<void> updateRegistrationStatus(String id, AccountStatus status) async {
@@ -4271,7 +4350,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       final profile = await supabase
           .from('profiles')
-          .select('id, email, role, access_status')
+          .select('id, email, role, access_status, account_status')
           .eq('id', user.id)
           .single();
 
@@ -4365,12 +4444,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
-      final provider = await supabase
-          .from('providers')
-          .select('status, business_name, business_address')
-          .eq('profile_id', user.id)
-          .single();
-      final status = _accountStatusFromDb(provider['status'] as String?);
+      final status = await _currentProviderStatusForLogin(
+        user.id,
+        profileStatus: profile['account_status'] as String?,
+      );
       final application = await _providerApplicationForLogin(user.id);
 
       controller.login(
@@ -4575,27 +4652,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<ProviderApplication?> _providerApplicationForLogin(
     String profileId,
   ) async {
-    final rows = await Supabase.instance.client
-        .from('provider_applications')
-        .select(
-          'parking_name, address, photo_url, location_label, capacity, identity_document_url',
-        )
-        .eq('profile_id', profileId)
-        .order('created_at', ascending: false)
-        .limit(1);
+    return providerApplicationFromSupabase(profileId);
+  }
 
-    if (rows.isEmpty) {
-      return null;
-    }
-
-    final row = rows.first;
-    return ProviderApplication(
-      parkingName: (row['parking_name'] as String?) ?? 'Lahan parkir',
-      address: (row['address'] as String?) ?? '-',
-      photoLabel: (row['photo_url'] as String?) ?? '-',
-      locationLabel: (row['location_label'] as String?) ?? '-',
-      capacity: (row['capacity'] as num?)?.toInt() ?? 0,
-      identityLabel: (row['identity_document_url'] as String?) ?? '-',
+  Future<AccountStatus> _currentProviderStatusForLogin(
+    String profileId, {
+    String? profileStatus,
+  }) async {
+    return currentProviderStatusFromSupabase(
+      profileId,
+      profileStatus: profileStatus,
     );
   }
 
@@ -4663,12 +4729,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .eq('status', 'pending');
     }
   }
-
-  AccountStatus _accountStatusFromDb(String? value) => switch (value) {
-    'verified' => AccountStatus.verified,
-    'rejected' => AccountStatus.rejected,
-    _ => AccountStatus.pending,
-  };
 
   @override
   void initState() {
@@ -5871,17 +5931,25 @@ class ProviderVerificationScreen extends ConsumerWidget {
                     }
 
                     try {
-                      final provider = await Supabase.instance.client
-                          .from('providers')
-                          .select('status')
-                          .eq('profile_id', user.id)
+                      final profile = await Supabase.instance.client
+                          .from('profiles')
+                          .select('account_status')
+                          .eq('id', user.id)
                           .single();
-                      final updatedStatus = accountStatusFromDb(
-                        provider['status'] as String?,
+                      final updatedStatus =
+                          await currentProviderStatusFromSupabase(
+                            user.id,
+                            profileStatus: profile['account_status'] as String?,
+                          );
+                      final application = await providerApplicationFromSupabase(
+                        user.id,
                       );
                       ref
                           .read(appControllerProvider.notifier)
-                          .setProviderStatus(updatedStatus);
+                          .setProviderVerificationState(
+                            status: updatedStatus,
+                            application: application,
+                          );
                       if (!context.mounted) return;
                       if (updatedStatus == AccountStatus.verified) {
                         context.go('/provider/dashboard');
