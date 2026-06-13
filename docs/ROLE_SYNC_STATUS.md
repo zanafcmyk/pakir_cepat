@@ -19,10 +19,14 @@ Dokumen ini mencatat sinkron fitur antar role Parkir Cepat. Status dibuat per ar
 - [x] Notifikasi in-app booking dan pembayaran dibuat ke tabel `notifications` untuk penyedia pemilik lokasi dan penjaga yang ditugaskan.
 - [x] Notifikasi in-app balasan komplain dibuat ke tabel `notifications` untuk profil pengirim komplain.
 - [x] Notifikasi in-app verifikasi dibuat ke tabel `notifications` untuk profil penyedia yang diverifikasi.
+- [x] Chat customer-provider mencoba menargetkan penyedia pemilik lokasi.
+- [x] Chat customer-penjaga mencoba menargetkan penjaga assignment dari tiket booking.
+- [x] Chat penjaga-customer mencoba menargetkan customer pemilik tiket booking.
+- [x] Chat penyedia-penjaga mencoba menargetkan penjaga milik penyedia atau penyedia milik penjaga.
 
 ## Perlu Dicek Saat Uji Perangkat
 
-- [ ] Chat antar role sudah realtime, tetapi target penerima masih berdasarkan role/room. Perlu uji apakah setiap percakapan sudah masuk ke orang/lokasi yang tepat saat ada banyak penyedia atau banyak penjaga.
+- [ ] Chat antar role sudah ditingkatkan ke target berbasis konteks, tetapi tetap perlu uji apakah setiap percakapan masuk ke orang/lokasi yang tepat saat ada banyak penyedia atau banyak penjaga.
 - [x] Notifikasi booking/payment sudah ditargetkan berdasarkan lokasi parkir dan assignment penjaga.
 - [x] Notifikasi balasan komplain sudah ditargetkan ke `sender_profile_id`.
 - [x] Notifikasi verifikasi sudah ditargetkan ke `profile_id` saat data berasal dari Supabase.
@@ -33,5 +37,5 @@ Dokumen ini mencatat sinkron fitur antar role Parkir Cepat. Status dibuat per ar
 ## Rekomendasi Berikutnya
 
 1. Uji chat dan notifikasi dengan minimal 1 customer, 1 penyedia, 1 penjaga, dan 1 super admin.
-2. Audit target room chat agar percakapan masuk ke penyedia/penjaga spesifik saat data pengguna sudah banyak.
+2. Uji target room chat dengan banyak akun dan audit policy RLS jika ada member room yang gagal dibuat.
 3. Audit RLS Supabase per role sebelum aplikasi dipakai publik.

@@ -79,6 +79,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Notifikasi booking dan pembayaran diarahkan ke penyedia pemilik lokasi dan penjaga yang ditugaskan, dengan fallback role-level.
 - [x] Notifikasi balasan komplain diarahkan ke profil pengirim komplain, dengan fallback role-level untuk data lama/demo.
 - [x] Notifikasi verifikasi akun penyedia diarahkan ke profil penyedia yang diverifikasi, dengan fallback role-level untuk data lama/demo.
+- [x] Chat room mencoba menargetkan member spesifik dari konteks lokasi/tiket/provider-guard sebelum fallback role-level.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
 - [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
@@ -93,6 +94,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
+- [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
 - [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
 
 #### Catatan audit baris 48-66
