@@ -3682,6 +3682,9 @@ class AppController extends StateNotifier<AppState> {
     required String address,
     required int capacity,
     required int price,
+    required String mapEmbedUrl,
+    required double latitude,
+    required double longitude,
     required ParkingTariffType tariffType,
     required int motorRate,
     required int carRate,
@@ -3712,6 +3715,9 @@ class AppController extends StateNotifier<AppState> {
       'address': address,
       'price_per_hour': price,
       'total_slots': capacity,
+      'latitude': latitude,
+      'longitude': longitude,
+      'map_embed_url': mapEmbedUrl,
       'tariff_type': _tariffTypeToDb(tariffType),
       'motor_rate': motorRate,
       'car_rate': carRate,
@@ -3733,6 +3739,9 @@ class AppController extends StateNotifier<AppState> {
       address: address,
       pricePerHour: price,
       totalSlots: capacity,
+      mapEmbedUrl: mapEmbedUrl,
+      latitude: latitude,
+      longitude: longitude,
       photoLabel: savedPhotoLabel,
       photoBytes: photoBytes,
       tariffType: tariffType,
@@ -3822,20 +3831,50 @@ class AppController extends StateNotifier<AppState> {
     required String slotCode,
     required DateTime entryTime,
   }) async {
-    final lot = state.selectedLot ?? state.lots.firstOrNull;
+    var lot = state.selectedLot ?? state.lots.firstOrNull;
     final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
     if (lot == null || vehicle == null) {
       throw StateError('Lokasi parkir dan kendaraan wajib dipilih.');
     }
-    final selectedSlot = state.slots.firstWhere(
-      (slot) => slot.lotId == lot.id && slot.label == slotCode,
-      orElse: () => ParkingSlot(
-        id: 'slot-${slotCode.toLowerCase()}',
-        lotId: lot.id,
-        label: slotCode,
-        isAvailable: true,
-      ),
-    );
+    final selectedLotName = lot.name;
+    if (!_isSupabaseUuid(lot.id)) {
+      await loadParkingDataFromSupabase();
+      lot = state.lots
+          .where(
+            (item) => item.name == selectedLotName && _isSupabaseUuid(item.id),
+          )
+          .firstOrNull;
+      if (lot == null) {
+        throw StateError(
+          'Data lokasi masih demo/lokal. Muat ulang dashboard sampai lokasi Supabase tampil, lalu pilih lokasi lagi.',
+        );
+      }
+      state = state.copyWith(selectedLot: lot);
+    }
+
+    var selectedSlot = state.slots
+        .where((slot) => slot.lotId == lot!.id && slot.label == slotCode)
+        .firstOrNull;
+    if (selectedSlot == null || !_isSupabaseUuid(selectedSlot.id)) {
+      await loadParkingDataFromSupabase();
+      selectedSlot = state.slots
+          .where((slot) => slot.lotId == lot!.id && slot.label == slotCode)
+          .firstOrNull;
+    }
+    if (selectedSlot == null) {
+      throw StateError(
+        'Slot $slotCode belum tersinkron ke Supabase. Muat ulang lokasi atau minta penyedia menambahkan slot dari kelola slot.',
+      );
+    }
+    if (!_isSupabaseUuid(selectedSlot.id)) {
+      throw StateError(
+        'Slot $slotCode masih data demo/lokal. Muat ulang data lokasi Supabase sebelum booking.',
+      );
+    }
+    if (!selectedSlot.isAvailable) {
+      throw StateError('Slot $slotCode sudah tidak tersedia.');
+    }
+
     final total = calculateParkingCost(lot, vehicle);
     final remoteBooking = await _bookingService.createCurrentCustomerBooking(
       lot: lot,
@@ -5249,9 +5288,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _identityController;
   final SupabaseProviderDocumentService _providerDocumentService =
       SupabaseProviderDocumentService();
+  final SupabaseParkingService _parkingService = SupabaseParkingService();
   AccountMode _mode = AccountMode.customer;
   Uint8List? _identityDocumentBytes;
   String? _identityDocumentName;
+  Uint8List? _parkingPhotoBytes;
+  String? _parkingPhotoName;
   double _providerCapacity = 80;
   bool _isLoading = false;
 
@@ -5284,10 +5326,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _identityController = TextEditingController(
       text: kReleaseMode ? '' : 'ktp_provider_dio.png',
     );
+    _parkingNameController.addListener(_refreshProviderMapPreview);
+    _parkingAddressController.addListener(_refreshProviderMapPreview);
+    _locationPointController.text = _providerMapLocationQuery;
   }
 
   @override
   void dispose() {
+    _parkingNameController.removeListener(_refreshProviderMapPreview);
+    _parkingAddressController.removeListener(_refreshProviderMapPreview);
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -5299,6 +5346,59 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _locationPointController.dispose();
     _identityController.dispose();
     super.dispose();
+  }
+
+  void _refreshProviderMapPreview() {
+    final query = _providerMapLocationQuery;
+    if (_locationPointController.text != query) {
+      _locationPointController.text = query;
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String get _providerMapLocationQuery {
+    final parkingName = _parkingNameController.text.trim();
+    final parkingAddress = _parkingAddressController.text.trim();
+    if (parkingName.isEmpty) {
+      return parkingAddress;
+    }
+    if (parkingAddress.isEmpty) {
+      return parkingName;
+    }
+    return '$parkingName, $parkingAddress';
+  }
+
+  String get _providerMapEmbedUrl {
+    final query = _providerMapLocationQuery.isEmpty
+        ? 'Jakarta, Indonesia'
+        : _providerMapLocationQuery;
+    return Uri.https('maps.google.com', '/maps', {
+      'q': query,
+      'output': 'embed',
+    }).toString();
+  }
+
+  Future<void> _pickParkingLotPhoto() async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 88,
+    );
+    if (picked == null) {
+      return;
+    }
+
+    final bytes = await picked.readAsBytes();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _parkingPhotoBytes = bytes;
+      _parkingPhotoName = picked.name;
+      _parkingPhotoController.text = picked.name;
+    });
   }
 
   Future<void> _pickIdentityDocument() async {
@@ -5380,7 +5480,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final parkingName = _parkingNameController.text.trim();
     final parkingAddress = _parkingAddressController.text.trim();
     final photoLabel = _parkingPhotoController.text.trim();
-    final locationLabel = _locationPointController.text.trim();
+    final locationLabel = _providerMapLocationQuery;
     final identityLabel = _identityController.text.trim();
 
     if (fullName.isEmpty ||
@@ -5391,6 +5491,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _showRegisterMessage(
         'Nama, email, password, nama tempat, dan alamat wajib diisi.',
       );
+      return;
+    }
+
+    if (_parkingPhotoBytes == null && photoLabel.isEmpty) {
+      _showRegisterMessage('Foto lahan parkir wajib diupload.');
       return;
     }
 
@@ -5457,10 +5562,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           .select('id')
           .single();
 
+      var uploadedParkingPhotoUrl = photoLabel;
+      if (_parkingPhotoBytes != null) {
+        uploadedParkingPhotoUrl =
+            await _parkingService.uploadCurrentProviderLotPhoto(
+              lotId: provider['id'] as String,
+              bytes: _parkingPhotoBytes!,
+              fileName: _parkingPhotoName,
+            ) ??
+            photoLabel;
+      }
+
       final providerApplication = ProviderApplication(
         parkingName: parkingName,
         address: parkingAddress,
-        photoLabel: photoLabel,
+        photoLabel: uploadedParkingPhotoUrl,
         locationLabel: locationLabel,
         capacity: _providerCapacity.toInt(),
         identityLabel: uploadedIdentityUrl,
@@ -5471,7 +5587,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         'profile_id': user.id,
         'parking_name': parkingName,
         'address': parkingAddress,
-        'photo_url': photoLabel.isEmpty ? null : photoLabel,
+        'photo_url': uploadedParkingPhotoUrl.isEmpty
+            ? null
+            : uploadedParkingPhotoUrl,
         'location_label': locationLabel.isEmpty ? null : locationLabel,
         'capacity': _providerCapacity.toInt(),
         'identity_document_url': uploadedIdentityUrl.isEmpty
@@ -5794,18 +5912,46 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const SizedBox(height: 16),
                   TextField(
                     controller: _parkingPhotoController,
+                    readOnly: true,
                     decoration: const InputDecoration(
                       labelText: 'Upload foto lahan',
                       prefixIcon: Icon(Icons.add_photo_alternate_rounded),
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _pickParkingLotPhoto,
+                    icon: const Icon(Icons.add_photo_alternate_rounded),
+                    label: Text(
+                      _parkingPhotoBytes == null
+                          ? 'Pilih foto lahan'
+                          : 'Ganti foto lahan',
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  const ParkingMapPlaceholder(
-                    title: 'Pilih titik lokasi pada map',
+                  MapEmbedView(
+                    title: _providerMapLocationQuery.isEmpty
+                        ? 'Preview lokasi lahan'
+                        : _providerMapLocationQuery,
+                    embedUrl: _providerMapEmbedUrl,
+                    latitude: _AddParkingLotScreenState._defaultMapLatitude,
+                    longitude: _AddParkingLotScreenState._defaultMapLongitude,
+                    height: 260,
+                    locationQuery: _providerMapLocationQuery,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _providerMapLocationQuery.isEmpty
+                        ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
+                        : 'Map diarahkan ke: $_providerMapLocationQuery',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _locationPointController,
+                    readOnly: true,
                     decoration: const InputDecoration(
                       labelText: 'Titik lokasi',
                       prefixIcon: Icon(Icons.pin_drop_rounded),
@@ -8443,13 +8589,38 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 );
                             if (!context.mounted) return;
                             context.go('/customer/payment');
-                          } catch (_) {
+                          } on PostgrestException catch (error) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
+                                content: Text(_bookingErrorMessage(error)),
+                                duration: const Duration(seconds: 6),
+                              ),
+                            );
+                          } on AuthException catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(error.message),
+                                duration: const Duration(seconds: 6),
+                              ),
+                            );
+                          } on StateError catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(error.message),
+                                duration: const Duration(seconds: 6),
+                              ),
+                            );
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Gagal membuat booking ke Supabase.',
+                                  'Gagal membuat booking ke Supabase: $error',
                                 ),
+                                duration: const Duration(seconds: 6),
                               ),
                             );
                           } finally {
@@ -8466,6 +8637,35 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       ),
     );
   }
+}
+
+String _bookingErrorMessage(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  final details = error.details?.toString().toLowerCase() ?? '';
+  final hint = error.hint?.toLowerCase() ?? '';
+  final combined = '$message $details $hint';
+
+  if (error.code == '42883' ||
+      combined.contains('app_create_customer_booking')) {
+    return 'Function booking Supabase belum aktif. Jalankan SQL app_create_customer_booking dari docs/supabase_role_sync_rls_patch.sql.';
+  }
+  if (combined.contains('row-level security') || error.code == '42501') {
+    return 'Booking ditolak RLS Supabase. Jalankan ulang SQL RLS patch terbaru, terutama app_create_customer_booking.';
+  }
+  if (combined.contains('parking slot is no longer available')) {
+    return 'Slot ini sudah tidak tersedia. Muat ulang lokasi lalu pilih slot lain.';
+  }
+  if (combined.contains('parking slot was not found')) {
+    return 'Slot parkir tidak ditemukan di Supabase. Muat ulang data lokasi atau tambah slot dari akun penyedia.';
+  }
+  if (combined.contains('vehicle was not found')) {
+    return 'Kendaraan belum tersimpan di Supabase. Tambahkan ulang kendaraan lalu coba booking lagi.';
+  }
+  if (combined.contains('customer profile was not found')) {
+    return 'Profil customer belum ditemukan di Supabase. Login ulang atau cek data customer.';
+  }
+
+  return 'Gagal membuat booking ke Supabase: ${error.message}';
 }
 
 class CustomerTicketScreen extends ConsumerWidget {
@@ -11947,6 +12147,9 @@ class AddParkingLotScreen extends ConsumerStatefulWidget {
 }
 
 class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
+  static const double _defaultMapLatitude = -6.2087145;
+  static const double _defaultMapLongitude = 106.8224854;
+
   late final TextEditingController _nameController;
   late final TextEditingController _addressController;
   double _capacity = 60;
@@ -11973,6 +12176,8 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController = TextEditingController(
       text: kReleaseMode ? '' : 'Jl. Gatot Subroto Smart Gate 8',
     );
+    _nameController.addListener(_refreshMapPreview);
+    _addressController.addListener(_refreshMapPreview);
   }
 
   @override
@@ -12010,9 +12215,39 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
 
   @override
   void dispose() {
+    _nameController.removeListener(_refreshMapPreview);
+    _addressController.removeListener(_refreshMapPreview);
     _nameController.dispose();
     _addressController.dispose();
     super.dispose();
+  }
+
+  void _refreshMapPreview() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  String get _mapLocationQuery {
+    final name = _nameController.text.trim();
+    final address = _addressController.text.trim();
+    if (name.isEmpty) {
+      return address;
+    }
+    if (address.isEmpty) {
+      return name;
+    }
+    return '$name, $address';
+  }
+
+  String get _mapEmbedUrl {
+    final query = _mapLocationQuery.isEmpty
+        ? 'Jakarta, Indonesia'
+        : _mapLocationQuery;
+    return Uri.https('maps.google.com', '/maps', {
+      'q': query,
+      'output': 'embed',
+    }).toString();
   }
 
   String? _lotFormError() {
@@ -12057,8 +12292,6 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const plazaSudirmanMapEmbedUrl =
-        'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3966.4161452224284!2d106.82248539999999!3d-6.208714500000001!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f51300fe5895%3A0xa89d22dd2b5922c9!2sSudirman%20Plaza%20Gedung%20Plaza%20Marein!5e0!3m2!1sen!2sid!4v1780720226941!5m2!1sen!2sid';
     final editingLot = widget.editingLotId == null
         ? null
         : ref
@@ -12100,16 +12333,21 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-                const MapEmbedView(
-                  title: 'Plaza Sudirman',
-                  embedUrl: plazaSudirmanMapEmbedUrl,
-                  latitude: -6.2087145,
-                  longitude: 106.8224854,
+                MapEmbedView(
+                  title: _mapLocationQuery.isEmpty
+                      ? 'Preview lokasi lahan'
+                      : _mapLocationQuery,
+                  embedUrl: _mapEmbedUrl,
+                  latitude: _defaultMapLatitude,
+                  longitude: _defaultMapLongitude,
                   height: 320,
+                  locationQuery: _mapLocationQuery,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Titik lokasi dipilih: Plaza Sudirman',
+                  _mapLocationQuery.isEmpty
+                      ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
+                      : 'Map diarahkan ke: $_mapLocationQuery',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
@@ -12242,6 +12480,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                                 address: _addressController.text.trim(),
                                 capacity: _capacity.toInt(),
                                 price: _price.toInt(),
+                                mapEmbedUrl: _mapEmbedUrl,
+                                latitude: _defaultMapLatitude,
+                                longitude: _defaultMapLongitude,
                                 tariffType: _tariffType,
                                 motorRate: _motorRate.toInt(),
                                 carRate: _carRate.toInt(),
@@ -12255,9 +12496,9 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                                 address: _addressController.text.trim(),
                                 capacity: _capacity.toInt(),
                                 price: _price.toInt(),
-                                mapEmbedUrl: plazaSudirmanMapEmbedUrl,
-                                latitude: -6.2087145,
-                                longitude: 106.8224854,
+                                mapEmbedUrl: _mapEmbedUrl,
+                                latitude: _defaultMapLatitude,
+                                longitude: _defaultMapLongitude,
                                 tariffType: _tariffType,
                                 motorRate: _motorRate.toInt(),
                                 carRate: _carRate.toInt(),

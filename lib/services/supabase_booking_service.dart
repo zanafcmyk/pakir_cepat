@@ -36,6 +36,7 @@ class SupabaseBookingService {
     if (user == null) {
       throw const AuthException('Sesi customer tidak ditemukan.');
     }
+    _validateSupabaseBookingIds(lot: lot, slot: slot);
 
     final customerId = await _currentCustomerId(user.id);
     final vehicleId = await _vehicleId(customerId, vehicle.plateNumber);
@@ -349,6 +350,28 @@ class SupabaseBookingService {
   bool _isMissingBookingRpc(PostgrestException error) {
     return error.code == '42883' ||
         error.message.contains('app_create_customer_booking');
+  }
+
+  void _validateSupabaseBookingIds({
+    required ParkingLot lot,
+    required ParkingSlot slot,
+  }) {
+    if (!_isSupabaseUuid(lot.id)) {
+      throw StateError(
+        'Data lokasi masih demo/lokal. Muat ulang dashboard sampai lokasi Supabase tampil, lalu pilih lokasi lagi.',
+      );
+    }
+    if (!_isSupabaseUuid(slot.id)) {
+      throw StateError(
+        'Data slot masih demo/lokal. Muat ulang data lokasi Supabase sebelum booking.',
+      );
+    }
+  }
+
+  bool _isSupabaseUuid(String value) {
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(value);
   }
 
   Future<SupabaseActiveBooking> _activeBookingFromRow(

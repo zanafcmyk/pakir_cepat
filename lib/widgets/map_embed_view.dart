@@ -11,6 +11,7 @@ class MapEmbedView extends StatelessWidget {
     required this.latitude,
     required this.longitude,
     this.height = 240,
+    this.locationQuery,
   });
 
   final String title;
@@ -18,11 +19,11 @@ class MapEmbedView extends StatelessWidget {
   final double latitude;
   final double longitude;
   final double height;
+  final String? locationQuery;
 
   @override
   Widget build(BuildContext context) {
-    if (supportsMapIframe &&
-        embedUrl.startsWith('https://www.google.com/maps/embed?')) {
+    if (supportsMapIframe && _canEmbedMap(embedUrl)) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: SizedBox(
@@ -54,7 +55,7 @@ class MapEmbedView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Latitude: $latitude\nLongitude: $longitude',
+            _fallbackLocationText,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: const Color(0xFF64748B),
               height: 1.45,
@@ -75,10 +76,39 @@ class MapEmbedView extends StatelessWidget {
     );
   }
 
+  bool _canEmbedMap(String value) {
+    return value.startsWith('https://www.google.com/maps/embed?') ||
+        (value.startsWith('https://maps.google.com/maps?') &&
+            value.contains('output=embed'));
+  }
+
+  String get _fallbackLocationText {
+    final query = _mapSearchQuery;
+    if (query != null && query.isNotEmpty) {
+      return query;
+    }
+    return 'Latitude: $latitude\nLongitude: $longitude';
+  }
+
+  String? get _mapSearchQuery {
+    final explicitQuery = locationQuery?.trim();
+    if (explicitQuery != null && explicitQuery.isNotEmpty) {
+      return explicitQuery;
+    }
+    final uri = Uri.tryParse(embedUrl);
+    final embeddedQuery = uri?.queryParameters['q']?.trim();
+    if (embeddedQuery != null && embeddedQuery.isNotEmpty) {
+      return embeddedQuery;
+    }
+    return null;
+  }
+
   Future<void> _openGoogleMaps(double latitude, double longitude) async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
-    );
+    final query = _mapSearchQuery;
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': query == null || query.isEmpty ? '$latitude,$longitude' : query,
+    });
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
