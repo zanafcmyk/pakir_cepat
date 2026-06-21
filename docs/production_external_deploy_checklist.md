@@ -3,6 +3,24 @@
 Dokumen ini untuk langkah yang tidak bisa diselesaikan hanya dari kode Flutter,
 karena membutuhkan secret, dashboard Supabase, dashboard Midtrans, atau Firebase.
 
+## Booking dan Payment Security
+
+Jalankan patch berikut di SQL Editor Supabase setelah schema dan patch role sync:
+
+```text
+docs/supabase_booking_payment_security_patch.sql
+```
+
+Patch ini wajib karena:
+
+- mencabut `INSERT/UPDATE/DELETE` langsung client pada `bookings` dan `payments`;
+- menghitung tarif booking di server;
+- menyediakan RPC pembayaran tunai penjaga;
+- menyediakan RPC atomik scan masuk/keluar.
+
+Setelah berhasil, uji customer booking, pembayaran Midtrans, pembayaran tunai
+penjaga, scan masuk, scan keluar, receipt, dan laporan provider.
+
 ## Supabase Edge Functions
 
 Deploy dari terminal project setelah Supabase CLI login dan project sudah linked.

@@ -3934,13 +3934,11 @@ class AppController extends StateNotifier<AppState> {
       throw StateError('Slot $slotCode sudah tidak tersedia.');
     }
 
-    final total = calculateParkingCost(lot, bookingVehicle);
     final remoteBooking = await _bookingService.createCurrentCustomerBooking(
       lot: lot,
       slot: selectedSlot,
       vehicle: bookingVehicle,
       entryTime: entryTime,
-      estimatedCost: total,
     );
     final ticketNumber = remoteBooking.ticketNumber;
 
@@ -3951,7 +3949,7 @@ class AppController extends StateNotifier<AppState> {
       plateNumber: vehicle.plateNumber,
       vehicleLabel: bookingVehicle.label,
       entryTime: entryTime,
-      estimatedCost: total,
+      estimatedCost: remoteBooking.estimatedCost,
       paymentMethod: PaymentMethod.qris,
       status: BookingStatus.pendingPayment,
     );
@@ -4011,10 +4009,13 @@ class AppController extends StateNotifier<AppState> {
     if (booking == null) {
       return;
     }
-    await _paymentService.payCurrentCustomerBooking(
-      booking: booking,
-      method: method,
-    );
+    if (state.currentMode != AccountMode.parkingGuard ||
+        method != PaymentMethod.cash) {
+      throw StateError(
+        'Pembayaran online hanya dapat diselesaikan melalui Midtrans.',
+      );
+    }
+    await _paymentService.confirmCurrentGuardCashPayment(booking.ticketNumber);
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
       status: BookingStatus.paid,
@@ -8761,10 +8762,10 @@ String _bookingErrorMessage(PostgrestException error) {
 
   if (error.code == '42883' ||
       combined.contains('app_create_customer_booking')) {
-    return 'Function booking Supabase belum aktif. Jalankan SQL app_create_customer_booking dari docs/supabase_role_sync_rls_patch.sql.';
+    return 'Function booking aman belum aktif. Jalankan docs/supabase_booking_payment_security_patch.sql di SQL Editor Supabase.';
   }
   if (combined.contains('row-level security') || error.code == '42501') {
-    return 'Booking ditolak RLS Supabase. Jalankan ulang SQL RLS patch terbaru, terutama app_create_customer_booking.';
+    return 'Booking ditolak RLS Supabase. Jalankan docs/supabase_booking_payment_security_patch.sql di SQL Editor Supabase.';
   }
   if (combined.contains('parking slot is no longer available')) {
     return 'Slot ini sudah tidak tersedia. Muat ulang lokasi lalu pilih slot lain.';
@@ -9050,14 +9051,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         _checkPaymentStatus,
       );
     }
-  }
-
-  Future<void> _completePayment(Booking booking) async {
-    await ref.read(appControllerProvider.notifier).payBooking(_method);
-    if (!mounted) {
-      return;
-    }
-    await _showPaymentSuccess(booking.copyWith(status: BookingStatus.paid));
   }
 
   Future<void> _showPaymentSuccess(Booking booking) async {
@@ -16219,17 +16212,28 @@ class GuardVehiclesScreen extends ConsumerWidget {
                     onPressed: booking.isPaid || !canConfirmCash
                         ? null
                         : () async {
-                            await ref
-                                .read(appControllerProvider.notifier)
-                                .payBooking(PaymentMethod.cash);
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Pembayaran tunai berhasil dikonfirmasi.',
+                            try {
+                              await ref
+                                  .read(appControllerProvider.notifier)
+                                  .payBooking(PaymentMethod.cash);
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Pembayaran tunai berhasil dikonfirmasi.',
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            } catch (error) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Gagal mengonfirmasi pembayaran tunai: $error',
+                                  ),
+                                ),
+                              );
+                            }
                           },
                   ),
                 ],

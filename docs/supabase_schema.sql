@@ -550,15 +550,10 @@ using (customer_id = public.current_customer_id() or public.is_super_admin())
 with check (customer_id = public.current_customer_id() or public.is_super_admin());
 
 drop policy if exists "bookings_related_users" on public.bookings;
-create policy "bookings_related_users"
-on public.bookings for all
+drop policy if exists "bookings_related_select" on public.bookings;
+create policy "bookings_related_select"
+on public.bookings for select
 using (
-  customer_id = public.current_customer_id()
-  or public.is_provider_lot(parking_lot_id)
-  or public.is_guard_assigned_to_lot(parking_lot_id)
-  or public.is_super_admin()
-)
-with check (
   customer_id = public.current_customer_id()
   or public.is_provider_lot(parking_lot_id)
   or public.is_guard_assigned_to_lot(parking_lot_id)
@@ -566,8 +561,9 @@ with check (
 );
 
 drop policy if exists "payments_related_users" on public.payments;
-create policy "payments_related_users"
-on public.payments for all
+drop policy if exists "payments_related_select" on public.payments;
+create policy "payments_related_select"
+on public.payments for select
 using (
   customer_id = public.current_customer_id()
   or exists (
@@ -580,20 +576,15 @@ using (
       )
   )
   or public.is_super_admin()
-)
-with check (
-  customer_id = public.current_customer_id()
-  or exists (
-    select 1
-    from public.bookings booking
-    where booking.id = payments.booking_id
-      and (
-        public.is_provider_lot(booking.parking_lot_id)
-        or public.is_guard_assigned_to_lot(booking.parking_lot_id)
-      )
-  )
-  or public.is_super_admin()
 );
+
+revoke insert, update, delete, truncate on public.bookings
+from public, anon, authenticated;
+revoke insert, update, delete, truncate on public.payments
+from public, anon, authenticated;
+
+grant select on public.bookings to authenticated;
+grant select on public.payments to authenticated;
 
 drop policy if exists "reviews_public_read" on public.reviews;
 create policy "reviews_public_read"

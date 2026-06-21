@@ -19,11 +19,11 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 #### Kritis - Wajib Sebelum Production
 
-- [ ] Perketat RLS `bookings`; policy saat ini masih `FOR ALL` sehingga customer, penjaga, atau penyedia terkait dapat mengubah kolom booking lebih luas dari kebutuhan perannya.
-- [ ] Perketat RLS `payments`; status dan nominal pembayaran tidak boleh dapat ditulis langsung oleh client biasa.
-- [ ] Hitung ulang tarif dan `estimated_cost` di server/RPC dari data lahan, jenis kendaraan, tipe tarif, dan durasi. Jangan percaya nominal kiriman Flutter.
-- [ ] Perbaiki konfirmasi pembayaran tunai penjaga. Implementasi sekarang memanggil service customer sehingga akun penjaga tidak menemukan `customer_id`; state lokal dapat terlihat lunas walau database belum berubah.
-- [ ] Buat RPC transaksi atomik untuk scan masuk/keluar yang memvalidasi assignment penjaga, status booking sebelumnya, update slot, waktu scan, dan activity log dalam satu transaksi.
+- [x] Patch kode dan SQL untuk memperketat RLS `bookings`/`payments` serta mencabut write langsung client sudah dibuat di `docs/supabase_booking_payment_security_patch.sql`.
+- [x] Flutter tidak lagi mengirim `price_per_hour` atau `estimated_cost`; RPC menghitung tarif dari lahan, jenis kendaraan, tipe tarif, dan durasi lalu mengembalikan nominal server.
+- [ ] Jalankan `docs/supabase_booking_payment_security_patch.sql` di Supabase production dan uji ulang semua role. Database live belum memakai hardening ini sampai SQL berhasil dijalankan.
+- [x] Konfirmasi pembayaran tunai penjaga dipindahkan dari service customer ke RPC khusus yang memvalidasi izin, assignment, status booking, nominal server, payment, receipt, dan activity log.
+- [x] Scan masuk/keluar dipindahkan ke RPC atomik yang memvalidasi assignment penjaga, status sebelumnya, update slot, waktu scan, dan activity log.
 - [ ] Tambahkan proses kedaluwarsa reservasi 15 menit agar booking `pending_payment` dibatalkan dan slot `reserved` kembali `available`.
 
 #### Belum Berjalan Penuh
@@ -78,8 +78,8 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Penyedia bisa menambah slot parkir dari halaman kelola slot dan menyimpannya ke Supabase.
 - [x] Daftar lokasi penyedia punya aksi tambah lokasi, edit lokasi, dan kelola slot per lokasi.
 - [x] Kendaraan customer ke Supabase.
-- [x] Booking parkir ke Supabase memakai RPC untuk reserve slot dan membuat booking secara bersamaan; validasi harga server masih menjadi pekerjaan kritis.
-- [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga belum benar dan dicatat sebagai pekerjaan kritis.
+- [x] Booking parkir memakai RPC untuk reserve slot, menghitung tarif server, dan membuat booking secara bersamaan; patch SQL masih harus diterapkan di production.
+- [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga sudah dipindahkan ke RPC aman dan menunggu penerapan SQL live.
 - [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
 - [x] Payment gateway hanya memakai booking yang berhasil tersimpan di Supabase; fallback booking lokal/demo dihapus.
 - [x] Load booking aktif customer dari Supabase.
@@ -136,7 +136,7 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Audit RLS sinkron antar-role dibuat dan kode memakai RPC optional untuk chat/notifikasi.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
-- [ ] UI payment tunai sudah memeriksa izin penjaga, tetapi penyimpanan oleh akun penjaga masih rusak dan harus dipindahkan ke RPC/Edge Function khusus.
+- [x] UI payment tunai dan service sudah memakai RPC khusus penjaga; penerapan SQL production serta uji perangkat masih diperlukan.
 - [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
 - [x] Error handling dashboard penyedia, penjaga, dan super admin menampilkan kegagalan data Supabase.
 - [x] Data demo/lokal mulai dipisah dengan flag `isUsingDemoData` dan notice dashboard.
@@ -278,8 +278,8 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Pembatasan route penjaga dasar sudah ada.
 - [ ] Pembatasan route penjaga perlu audit deep link production.
-- [ ] Perbaiki konfirmasi tunai: izin sudah dicek di UI, tetapi service yang dipanggil masih service customer dan belum menyimpan pembayaran dari akun penjaga.
-- [ ] Pembayaran tunai/manual perlu RPC aman serta audit kas/settlement production.
+- [x] Konfirmasi tunai sudah memakai RPC khusus dengan validasi izin dan assignment penjaga.
+- [ ] Jalankan patch SQL lalu audit kas/settlement payment tunai di production.
 - [ ] Cek pembayaran dan daftar kendaraan aktif penjaga harus query Supabase lintas booking, bukan mengandalkan satu `activeBooking` lokal.
 
 #### Belum Ada/Belum Production
@@ -315,7 +315,7 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Payment online sudah diarahkan ke Midtrans dan Edge Function/webhook sudah terdeploy.
 - [ ] Audit payment end-to-end, callback/deep link, idempotensi, dan kegagalan webhook sebelum production.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
-- [ ] Penyimpanan payment tunai oleh penjaga belum bekerja benar dan membutuhkan RPC/Edge Function khusus.
+- [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus; menunggu patch SQL diterapkan di production.
 - [ ] Perpanjang durasi dan biaya parkir customer masih lokal, belum tersimpan ke Supabase.
 
 #### Belum Ada/Belum Production
@@ -372,13 +372,11 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ## Prioritas Aman Berikutnya
 
-1. Perketat RLS `bookings` dan `payments`, lalu hitung harga booking sepenuhnya di server.
-2. Buat RPC pembayaran tunai penjaga dan migrasikan tombol konfirmasi tunai ke RPC tersebut.
-3. Buat RPC atomik scan masuk/keluar beserta validasi status dan assignment penjaga.
-4. Tambahkan expiry reservasi server-side untuk melepas slot yang tidak dibayar.
-5. Ubah cek pembayaran dan kendaraan aktif penjaga menjadi query Supabase lintas booking.
-6. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
-7. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
-8. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
-9. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
-10. Tambah integration test multi-role/multi-device dan stabilkan build APK release.
+1. Jalankan `docs/supabase_booking_payment_security_patch.sql` di Supabase production dan uji booking, Midtrans, tunai, masuk, serta keluar.
+2. Tambahkan expiry reservasi server-side untuk melepas slot yang tidak dibayar.
+3. Ubah cek pembayaran dan kendaraan aktif penjaga menjadi query Supabase lintas booking.
+4. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
+5. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
+6. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
+7. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
+8. Tambah integration test multi-role/multi-device dan stabilkan build APK release.

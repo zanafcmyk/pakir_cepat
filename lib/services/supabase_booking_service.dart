@@ -6,10 +6,16 @@ class SupabaseBookingResult {
   const SupabaseBookingResult({
     required this.ticketNumber,
     required this.slotId,
+    required this.durationHours,
+    required this.effectiveRate,
+    required this.estimatedCost,
   });
 
   final String ticketNumber;
   final String slotId;
+  final int durationHours;
+  final int effectiveRate;
+  final int estimatedCost;
 }
 
 class SupabaseActiveBooking {
@@ -30,7 +36,6 @@ class SupabaseBookingService {
     required ParkingSlot slot,
     required Vehicle vehicle,
     required DateTime entryTime,
-    required int estimatedCost,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -38,80 +43,51 @@ class SupabaseBookingService {
     }
     _validateSupabaseBookingIds(lot: lot, slot: slot);
 
-    final customerId = await _currentCustomerId(user.id);
-    final vehicleId = await _vehicleId(customerId, vehicle.plateNumber);
     final ticketNumber = _ticketNumber();
 
-    final rpcBooking = await _createBookingWithRpc(
+    return _createBookingWithRpc(
       lot: lot,
       slot: slot,
       vehicle: vehicle,
       entryTime: entryTime,
-      estimatedCost: estimatedCost,
       ticketNumber: ticketNumber,
     );
-    if (rpcBooking != null) {
-      return rpcBooking;
-    }
-
-    await _client
-        .from('parking_slots')
-        .update({'status': 'reserved'})
-        .eq('id', slot.id);
-
-    await _client.from('bookings').insert({
-      'ticket_number': ticketNumber,
-      'customer_id': customerId,
-      'vehicle_id': vehicleId,
-      'parking_lot_id': lot.id,
-      'parking_slot_id': slot.id,
-      'entry_time': entryTime.toIso8601String(),
-      'duration_hours': vehicle.durationHours,
-      'price_per_hour': lot.pricePerHour,
-      'estimated_cost': estimatedCost,
-      'status': 'pending_payment',
-      'qr_payload': 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber',
-    });
-
-    return SupabaseBookingResult(ticketNumber: ticketNumber, slotId: slot.id);
   }
 
-  Future<SupabaseBookingResult?> _createBookingWithRpc({
+  Future<SupabaseBookingResult> _createBookingWithRpc({
     required ParkingLot lot,
     required ParkingSlot slot,
     required Vehicle vehicle,
     required DateTime entryTime,
-    required int estimatedCost,
     required String ticketNumber,
   }) async {
-    try {
-      final rows = await _client.rpc(
-        'app_create_customer_booking',
-        params: {
-          'p_parking_lot_id': lot.id,
-          'p_parking_slot_id': slot.id,
-          'p_vehicle_plate': vehicle.plateNumber,
-          'p_ticket_number': ticketNumber,
-          'p_entry_time': entryTime.toIso8601String(),
-          'p_duration_hours': vehicle.durationHours,
-          'p_price_per_hour': lot.pricePerHour,
-          'p_estimated_cost': estimatedCost,
-        },
-      );
-      if (rows is! List || rows.isEmpty) {
-        return null;
-      }
-      final row = Map<String, dynamic>.from(rows.first as Map);
-      return SupabaseBookingResult(
-        ticketNumber: row['ticket_number'] as String? ?? ticketNumber,
-        slotId: row['slot_id'] as String? ?? slot.id,
-      );
-    } on PostgrestException catch (error) {
-      if (_isMissingBookingRpc(error)) {
-        return null;
-      }
-      rethrow;
+    final rows = await _client.rpc(
+      'app_create_customer_booking',
+      params: {
+        'p_parking_lot_id': lot.id,
+        'p_parking_slot_id': slot.id,
+        'p_vehicle_plate': vehicle.plateNumber,
+        'p_ticket_number': ticketNumber,
+        'p_entry_time': entryTime.toIso8601String(),
+        'p_duration_hours': vehicle.durationHours,
+      },
+    );
+    if (rows is! List || rows.isEmpty) {
+      throw StateError('RPC booking tidak mengembalikan hasil.');
     }
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    final serverEstimatedCost = (row['estimated_cost'] as num?)?.toInt() ?? 0;
+    if (serverEstimatedCost <= 0) {
+      throw StateError('Server mengembalikan biaya booking yang tidak valid.');
+    }
+    return SupabaseBookingResult(
+      ticketNumber: row['ticket_number'] as String? ?? ticketNumber,
+      slotId: row['slot_id'] as String? ?? slot.id,
+      durationHours:
+          (row['duration_hours'] as num?)?.toInt() ?? vehicle.durationHours,
+      effectiveRate: (row['effective_rate'] as num?)?.toInt() ?? 0,
+      estimatedCost: serverEstimatedCost,
+    );
   }
 
   Future<SupabaseActiveBooking?> fetchCurrentCustomerActiveBooking() async {
@@ -186,28 +162,11 @@ class SupabaseBookingService {
   }
 
   Future<void> checkInBooking(String ticketNumber) async {
-    await _updateBookingActivity(
-      ticketNumber: ticketNumber,
-      bookingStatus: 'active',
-      slotStatus: 'occupied',
-      activityAction: 'check_in',
-      bookingTimeColumn: 'checked_in_at',
-      guardColumn: 'checked_in_by',
-      note: 'Kendaraan masuk diverifikasi dari scan QR.',
-    );
+    await _processGuardTicket(ticketNumber, 'check_in');
   }
 
   Future<void> checkOutBooking(String ticketNumber) async {
-    await _updateBookingActivity(
-      ticketNumber: ticketNumber,
-      bookingStatus: 'completed',
-      slotStatus: 'available',
-      activityAction: 'check_out',
-      bookingTimeColumn: 'checked_out_at',
-      guardColumn: 'checked_out_by',
-      note: 'Kendaraan keluar dikonfirmasi dari scan QR.',
-      setExitTime: true,
-    );
+    await _processGuardTicket(ticketNumber, 'check_out');
   }
 
   Future<String> _currentCustomerId(String profileId) async {
@@ -215,16 +174,6 @@ class SupabaseBookingService {
         .from('customers')
         .select('id')
         .eq('profile_id', profileId)
-        .single();
-    return row['id'] as String;
-  }
-
-  Future<String> _vehicleId(String customerId, String plateNumber) async {
-    final row = await _client
-        .from('vehicles')
-        .select('id')
-        .eq('customer_id', customerId)
-        .eq('plate_number', plateNumber)
         .single();
     return row['id'] as String;
   }
@@ -249,107 +198,14 @@ class SupabaseBookingService {
     return _paymentMethodFromDb((rows.first as Map)['method'] as String?);
   }
 
-  Future<void> _updateBookingActivity({
-    required String ticketNumber,
-    required String bookingStatus,
-    required String slotStatus,
-    required String activityAction,
-    required String bookingTimeColumn,
-    required String guardColumn,
-    required String note,
-    bool setExitTime = false,
-  }) async {
-    final bookingRow = await _client
-        .from('bookings')
-        .select('id, parking_lot_id, parking_slot_id')
-        .eq('ticket_number', ticketNumber)
-        .limit(1)
-        .maybeSingle();
-    if (bookingRow == null) {
-      return;
-    }
-
-    final now = DateTime.now().toIso8601String();
-    final guardId = await _currentGuardId();
-    final bookingUpdate = <String, dynamic>{
-      'status': bookingStatus,
-      bookingTimeColumn: now,
-      guardColumn: guardId,
-    };
-    if (setExitTime) {
-      bookingUpdate['exit_time'] = now;
-    }
-
-    await _client
-        .from('bookings')
-        .update(bookingUpdate)
-        .eq('id', bookingRow['id'] as String);
-
-    final slotId = bookingRow['parking_slot_id'] as String?;
-    if (slotId != null) {
-      await _client
-          .from('parking_slots')
-          .update({'status': slotStatus})
-          .eq('id', slotId);
-    }
-
-    await _insertActivityLogIfAvailable(
-      bookingRow: bookingRow,
-      action: activityAction,
-      note: note,
-      guardId: guardId,
+  Future<void> _processGuardTicket(String ticketNumber, String action) async {
+    final rows = await _client.rpc(
+      'app_guard_process_ticket',
+      params: {'p_ticket_number': ticketNumber, 'p_action': action},
     );
-  }
-
-  Future<String?> _currentGuardId() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      return null;
+    if (rows is! List || rows.isEmpty) {
+      throw StateError('RPC scan tiket tidak mengembalikan hasil.');
     }
-
-    final rows = await _client
-        .from('parking_guards')
-        .select('id')
-        .eq('profile_id', user.id)
-        .limit(1);
-    if (rows.isEmpty) {
-      return null;
-    }
-
-    return (rows.first as Map)['id'] as String?;
-  }
-
-  Future<void> _insertActivityLogIfAvailable({
-    required Map<String, dynamic> bookingRow,
-    required String action,
-    required String note,
-    required String? guardId,
-  }) async {
-    try {
-      await _client.from('parking_activity_logs').insert({
-        'booking_id': bookingRow['id'],
-        'parking_lot_id': bookingRow['parking_lot_id'],
-        'parking_slot_id': bookingRow['parking_slot_id'],
-        'guard_id': guardId,
-        'actor_profile_id': _client.auth.currentUser?.id,
-        'action': action,
-        'note': note,
-      });
-    } on PostgrestException catch (error) {
-      if (!_isMissingActivityLogsTable(error)) {
-        rethrow;
-      }
-    }
-  }
-
-  bool _isMissingActivityLogsTable(PostgrestException error) {
-    return error.code == '42P01' ||
-        error.message.contains('parking_activity_logs');
-  }
-
-  bool _isMissingBookingRpc(PostgrestException error) {
-    return error.code == '42883' ||
-        error.message.contains('app_create_customer_booking');
   }
 
   void _validateSupabaseBookingIds({
