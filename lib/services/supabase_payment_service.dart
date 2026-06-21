@@ -128,8 +128,22 @@ class SupabasePaymentService {
     );
   }
 
-  Future<SupabaseReceiptRecord?> fetchLatestReceipt() async {
+  Future<SupabaseReceiptRecord?> fetchReceipt({String? ticketNumber}) async {
     try {
+      String? bookingId;
+      if (ticketNumber != null && ticketNumber.trim().isNotEmpty) {
+        final booking = await _client
+            .from('bookings')
+            .select('id')
+            .eq('ticket_number', ticketNumber.trim())
+            .limit(1)
+            .maybeSingle();
+        bookingId = booking?['id'] as String?;
+        if (bookingId == null) {
+          return null;
+        }
+      }
+
       final rows = await _client
           .from('receipts')
           .select(
@@ -137,6 +151,7 @@ class SupabasePaymentService {
             'bookings(ticket_number, estimated_cost, final_cost, parking_lots(name), vehicles(plate_number)), '
             'payments(method, status, amount)',
           )
+          .match(bookingId == null ? const {} : {'booking_id': bookingId})
           .order('issued_at', ascending: false)
           .limit(1);
 

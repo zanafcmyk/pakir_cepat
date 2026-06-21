@@ -137,6 +137,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CustomerTicketScreen(),
       ),
       GoRoute(
+        path: '/customer/receipt',
+        builder: (context, state) =>
+            ReceiptScreen(ticketNumber: state.uri.queryParameters['ticket']),
+      ),
+      GoRoute(
         path: '/customer/chat',
         builder: (context, state) => const CustomerChatListScreen(),
       ),
@@ -2175,8 +2180,10 @@ class AppController extends StateNotifier<AppState> {
     startParkingLocationRealtime();
   }
 
-  Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
-    return _paymentService.fetchLatestReceipt();
+  Future<SupabaseReceiptRecord?> fetchReceiptFromSupabase({
+    String? ticketNumber,
+  }) {
+    return _paymentService.fetchReceipt(ticketNumber: ticketNumber);
   }
 
   Future<SupabaseProviderDashboardSummary>
@@ -4021,8 +4028,8 @@ class AppController extends StateNotifier<AppState> {
       timeLabel: formatDateTime(booking.entryTime),
     );
     final customerNotice = NoticeItem(
-      title: 'Pembayaran demo berhasil',
-      message: 'Tiket ${booking.ticketNumber} aktif dari simulasi bayar.',
+      title: 'Pembayaran berhasil',
+      message: 'Tiket ${booking.ticketNumber} sudah aktif dan siap digunakan.',
       timeLabel: 'Baru saja',
       icon: Icons.payments_rounded,
       accent: AppTheme.emerald,
@@ -4034,9 +4041,8 @@ class AppController extends StateNotifier<AppState> {
       customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
         NoticeItem(
-          title: 'Pembayaran demo berhasil',
-          message:
-              '${booking.plateNumber} menyelesaikan simulasi pembayaran parkir.',
+          title: 'Pembayaran berhasil',
+          message: '${booking.plateNumber} menyelesaikan pembayaran parkir.',
           timeLabel: 'Baru saja',
           icon: Icons.verified_rounded,
           accent: AppTheme.emerald,
@@ -4120,7 +4126,7 @@ class AppController extends StateNotifier<AppState> {
 
   Future<bool> verifyVehicleEntry(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
-    if (booking == null || !booking.isPaid) {
+    if (booking == null || booking.status != BookingStatus.paid) {
       return false;
     }
     await _bookingService.checkInBooking(ticketNumber);
@@ -4161,7 +4167,7 @@ class AppController extends StateNotifier<AppState> {
 
   Future<bool> confirmVehicleExit(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
-    if (booking == null || !booking.isPaid) {
+    if (booking == null || booking.status != BookingStatus.active) {
       return false;
     }
     await _bookingService.checkOutBooking(ticketNumber);
@@ -8817,7 +8823,7 @@ class CustomerTicketScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(28),
                     ),
                     child: QrImageView(
-                      data: 'PARKIRCEPAT|ENTRY_EXIT|${booking.ticketNumber}',
+                      data: _parkingTicketQrPayload(booking.ticketNumber),
                       size: 210,
                       eyeStyle: const QrEyeStyle(
                         eyeShape: QrEyeShape.square,
@@ -8888,9 +8894,13 @@ class CustomerTicketScreen extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: SecondaryButton(
-                          label: 'QR keluar',
-                          icon: Icons.logout_rounded,
-                          onPressed: booking.isPaid ? () {} : null,
+                          label: 'Lihat nota',
+                          icon: Icons.receipt_long_rounded,
+                          onPressed: booking.isPaid
+                              ? () => context.push(
+                                  '/customer/receipt?ticket=${Uri.encodeQueryComponent(booking.ticketNumber)}',
+                                )
+                              : null,
                         ),
                       ),
                     ],
@@ -9008,23 +9018,38 @@ class PaymentScreen extends ConsumerStatefulWidget {
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+class _PaymentScreenState extends ConsumerState<PaymentScreen>
+    with WidgetsBindingObserver {
   PaymentMethod _method = PaymentMethod.qris;
   String _wallet = 'GoPay';
   late final TextEditingController _walletPhoneController;
   String? _paymentError;
   bool _isStartingGateway = false;
+  bool _isCheckingPayment = false;
+  bool _gatewayOpened = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _walletPhoneController = TextEditingController();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _walletPhoneController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _gatewayOpened) {
+      Future<void>.delayed(
+        const Duration(milliseconds: 700),
+        _checkPaymentStatus,
+      );
+    }
   }
 
   Future<void> _completePayment(Booking booking) async {
@@ -9032,6 +9057,10 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     if (!mounted) {
       return;
     }
+    await _showPaymentSuccess(booking.copyWith(status: BookingStatus.paid));
+  }
+
+  Future<void> _showPaymentSuccess(Booking booking) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -9041,6 +9070,47 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         method: _method,
       ),
     );
+  }
+
+  Future<void> _checkPaymentStatus() async {
+    if (_isCheckingPayment || !_gatewayOpened) {
+      return;
+    }
+    setState(() {
+      _isCheckingPayment = true;
+      _paymentError = null;
+    });
+
+    try {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadActiveBookingFromSupabase();
+      if (!mounted) {
+        return;
+      }
+      final booking = ref.read(appControllerProvider).activeBooking;
+      if (booking?.isPaid ?? false) {
+        _gatewayOpened = false;
+        await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+        if (mounted) {
+          await _showPaymentSuccess(booking!);
+        }
+        return;
+      }
+      setState(
+        () => _paymentError =
+            'Pembayaran belum terkonfirmasi. Tunggu beberapa detik lalu periksa lagi.',
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _paymentError = 'Gagal memeriksa status pembayaran: $error',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingPayment = false);
+      }
+    }
   }
 
   Future<void> _payWithEWallet(Booking _) async {
@@ -9086,15 +9156,18 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return;
       }
 
+      setState(() => _gatewayOpened = true);
+
       final opened = await launchUrl(
         Uri.parse(redirectUrl),
         mode: LaunchMode.externalApplication,
       );
       if (!opened && mounted) {
-        setState(
-          () => _paymentError =
-              'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.',
-        );
+        setState(() {
+          _gatewayOpened = false;
+          _paymentError =
+              'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.';
+        });
       }
     } catch (error) {
       if (!mounted) {
@@ -9286,6 +9359,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                             : () => _handlePayPressed(booking)
                       : null,
                 ),
+                if (_gatewayOpened && isPayable) ...[
+                  const SizedBox(height: 12),
+                  SecondaryButton(
+                    label: _isCheckingPayment
+                        ? 'Memeriksa pembayaran...'
+                        : 'Periksa status pembayaran',
+                    icon: Icons.refresh_rounded,
+                    onPressed: _isCheckingPayment ? null : _checkPaymentStatus,
+                  ),
+                ],
               ],
             ),
           ),
@@ -9490,7 +9573,7 @@ class _PaymentSuccessDialog extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Pembayaran demo berhasil',
+            'Pembayaran berhasil',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -9508,20 +9591,30 @@ class _PaymentSuccessDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: QrImageView(
-              data: 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber',
+              data: _parkingTicketQrPayload(ticketNumber),
               size: 150,
               eyeStyle: const QrEyeStyle(color: AppTheme.blue),
             ),
           ),
           const SizedBox(height: 10),
           const Text(
-            'QR demo ini dipakai untuk scan masuk dan keluar oleh penjaga parkir.',
+            'Tunjukkan QR ini kepada penjaga untuk scan masuk dan keluar.',
             textAlign: TextAlign.center,
           ),
         ],
       ),
       actions: [
         TextButton(
+          onPressed: () {
+            final router = GoRouter.of(context);
+            Navigator.of(context).pop();
+            router.go(
+              '/customer/receipt?ticket=${Uri.encodeQueryComponent(ticketNumber)}',
+            );
+          },
+          child: const Text('Lihat Nota'),
+        ),
+        ElevatedButton(
           onPressed: () {
             final router = GoRouter.of(context);
             Navigator.of(context).pop();
@@ -9539,6 +9632,9 @@ String _paymentMethodLabel(PaymentMethod method) => switch (method) {
   PaymentMethod.ewallet => 'E-Wallet',
   PaymentMethod.cash => 'Tunai',
 };
+
+String _parkingTicketQrPayload(String ticketNumber) =>
+    'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber';
 
 class ParkingHistoryScreen extends ConsumerStatefulWidget {
   const ParkingHistoryScreen({super.key});
@@ -13598,17 +13694,21 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
             child: const Text('Scan Lagi'),
           ),
           OutlinedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _confirmExit();
-            },
+            onPressed: booking.status == BookingStatus.active
+                ? () {
+                    Navigator.of(dialogContext).pop();
+                    _confirmExit();
+                  }
+                : null,
             child: const Text('Konfirmasi Keluar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _verifyEntry();
-            },
+            onPressed: booking.status == BookingStatus.paid
+                ? () {
+                    Navigator.of(dialogContext).pop();
+                    _verifyEntry();
+                  }
+                : null,
             child: const Text('Verifikasi Masuk'),
           ),
         ],
@@ -13954,7 +14054,9 @@ class TransactionDetailScreen extends ConsumerWidget {
 }
 
 class ReceiptScreen extends ConsumerStatefulWidget {
-  const ReceiptScreen({super.key});
+  const ReceiptScreen({super.key, this.ticketNumber});
+
+  final String? ticketNumber;
 
   @override
   ConsumerState<ReceiptScreen> createState() => _ReceiptScreenState();
@@ -13968,7 +14070,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
     super.initState();
     _receiptFuture = ref
         .read(appControllerProvider.notifier)
-        .fetchLatestReceiptFromSupabase();
+        .fetchReceiptFromSupabase(ticketNumber: widget.ticketNumber);
   }
 
   Future<Uint8List> _buildReceiptPdf({
@@ -14014,7 +14116,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
               pw.Center(
                 child: pw.BarcodeWidget(
                   barcode: pw.Barcode.qrCode(),
-                  data: receiptNumber,
+                  data: _parkingTicketQrPayload(ticketNumber),
                   width: 120,
                   height: 120,
                 ),
@@ -14068,7 +14170,11 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
         future: _receiptFuture,
         builder: (context, snapshot) {
           final receipt = snapshot.data;
-          final fallbackTransaction = history.isEmpty ? null : history.first;
+          final fallbackTransaction = widget.ticketNumber == null
+              ? history.firstOrNull
+              : history
+                    .where((item) => item.id == widget.ticketNumber)
+                    .firstOrNull;
           if (snapshot.connectionState == ConnectionState.waiting &&
               fallbackTransaction == null) {
             return const Center(child: CircularProgressIndicator());
@@ -14117,7 +14223,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                     ),
                     const SizedBox(height: 16),
                     QrImageView(
-                      data: receiptNumber,
+                      data: _parkingTicketQrPayload(ticketNumber),
                       size: 150,
                       eyeStyle: const QrEyeStyle(color: AppTheme.emerald),
                     ),
