@@ -127,7 +127,10 @@ class SupabaseParkingService {
     return _client.storage.from('parking-lot-photos').getPublicUrl(path);
   }
 
-  Future<SupabaseParkingData> fetchParkingData({String? searchQuery}) async {
+  Future<SupabaseParkingData> fetchParkingData({
+    String? searchQuery,
+    bool currentProviderOnly = false,
+  }) async {
     final normalizedSearch = searchQuery?.trim();
     var lotQuery = _client
         .from('parking_lots')
@@ -135,6 +138,13 @@ class SupabaseParkingService {
           'id, provider_id, name, address, price_per_hour, total_slots, open_hours, rating, map_embed_url, latitude, longitude, photo_url, tariff_type, motor_rate, car_rate, truck_rate',
         )
         .eq('is_active', true);
+    if (currentProviderOnly) {
+      final providerId = await _currentProviderId();
+      if (providerId == null) {
+        return const SupabaseParkingData(lots: [], slots: []);
+      }
+      lotQuery = lotQuery.eq('provider_id', providerId);
+    }
     if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
       final pattern = normalizedSearch.replaceAll(',', ' ');
       lotQuery = lotQuery.or('name.ilike.%$pattern%,address.ilike.%$pattern%');
@@ -165,15 +175,18 @@ class SupabaseParkingService {
           availableSlots: availableByLot[row['id'] as String?] ?? 0,
         ),
     ];
+    final visibleLotIds = {for (final lot in lots) lot.id};
 
     final slots = [
       for (final row in slotRows)
-        ParkingSlot(
-          id: row['id'] as String,
-          lotId: row['parking_lot_id'] as String?,
-          label: row['label'] as String? ?? '-',
-          isAvailable: row['status'] == 'available',
-        ),
+        if (!currentProviderOnly ||
+            visibleLotIds.contains(row['parking_lot_id'] as String?))
+          ParkingSlot(
+            id: row['id'] as String,
+            lotId: row['parking_lot_id'] as String?,
+            label: row['label'] as String? ?? '-',
+            isAvailable: row['status'] == 'available',
+          ),
     ];
 
     return SupabaseParkingData(lots: lots, slots: slots);
@@ -452,22 +465,7 @@ class SupabaseParkingService {
   }
 
   Future<List<String>> _currentProviderLotIds() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      return const [];
-    }
-
-    final providerRows = await _client
-        .from('providers')
-        .select('id')
-        .eq('profile_id', user.id)
-        .limit(1);
-
-    if (providerRows.isEmpty) {
-      return const [];
-    }
-
-    final providerId = providerRows.first['id'] as String?;
+    final providerId = await _currentProviderId();
     if (providerId == null) {
       return const [];
     }
@@ -481,6 +479,23 @@ class SupabaseParkingService {
       for (final row in lotRows)
         if (row['id'] != null) row['id'] as String,
     ];
+  }
+
+  Future<String?> _currentProviderId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+    if (providerRows.isEmpty) {
+      return null;
+    }
+    return providerRows.first['id'] as String?;
   }
 
   Map<String, dynamic>? _latestSuccessfulPayment(dynamic value) {

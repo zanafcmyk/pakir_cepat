@@ -1536,8 +1536,7 @@ List<ParkingLot> visibleLotsFor(AppState state) {
   return switch (state.currentMode) {
     AccountMode.parkingGuard when guard != null =>
       state.lots.where((lot) => guard.assignedLotIds.contains(lot.id)).toList(),
-    AccountMode.provider =>
-      state.lots.where((lot) => lot.providerId == 'provider-main').toList(),
+    AccountMode.provider => state.lots,
     _ => state.lots,
   };
 }
@@ -1875,8 +1874,19 @@ class AppController extends StateNotifier<AppState> {
   }
 
   Future<void> loadParkingDataFromSupabase() async {
-    final data = await _parkingService.fetchParkingData();
+    final providerOnly = state.currentMode == AccountMode.provider;
+    final data = await _parkingService.fetchParkingData(
+      currentProviderOnly: providerOnly,
+    );
     if (data.lots.isEmpty) {
+      if (providerOnly) {
+        state = state.copyWith(
+          lots: const [],
+          slots: const [],
+          clearSelectedLot: true,
+          isUsingDemoData: false,
+        );
+      }
       return;
     }
 
@@ -1952,7 +1962,10 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> _refreshParkingDataFromRealtime() async {
     try {
-      final data = await _parkingService.fetchParkingData();
+      final providerOnly = state.currentMode == AccountMode.provider;
+      final data = await _parkingService.fetchParkingData(
+        currentProviderOnly: providerOnly,
+      );
       if (!mounted || data.lots.isEmpty) {
         return;
       }
@@ -3578,39 +3591,52 @@ class AppController extends StateNotifier<AppState> {
     Uint8List? photoBytes,
   }) async {
     final user = Supabase.instance.client.auth.currentUser;
-    String lotId = 'lot-${state.lots.length + 1}';
-    String providerId = 'provider-main';
+    if (user == null) {
+      throw const AuthException(
+        'Sesi penyedia tidak ditemukan. Login ulang sebelum menambah lahan.',
+      );
+    }
+    final provider = await Supabase.instance.client
+        .from('providers')
+        .select('id, status')
+        .eq('profile_id', user.id)
+        .maybeSingle();
+    if (provider == null) {
+      throw StateError(
+        'Data penyedia belum tersedia di Supabase. Selesaikan pendaftaran penyedia atau hubungi super admin.',
+      );
+    }
+    if (provider['status'] != 'verified') {
+      throw StateError(
+        'Akun penyedia belum diverifikasi. Lahan baru dapat ditambahkan setelah disetujui super admin.',
+      );
+    }
+    final providerId = provider['id'] as String;
 
-    if (user != null) {
-      final provider = await Supabase.instance.client
-          .from('providers')
-          .select('id')
-          .eq('profile_id', user.id)
-          .single();
-      providerId = provider['id'] as String;
-
-      final insertedLot = await Supabase.instance.client
-          .from('parking_lots')
-          .insert({
-            'provider_id': providerId,
-            'name': name,
-            'address': address,
-            'price_per_hour': price,
-            'total_slots': capacity,
-            'open_hours': '24 Jam',
-            'latitude': latitude,
-            'longitude': longitude,
-            'map_embed_url': mapEmbedUrl,
-            'photo_url': null,
-            'tariff_type': _tariffTypeToDb(tariffType),
-            'motor_rate': motorRate,
-            'car_rate': carRate,
-            'truck_rate': truckRate,
-            'is_active': true,
-          })
-          .select('id')
-          .single();
-      lotId = insertedLot['id'] as String;
+    final insertedLot = await Supabase.instance.client
+        .from('parking_lots')
+        .insert({
+          'provider_id': providerId,
+          'name': name,
+          'address': address,
+          'price_per_hour': price,
+          'total_slots': capacity,
+          'open_hours': '24 Jam',
+          'latitude': latitude,
+          'longitude': longitude,
+          'map_embed_url': mapEmbedUrl,
+          'photo_url': null,
+          'tariff_type': _tariffTypeToDb(tariffType),
+          'motor_rate': motorRate,
+          'car_rate': carRate,
+          'truck_rate': truckRate,
+          'is_active': true,
+        })
+        .select('id')
+        .single();
+    final lotId = insertedLot['id'] as String;
+    List<dynamic> insertedSlots;
+    try {
       if (photoBytes != null) {
         final photoUrl = await _parkingService.uploadCurrentProviderLotPhoto(
           lotId: lotId,
@@ -3626,23 +3652,35 @@ class AppController extends StateNotifier<AppState> {
         }
       }
 
-      await Supabase.instance.client.from('parking_slots').insert([
-        for (var index = 1; index <= capacity; index++)
-          {
-            'parking_lot_id': lotId,
-            'label': 'A${index.toString().padLeft(3, '0')}',
-            'status': 'available',
-          },
-      ]);
+      insertedSlots = await Supabase.instance.client
+          .from('parking_slots')
+          .insert([
+            for (var index = 1; index <= capacity; index++)
+              {
+                'parking_lot_id': lotId,
+                'label': 'A${index.toString().padLeft(3, '0')}',
+                'status': 'available',
+              },
+          ])
+          .select('id, parking_lot_id, label, status');
+    } catch (error) {
+      try {
+        await Supabase.instance.client
+            .from('parking_lots')
+            .delete()
+            .eq('id', lotId);
+      } catch (_) {
+        // Preserve the original upload/slot error shown to the provider.
+      }
+      rethrow;
     }
-
     final generatedSlots = [
-      for (var index = 1; index <= capacity; index++)
+      for (final row in insertedSlots)
         ParkingSlot(
-          id: '$lotId-slot-$index',
-          lotId: lotId,
-          label: 'A${index.toString().padLeft(3, '0')}',
-          isAvailable: true,
+          id: row['id'] as String,
+          lotId: row['parking_lot_id'] as String,
+          label: row['label'] as String,
+          isAvailable: row['status'] == 'available',
         ),
     ];
 
@@ -4188,29 +4226,38 @@ class AppController extends StateNotifier<AppState> {
   }
 
   Future<void> addSlotToSelectedLot() async {
-    final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
-    if (lot == null) {
-      throw StateError('Pilih lokasi parkir terlebih dahulu.');
+    var lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
+    if (lot == null && state.currentMode == AccountMode.provider) {
+      await loadParkingDataFromSupabase();
+      lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
     }
-    if (!_isSupabaseUuid(lot.id)) {
+    if (lot == null) {
+      throw StateError(
+        'Belum ada lokasi parkir Supabase. Tambahkan lahan terlebih dahulu.',
+      );
+    }
+    final selectedLot = lot;
+    if (!_isSupabaseUuid(selectedLot.id)) {
       throw StateError(
         'Lokasi ini masih data demo/lokal. Buat lokasi baru dari tombol Tambah lokasi agar slot bisa tersimpan ke Supabase.',
       );
     }
 
-    final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList();
+    final lotSlots = state.slots
+        .where((slot) => slot.lotId == selectedLot.id)
+        .toList();
     final nextNumber = lotSlots.length + 1;
     final prefix = lotSlots.isEmpty
         ? 'A'
         : lotSlots.first.label.split('-').first.replaceAll(RegExp(r'\d'), '');
     final normalizedPrefix = prefix.trim().isEmpty ? 'A' : prefix.trim();
     var label = '$normalizedPrefix-${nextNumber.toString().padLeft(2, '0')}';
-    var slotId = '${lot.id}-slot-$nextNumber';
+    var slotId = '${selectedLot.id}-slot-$nextNumber';
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final remoteSlot = await _parkingService.addCurrentProviderParkingSlot(
-        lot.id,
+        selectedLot.id,
       );
       if (remoteSlot != null) {
         slotId = remoteSlot.id;
@@ -4218,18 +4265,23 @@ class AppController extends StateNotifier<AppState> {
       }
     }
 
-    final updatedLot = lot.copyWith(
-      totalSlots: lot.totalSlots + 1,
-      availableSlots: lot.availableSlots + 1,
+    final updatedLot = selectedLot.copyWith(
+      totalSlots: selectedLot.totalSlots + 1,
+      availableSlots: selectedLot.availableSlots + 1,
     );
     state = state.copyWith(
       slots: [
         ...state.slots,
-        ParkingSlot(id: slotId, lotId: lot.id, label: label, isAvailable: true),
+        ParkingSlot(
+          id: slotId,
+          lotId: selectedLot.id,
+          label: label,
+          isAvailable: true,
+        ),
       ],
       lots: [
         for (final item in state.lots)
-          if (item.id == lot.id) updatedLot else item,
+          if (item.id == selectedLot.id) updatedLot else item,
       ],
       selectedLot: updatedLot,
     );
@@ -12271,6 +12323,29 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     return null;
   }
 
+  String _lotSaveError(Object error) {
+    if (error is PostgrestException) {
+      if (error.code == '42501' ||
+          error.message.toLowerCase().contains('row-level security')) {
+        return 'Lahan ditolak RLS Supabase. Pastikan akun ini memiliki data provider dan sudah login sebagai penyedia.';
+      }
+      return error.message;
+    }
+    if (error is StorageException) {
+      if (error.message.toLowerCase().contains('bucket not found')) {
+        return 'Bucket foto lahan belum dibuat. Jalankan docs/supabase_storage_parking_lot_photos.sql di SQL Editor Supabase.';
+      }
+      return 'Upload foto lahan gagal: ${error.message}';
+    }
+    if (error is AuthException) {
+      return error.message;
+    }
+    if (error is StateError) {
+      return error.message;
+    }
+    return 'Gagal menyimpan lahan ke Supabase: $error';
+  }
+
   Future<void> _pickPhoto() async {
     setState(() => _isPickingPhoto = true);
     try {
@@ -12520,18 +12595,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                             context.pop();
                           } catch (error) {
                             if (!context.mounted) return;
-                            setState(
-                              () => _formError = error is StateError
-                                  ? error.message
-                                  : 'Gagal menyimpan lahan ke Supabase. Pastikan koneksi, SQL lahan, dan bucket foto lahan sudah siap.',
-                            );
+                            final message = _lotSaveError(error);
+                            setState(() => _formError = message);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  error is StateError
-                                      ? error.message
-                                      : 'Gagal menyimpan lahan ke Supabase.',
-                                ),
+                                content: Text(message),
+                                duration: const Duration(seconds: 6),
                               ),
                             );
                           } finally {
@@ -12584,7 +12653,7 @@ class _ParkingGuardManagementScreenState
       text: kReleaseMode ? '' : '+62 812 4455 6677',
     );
     _passwordController = TextEditingController();
-    final lots = visibleLotsFor(ref.read(appControllerProvider));
+    final lots = _providerSupabaseLots(ref.read(appControllerProvider));
     if (lots.isNotEmpty) {
       _selectedLotIds.add(lots.first.id);
     }
@@ -12592,6 +12661,16 @@ class _ParkingGuardManagementScreenState
       final controller = ref.read(appControllerProvider.notifier);
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+      if (!mounted) return;
+      final remoteLots = _providerSupabaseLots(ref.read(appControllerProvider));
+      setState(() {
+        _selectedLotIds.removeWhere(
+          (id) => !remoteLots.any((lot) => lot.id == id),
+        );
+        if (_selectedLotIds.isEmpty && remoteLots.isNotEmpty) {
+          _selectedLotIds.add(remoteLots.first.id);
+        }
+      });
     });
   }
 
@@ -12625,6 +12704,35 @@ class _ParkingGuardManagementScreenState
       return 'Pilih minimal satu lokasi untuk penjaga.';
     }
     return null;
+  }
+
+  List<ParkingLot> _providerSupabaseLots(AppState state) {
+    return visibleLotsFor(state)
+        .where(
+          (lot) => RegExp(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+          ).hasMatch(lot.id),
+        )
+        .toList();
+  }
+
+  String _guardSaveError(Object error) {
+    if (error is FunctionException) {
+      final details = error.details;
+      if (details is Map && details['error'] != null) {
+        return details['error'].toString();
+      }
+      if (details != null) {
+        return details.toString();
+      }
+    }
+    if (error is PostgrestException) {
+      return error.message;
+    }
+    if (error is AuthException) {
+      return error.message;
+    }
+    return 'Gagal menyimpan akun penjaga. Pastikan akun penyedia sudah aktif dan lahan Supabase tersedia.';
   }
 
   void _resetGuardForm(List<ParkingLot> lots) {
@@ -12719,18 +12827,12 @@ class _ParkingGuardManagementScreenState
         );
       }
       _resetGuardForm(lots);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(
-        () => _formError =
-            'Gagal menyimpan akun penjaga. Pastikan Edge Function create-guard-account, secret service role, dan SQL guard sudah dijalankan.',
-      );
+      final message = _guardSaveError(error);
+      setState(() => _formError = message);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Gagal menyimpan. Pastikan Edge Function create-guard-account dan SQL guard sudah dijalankan.',
-          ),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
       );
     } finally {
       if (mounted) {
@@ -12785,7 +12887,7 @@ class _ParkingGuardManagementScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final lots = visibleLotsFor(state);
+    final lots = _providerSupabaseLots(state);
     return Scaffold(
       appBar: AppBar(title: const Text('Akun penjaga parkir')),
       body: ListView(
@@ -14413,16 +14515,47 @@ class _ProviderDailyRevenueScreenState
   }
 }
 
-class ManageSlotsScreen extends ConsumerWidget {
+class ManageSlotsScreen extends ConsumerStatefulWidget {
   const ManageSlotsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ManageSlotsScreen> createState() => _ManageSlotsScreenState();
+}
+
+class _ManageSlotsScreenState extends ConsumerState<ManageSlotsScreen> {
+  bool _isLoadingLots = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadLots);
+  }
+
+  Future<void> _loadLots() async {
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .loadParkingDataFromSupabase();
+      if (!mounted) return;
+      setState(() => _loadError = null);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = 'Gagal memuat lokasi Supabase: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLots = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
     final slots =
         lot == null
-              ? const <ParkingSlot>[]
+              ? <ParkingSlot>[]
               : state.slots.where((slot) => slot.lotId == lot.id).toList()
           ..sort((a, b) => a.label.compareTo(b.label));
     return Scaffold(
@@ -14430,6 +14563,18 @@ class ManageSlotsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (_isLoadingLots) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+          ],
+          if (_loadError != null) ...[
+            InlineNotice(
+              icon: Icons.error_outline_rounded,
+              accent: const Color(0xFFD97706),
+              message: _loadError!,
+            ),
+            const SizedBox(height: 14),
+          ],
           if (lot != null) ...[
             InlineNotice(
               icon: Icons.local_parking_rounded,
@@ -14438,32 +14583,46 @@ class ManageSlotsScreen extends ConsumerWidget {
                   'Mengelola ${slots.length} slot untuk ${lot.name}. Slot baru langsung tersimpan ke Supabase.',
             ),
             const SizedBox(height: 14),
+          ] else if (!_isLoadingLots) ...[
+            const InlineNotice(
+              icon: Icons.info_outline_rounded,
+              accent: Color(0xFFD97706),
+              message:
+                  'Belum ada lahan Supabase. Tambahkan lahan parkir sebelum mengelola slot.',
+            ),
+            const SizedBox(height: 14),
           ],
           PrimaryButton(
-            label: 'Tambah slot',
+            label: lot == null
+                ? 'Tambahkan lahan terlebih dahulu'
+                : 'Tambah slot',
             icon: Icons.add_rounded,
-            onPressed: () async {
-              try {
-                await ref
-                    .read(appControllerProvider.notifier)
-                    .addSlotToSelectedLot();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Slot baru berhasil ditambah.')),
-                );
-              } catch (error) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      error is StateError
-                          ? error.message
-                          : 'Gagal menambah slot ke Supabase. Jalankan SQL function app_provider_add_parking_slot dan pastikan lokasi ini milik akun penyedia.',
-                    ),
-                  ),
-                );
-              }
-            },
+            onPressed: lot == null || _isLoadingLots
+                ? null
+                : () async {
+                    try {
+                      await ref
+                          .read(appControllerProvider.notifier)
+                          .addSlotToSelectedLot();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Slot baru berhasil ditambah.'),
+                        ),
+                      );
+                    } catch (error) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            error is StateError
+                                ? error.message
+                                : 'Gagal menambah slot ke Supabase. Jalankan SQL function app_provider_add_parking_slot dan pastikan lokasi ini milik akun penyedia.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
           ),
           const SizedBox(height: 18),
           ...slots.map(
