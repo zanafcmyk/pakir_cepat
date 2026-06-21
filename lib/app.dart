@@ -812,7 +812,7 @@ class AppState {
             'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15866.089919400229!2d106.8179532500215!3d-6.194579097638339!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f69e2ca1776f%3A0x729d6549e71fa7e7!2sPusat%20Bisnis%20Thamrin%20City!5e0!3m2!1sen!2sid!4v1780720526115!5m2!1sen!2sid',
         latitude: -6.194579097638339,
         longitude: 106.8179532500215,
-        tariffType: ParkingTariffType.progressive,
+        tariffType: ParkingTariffType.hourly,
         motorRate: 4000,
         carRate: 10000,
         truckRate: 18000,
@@ -2191,6 +2191,16 @@ class AppController extends StateNotifier<AppState> {
   Future<SupabaseProviderFinancialReport>
   fetchProviderFinancialReportFromSupabase() {
     return _parkingService.fetchCurrentProviderFinancialReport();
+  }
+
+  Future<ParkingCoordinates> geocodeParkingAddress(String address) async {
+    final coordinates = await _parkingService.geocodeAddress(address);
+    if (coordinates == null) {
+      throw StateError(
+        'Alamat tidak ditemukan. Lengkapi nama jalan, nomor, kota, dan provinsi lalu coba lagi.',
+      );
+    }
+    return coordinates;
   }
 
   Future<void> loadProviderMonitoringFromSupabase() async {
@@ -3802,7 +3812,6 @@ class AppController extends StateNotifier<AppState> {
     ParkingTariffType.hourly => 'hourly',
     ParkingTariffType.flat => 'flat',
     ParkingTariffType.daily => 'daily',
-    ParkingTariffType.progressive => 'progressive',
   };
 
   Future<void> toggleFavoriteLot(String lotId) async {
@@ -3868,12 +3877,17 @@ class AppController extends StateNotifier<AppState> {
   Future<void> createBooking({
     required String slotCode,
     required DateTime entryTime,
+    required int durationHours,
   }) async {
     var lot = state.selectedLot ?? state.lots.firstOrNull;
     final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
     if (lot == null || vehicle == null) {
       throw StateError('Lokasi parkir dan kendaraan wajib dipilih.');
     }
+    if (durationHours <= 0) {
+      throw StateError('Durasi parkir harus lebih dari 0 jam.');
+    }
+    final bookingVehicle = vehicle.copyWith(durationHours: durationHours);
     final selectedLotName = lot.name;
     if (!_isSupabaseUuid(lot.id)) {
       await loadParkingDataFromSupabase();
@@ -3913,11 +3927,11 @@ class AppController extends StateNotifier<AppState> {
       throw StateError('Slot $slotCode sudah tidak tersedia.');
     }
 
-    final total = calculateParkingCost(lot, vehicle);
+    final total = calculateParkingCost(lot, bookingVehicle);
     final remoteBooking = await _bookingService.createCurrentCustomerBooking(
       lot: lot,
       slot: selectedSlot,
-      vehicle: vehicle,
+      vehicle: bookingVehicle,
       entryTime: entryTime,
       estimatedCost: total,
     );
@@ -3928,7 +3942,7 @@ class AppController extends StateNotifier<AppState> {
       slotCode: slotCode,
       locationName: lot.name,
       plateNumber: vehicle.plateNumber,
-      vehicleLabel: vehicle.label,
+      vehicleLabel: bookingVehicle.label,
       entryTime: entryTime,
       estimatedCost: total,
       paymentMethod: PaymentMethod.qris,
@@ -3954,6 +3968,7 @@ class AppController extends StateNotifier<AppState> {
 
     state = state.copyWith(
       activeBooking: booking,
+      selectedVehicle: bookingVehicle,
       reservationLockedUntil: DateTime.now().add(const Duration(minutes: 15)),
       slots: updatedSlots,
       customerNotifications: [customerNotice, ...state.customerNotifications],
@@ -4468,10 +4483,14 @@ int calculateParkingCost(ParkingLot lot, Vehicle vehicle) {
     ParkingTariffType.hourly => rate * hours,
     ParkingTariffType.flat => rate,
     ParkingTariffType.daily => rate * math.max(1, (hours / 24).ceil()),
-    ParkingTariffType.progressive =>
-      rate + (math.max(0, hours - 1) * rate ~/ 2),
   };
 }
+
+String parkingRateLabel(ParkingLot lot) => switch (lot.tariffType) {
+  ParkingTariffType.hourly => '${formatCurrency(lot.pricePerHour)}/jam',
+  ParkingTariffType.flat => '${formatCurrency(lot.pricePerHour)} flat',
+  ParkingTariffType.daily => '${formatCurrency(lot.pricePerHour)}/hari',
+};
 
 String formatDateTime(DateTime value) {
   final hour = value.hour.toString().padLeft(2, '0');
@@ -5336,7 +5355,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _parkingNameController;
   late final TextEditingController _parkingAddressController;
   late final TextEditingController _parkingPhotoController;
-  late final TextEditingController _locationPointController;
   late final TextEditingController _identityController;
   final SupabaseProviderDocumentService _providerDocumentService =
       SupabaseProviderDocumentService();
@@ -5372,15 +5390,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _parkingPhotoController = TextEditingController(
       text: kReleaseMode ? '' : 'lahan_parkir_sudirman.jpg',
     );
-    _locationPointController = TextEditingController(
-      text: kReleaseMode ? '' : 'Lat -6.2088, Lng 106.8456',
-    );
     _identityController = TextEditingController(
       text: kReleaseMode ? '' : 'ktp_provider_dio.png',
     );
     _parkingNameController.addListener(_refreshProviderMapPreview);
     _parkingAddressController.addListener(_refreshProviderMapPreview);
-    _locationPointController.text = _providerMapLocationQuery;
   }
 
   @override
@@ -5395,16 +5409,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _parkingNameController.dispose();
     _parkingAddressController.dispose();
     _parkingPhotoController.dispose();
-    _locationPointController.dispose();
     _identityController.dispose();
     super.dispose();
   }
 
   void _refreshProviderMapPreview() {
-    final query = _providerMapLocationQuery;
-    if (_locationPointController.text != query) {
-      _locationPointController.text = query;
-    }
     if (mounted) {
       setState(() {});
     }
@@ -5499,7 +5508,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             parkingName: _parkingNameController.text,
             address: _parkingAddressController.text,
             photoLabel: _parkingPhotoController.text,
-            locationLabel: _locationPointController.text,
+            locationLabel: _providerMapLocationQuery,
             capacity: _providerCapacity.toInt(),
             identityLabel: _identityController.text,
           )
@@ -5548,6 +5557,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (_parkingPhotoBytes == null && photoLabel.isEmpty) {
       _showRegisterMessage('Foto lahan parkir wajib diupload.');
+      return;
+    }
+
+    if (_providerCapacity <= 0) {
+      _showRegisterMessage('Kapasitas kendaraan harus lebih dari 0.');
       return;
     }
 
@@ -6001,24 +6015,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _locationPointController,
-                    readOnly: true,
+                  TextFormField(
+                    initialValue: _providerCapacity.toInt().toString(),
+                    keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Titik lokasi',
-                      prefixIcon: Icon(Icons.pin_drop_rounded),
+                      labelText: 'Kapasitas kendaraan',
+                      prefixIcon: Icon(Icons.local_parking_rounded),
+                      suffixText: 'slot',
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  LabeledSlider(
-                    label: 'Kapasitas kendaraan',
-                    value: _providerCapacity,
-                    min: 20,
-                    max: 300,
-                    divisions: 28,
-                    display: '${_providerCapacity.toInt()} slot',
                     onChanged: (value) =>
-                        setState(() => _providerCapacity = value),
+                        _providerCapacity = double.tryParse(value) ?? 0,
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -6072,6 +6078,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             label: _isLoading ? 'Mendaftarkan...' : 'Daftar',
             icon: Icons.person_add_alt_1_rounded,
             onPressed: _isLoading ? null : _submitRegister,
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _isLoading ? null : () => context.go('/login'),
+            icon: const Icon(Icons.login_rounded),
+            label: const Text('Sudah punya akun? Masuk'),
           ),
         ],
       ),
@@ -6463,10 +6475,6 @@ class ProviderVerificationScreen extends ConsumerWidget {
                     value: application.parkingName,
                   ),
                   SummaryRow(label: 'Alamat lahan', value: application.address),
-                  SummaryRow(
-                    label: 'Titik lokasi',
-                    value: application.locationLabel,
-                  ),
                   SummaryRow(
                     label: 'Kapasitas kendaraan',
                     value: '${application.capacity} slot',
@@ -8245,7 +8253,7 @@ class ParkingDetailScreen extends ConsumerWidget {
                         children: [
                           InfoChip(
                             icon: Icons.payments_rounded,
-                            label: '${formatCurrency(lot.pricePerHour)}/jam',
+                            label: parkingRateLabel(lot),
                           ),
                           InfoChip(
                             icon: Icons.local_parking_rounded,
@@ -8366,24 +8374,25 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   onChanged: (value) => setState(() => _kind = value),
                 ),
                 const SizedBox(height: 20),
-                LabeledSlider(
-                  label: 'Jumlah kendaraan',
-                  value: _quantity,
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  display: _quantity.toInt().toString(),
-                  onChanged: (value) => setState(() => _quantity = value),
+                TextFormField(
+                  initialValue: _quantity.toInt().toString(),
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Jumlah kendaraan',
+                    prefixIcon: Icon(Icons.confirmation_number_outlined),
+                  ),
+                  onChanged: (value) => _quantity = double.tryParse(value) ?? 0,
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Durasi parkir',
-                  value: _duration,
-                  min: 1,
-                  max: 8,
-                  divisions: 7,
-                  display: '${_duration.toInt()} jam',
-                  onChanged: (value) => setState(() => _duration = value),
+                TextFormField(
+                  initialValue: _duration.toInt().toString(),
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Durasi awal parkir',
+                    prefixIcon: Icon(Icons.timer_outlined),
+                    suffixText: 'jam',
+                  ),
+                  onChanged: (value) => _duration = double.tryParse(value) ?? 0,
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
@@ -8397,6 +8406,16 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Plat nomor wajib diisi.'),
+                              ),
+                            );
+                            return;
+                          }
+                          if (_quantity <= 0 || _duration <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Jumlah kendaraan dan durasi harus lebih dari 0.',
+                                ),
                               ),
                             );
                             return;
@@ -8452,9 +8471,28 @@ class BookingScreen extends ConsumerStatefulWidget {
 }
 
 class _BookingScreenState extends ConsumerState<BookingScreen> {
+  late final TextEditingController _durationController;
   String? _selectedSlot;
   DateTime _entryTime = DateTime.now().add(const Duration(minutes: 15));
   bool _isBooking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
+    _durationController = TextEditingController(
+      text: (vehicle?.durationHours ?? 2).toString(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _durationController.dispose();
+    super.dispose();
+  }
+
+  int get _durationHours => int.tryParse(_durationController.text.trim()) ?? 0;
 
   @override
   Widget build(BuildContext context) {
@@ -8483,7 +8521,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
         ),
       );
     }
-    final total = calculateParkingCost(lot, vehicle);
+    final bookingVehicle = vehicle.copyWith(durationHours: _durationHours);
+    final total = _durationHours <= 0
+        ? 0
+        : calculateParkingCost(lot, bookingVehicle);
     final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     final displaySlots = lotSlots;
@@ -8517,7 +8558,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '${vehicle.plateNumber} • ${vehicle.label} • ${vehicle.durationHours} jam',
+                  '${vehicle.plateNumber} • ${vehicle.label}',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
@@ -8608,6 +8649,17 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                TextField(
+                  controller: _durationController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Durasi parkir',
+                    prefixIcon: Icon(Icons.timer_outlined),
+                    suffixText: 'jam',
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
                 SummaryRow(
                   label: 'Estimasi biaya',
                   value: formatCurrency(total),
@@ -8615,7 +8667,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 const SizedBox(height: 8),
                 SummaryRow(
                   label: 'Durasi',
-                  value: '${vehicle.durationHours} jam',
+                  value: _durationHours <= 0
+                      ? 'Isi durasi'
+                      : '$_durationHours jam',
                 ),
                 const SizedBox(height: 8),
                 SummaryRow(
@@ -8628,7 +8682,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ? 'Membuat booking...'
                       : 'Konfirmasi booking',
                   icon: Icons.check_circle_rounded,
-                  onPressed: _selectedSlot == null || _isBooking
+                  onPressed:
+                      _selectedSlot == null || _isBooking || _durationHours <= 0
                       ? null
                       : () async {
                           setState(() => _isBooking = true);
@@ -8638,6 +8693,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 .createBooking(
                                   slotCode: _selectedSlot!,
                                   entryTime: _entryTime,
+                                  durationHours: _durationHours,
                                 );
                             if (!context.mounted) return;
                             context.go('/customer/payment');
@@ -12204,12 +12260,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
 
   late final TextEditingController _nameController;
   late final TextEditingController _addressController;
-  double _capacity = 60;
-  double _price = 12000;
+  late final TextEditingController _capacityController;
+  late final TextEditingController _priceController;
+  late final TextEditingController _motorRateController;
+  late final TextEditingController _carRateController;
+  late final TextEditingController _truckRateController;
   ParkingTariffType _tariffType = ParkingTariffType.hourly;
-  double _motorRate = 5000;
-  double _carRate = 12000;
-  double _truckRate = 20000;
   Uint8List? _photoBytes;
   String? _photoLabel;
   String? _formError;
@@ -12228,6 +12284,11 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController = TextEditingController(
       text: kReleaseMode ? '' : 'Jl. Gatot Subroto Smart Gate 8',
     );
+    _capacityController = TextEditingController(text: '60');
+    _priceController = TextEditingController(text: '12000');
+    _motorRateController = TextEditingController(text: '5000');
+    _carRateController = TextEditingController(text: '12000');
+    _truckRateController = TextEditingController(text: '20000');
     _nameController.addListener(_refreshMapPreview);
     _addressController.addListener(_refreshMapPreview);
   }
@@ -12250,18 +12311,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     }
     _nameController.text = lot.name;
     _addressController.text = lot.address;
-    _capacity = lot.totalSlots.toDouble().clamp(20, 200);
-    _price = lot.pricePerHour.toDouble().clamp(5000, 25000);
+    _capacityController.text = lot.totalSlots.toString();
+    _priceController.text = lot.pricePerHour.toString();
     _tariffType = lot.tariffType;
-    _motorRate = (lot.motorRate ?? lot.pricePerHour).toDouble().clamp(
-      2000,
-      20000,
-    );
-    _carRate = (lot.carRate ?? lot.pricePerHour).toDouble().clamp(5000, 40000);
-    _truckRate = (lot.truckRate ?? lot.pricePerHour).toDouble().clamp(
-      10000,
-      60000,
-    );
+    _motorRateController.text = (lot.motorRate ?? lot.pricePerHour).toString();
+    _carRateController.text = (lot.carRate ?? lot.pricePerHour).toString();
+    _truckRateController.text = (lot.truckRate ?? lot.pricePerHour).toString();
     _photoLabel = lot.photoLabel;
   }
 
@@ -12271,7 +12326,52 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController.removeListener(_refreshMapPreview);
     _nameController.dispose();
     _addressController.dispose();
+    _capacityController.dispose();
+    _priceController.dispose();
+    _motorRateController.dispose();
+    _carRateController.dispose();
+    _truckRateController.dispose();
     super.dispose();
+  }
+
+  int get _capacity => int.tryParse(_capacityController.text.trim()) ?? 0;
+  int get _price => int.tryParse(_priceController.text.trim()) ?? 0;
+  int get _motorRate => int.tryParse(_motorRateController.text.trim()) ?? 0;
+  int get _carRate => int.tryParse(_carRateController.text.trim()) ?? 0;
+  int get _truckRate => int.tryParse(_truckRateController.text.trim()) ?? 0;
+
+  String get _basePriceLabel => switch (_tariffType) {
+    ParkingTariffType.hourly => 'Harga dasar per jam',
+    ParkingTariffType.flat => 'Harga dasar flat',
+    ParkingTariffType.daily => 'Harga dasar per hari',
+  };
+
+  String _vehicleRateLabel(String vehicle) => switch (_tariffType) {
+    ParkingTariffType.hourly => 'Tarif $vehicle per jam',
+    ParkingTariffType.flat => 'Tarif flat $vehicle',
+    ParkingTariffType.daily => 'Tarif $vehicle per hari',
+  };
+
+  Widget _numberField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? suffixText,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixText: suffixText,
+      ),
+      onChanged: (_) {
+        if (_formError != null) {
+          setState(() => _formError = null);
+        }
+      },
+    );
   }
 
   void _refreshMapPreview() {
@@ -12309,12 +12409,10 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     if (_addressController.text.trim().isEmpty) {
       return 'Alamat lahan parkir wajib diisi.';
     }
-    if (_capacity.toInt() <= 0) {
+    if (_capacity <= 0) {
       return 'Kapasitas kendaraan harus lebih dari 0.';
     }
-    if (_motorRate.toInt() <= 0 ||
-        _carRate.toInt() <= 0 ||
-        _truckRate.toInt() <= 0) {
+    if (_price <= 0 || _motorRate <= 0 || _carRate <= 0 || _truckRate <= 0) {
       return 'Tarif motor, mobil, dan truk harus lebih dari 0.';
     }
     if (!_isEditing && _photoBytes == null) {
@@ -12422,30 +12520,24 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                 Text(
                   _mapLocationQuery.isEmpty
                       ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
-                      : 'Map diarahkan ke: $_mapLocationQuery',
+                      : 'Map diarahkan ke: $_mapLocationQuery. Koordinat dicari dari alamat saat lahan disimpan.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 18),
-                LabeledSlider(
+                _numberField(
+                  controller: _capacityController,
                   label: 'Kapasitas kendaraan',
-                  value: _capacity,
-                  min: 20,
-                  max: 200,
-                  divisions: 18,
-                  display: _capacity.toInt().toString(),
-                  onChanged: (value) => setState(() => _capacity = value),
+                  icon: Icons.local_parking_rounded,
+                  suffixText: 'slot',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Harga parkir per jam',
-                  value: _price,
-                  min: 5000,
-                  max: 25000,
-                  divisions: 20,
-                  display: formatCurrency(_price.toInt()),
-                  onChanged: (value) => setState(() => _price = value),
+                _numberField(
+                  controller: _priceController,
+                  label: _basePriceLabel,
+                  icon: Icons.payments_outlined,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
                 SegmentedChoice<ParkingTariffType>(
@@ -12465,44 +12557,30 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                       label: 'Harian',
                       icon: Icons.calendar_today_rounded,
                     ),
-                    ChoiceItem(
-                      value: ParkingTariffType.progressive,
-                      label: 'Progresif',
-                      icon: Icons.trending_up_rounded,
-                    ),
                   ],
                   value: _tariffType,
                   onChanged: (value) => setState(() => _tariffType = value),
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif motor',
-                  value: _motorRate,
-                  min: 2000,
-                  max: 20000,
-                  divisions: 18,
-                  display: formatCurrency(_motorRate.toInt()),
-                  onChanged: (value) => setState(() => _motorRate = value),
+                _numberField(
+                  controller: _motorRateController,
+                  label: _vehicleRateLabel('motor'),
+                  icon: Icons.two_wheeler_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif mobil',
-                  value: _carRate,
-                  min: 5000,
-                  max: 40000,
-                  divisions: 35,
-                  display: formatCurrency(_carRate.toInt()),
-                  onChanged: (value) => setState(() => _carRate = value),
+                _numberField(
+                  controller: _carRateController,
+                  label: _vehicleRateLabel('mobil'),
+                  icon: Icons.directions_car_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif truk',
-                  value: _truckRate,
-                  min: 10000,
-                  max: 60000,
-                  divisions: 50,
-                  display: formatCurrency(_truckRate.toInt()),
-                  onChanged: (value) => setState(() => _truckRate = value),
+                _numberField(
+                  controller: _truckRateController,
+                  label: _vehicleRateLabel('truk'),
+                  icon: Icons.local_shipping_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 18),
                 MiniInfoTile(
@@ -12548,20 +12626,24 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                                 'Lokasi yang akan diedit tidak ditemukan. Buka ulang daftar lokasi lalu pilih edit lagi.',
                               );
                             }
+                            final coordinates = await controller
+                                .geocodeParkingAddress(
+                                  _addressController.text.trim(),
+                                );
                             if (editingLot != null) {
                               await controller.updateLot(
                                 lot: editingLot,
                                 name: _nameController.text.trim(),
                                 address: _addressController.text.trim(),
-                                capacity: _capacity.toInt(),
-                                price: _price.toInt(),
+                                capacity: _capacity,
+                                price: _price,
                                 mapEmbedUrl: _mapEmbedUrl,
-                                latitude: _defaultMapLatitude,
-                                longitude: _defaultMapLongitude,
+                                latitude: coordinates.latitude,
+                                longitude: coordinates.longitude,
                                 tariffType: _tariffType,
-                                motorRate: _motorRate.toInt(),
-                                carRate: _carRate.toInt(),
-                                truckRate: _truckRate.toInt(),
+                                motorRate: _motorRate,
+                                carRate: _carRate,
+                                truckRate: _truckRate,
                                 photoLabel: _photoLabel,
                                 photoBytes: _photoBytes,
                               );
@@ -12569,15 +12651,15 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                               await controller.addLot(
                                 name: _nameController.text.trim(),
                                 address: _addressController.text.trim(),
-                                capacity: _capacity.toInt(),
-                                price: _price.toInt(),
+                                capacity: _capacity,
+                                price: _price,
                                 mapEmbedUrl: _mapEmbedUrl,
-                                latitude: _defaultMapLatitude,
-                                longitude: _defaultMapLongitude,
+                                latitude: coordinates.latitude,
+                                longitude: coordinates.longitude,
                                 tariffType: _tariffType,
-                                motorRate: _motorRate.toInt(),
-                                carRate: _carRate.toInt(),
-                                truckRate: _truckRate.toInt(),
+                                motorRate: _motorRate,
+                                carRate: _carRate,
+                                truckRate: _truckRate,
                                 photoLabel: _photoLabel,
                                 photoBytes: _photoBytes,
                               );
@@ -17727,7 +17809,7 @@ class ParkingLotCard extends StatelessWidget {
               Expanded(
                 child: MetricColumn(
                   label: 'Harga',
-                  value: '${formatCurrency(lot.pricePerHour)}/jam',
+                  value: parkingRateLabel(lot),
                 ),
               ),
               Expanded(

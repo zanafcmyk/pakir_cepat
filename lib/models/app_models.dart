@@ -8,7 +8,7 @@ enum AccountStatus { pending, verified, rejected }
 
 enum VehicleKind { motor, mobil, truk }
 
-enum ParkingTariffType { hourly, flat, daily, progressive }
+enum ParkingTariffType { hourly, flat, daily }
 
 enum PaymentMethod { qris, ewallet, cash }
 

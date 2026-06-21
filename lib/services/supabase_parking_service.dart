@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_models.dart';
@@ -20,6 +23,13 @@ class SupabaseParkingSlotInsertResult {
 
   final String id;
   final String label;
+}
+
+class ParkingCoordinates {
+  const ParkingCoordinates({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
 }
 
 class SupabaseProviderDashboardSummary {
@@ -99,6 +109,49 @@ class SupabaseParkingService {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  Future<ParkingCoordinates?> geocodeAddress(String address) async {
+    final query = address.trim();
+    if (query.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+      'q': '$query, Indonesia',
+      'format': 'jsonv2',
+      'limit': '1',
+      'countrycodes': 'id',
+    });
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'Accept-Language': 'id',
+    };
+    if (!kIsWeb) {
+      headers['User-Agent'] = 'ParkirCepat/1.0';
+    }
+
+    final response = await http
+        .get(uri, headers: headers)
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) {
+      throw StateError(
+        'Pencarian koordinat lokasi gagal (${response.statusCode}). Coba lagi.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List || decoded.isEmpty || decoded.first is! Map) {
+      return null;
+    }
+    final result = decoded.first as Map;
+    final latitude = double.tryParse(result['lat']?.toString() ?? '');
+    final longitude = double.tryParse(result['lon']?.toString() ?? '');
+    if (latitude == null || longitude == null) {
+      return null;
+    }
+
+    return ParkingCoordinates(latitude: latitude, longitude: longitude);
+  }
 
   Future<String?> uploadCurrentProviderLotPhoto({
     required String lotId,
@@ -631,7 +684,6 @@ class SupabaseParkingService {
   ParkingTariffType _tariffTypeFromDb(String? value) => switch (value) {
     'flat' => ParkingTariffType.flat,
     'daily' => ParkingTariffType.daily,
-    'progressive' => ParkingTariffType.progressive,
     _ => ParkingTariffType.hourly,
   };
 
