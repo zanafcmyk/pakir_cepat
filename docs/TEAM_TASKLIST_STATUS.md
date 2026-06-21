@@ -2,6 +2,8 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
+Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, dan percobaan build release.
+
 ## Cara Pakai
 
 - Kerjakan satu fitur kecil dalam satu waktu.
@@ -12,6 +14,51 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Jika ada kerusakan, kembali ke commit aman sebelum perubahan tersebut.
 
 ## Status Umum
+
+### Audit Terbaru 21 Juni 2026
+
+#### Kritis - Wajib Sebelum Production
+
+- [ ] Perketat RLS `bookings`; policy saat ini masih `FOR ALL` sehingga customer, penjaga, atau penyedia terkait dapat mengubah kolom booking lebih luas dari kebutuhan perannya.
+- [ ] Perketat RLS `payments`; status dan nominal pembayaran tidak boleh dapat ditulis langsung oleh client biasa.
+- [ ] Hitung ulang tarif dan `estimated_cost` di server/RPC dari data lahan, jenis kendaraan, tipe tarif, dan durasi. Jangan percaya nominal kiriman Flutter.
+- [ ] Perbaiki konfirmasi pembayaran tunai penjaga. Implementasi sekarang memanggil service customer sehingga akun penjaga tidak menemukan `customer_id`; state lokal dapat terlihat lunas walau database belum berubah.
+- [ ] Buat RPC transaksi atomik untuk scan masuk/keluar yang memvalidasi assignment penjaga, status booking sebelumnya, update slot, waktu scan, dan activity log dalam satu transaksi.
+- [ ] Tambahkan proses kedaluwarsa reservasi 15 menit agar booking `pending_payment` dibatalkan dan slot `reserved` kembali `available`.
+
+#### Belum Berjalan Penuh
+
+- [ ] Cek pembayaran penjaga harus mencari tiket/plat ke Supabase, bukan hanya `activeBooking` yang sedang ada di memori aplikasi.
+- [ ] Daftar kendaraan aktif penjaga harus membaca seluruh booking aktif pada lokasi assignment, bukan hanya satu booking terakhir.
+- [ ] Perpanjang durasi parkir harus memperbarui booking, biaya, dan pembayaran di Supabase; saat ini hanya mengubah state lokal.
+- [ ] Perubahan status slot harus menampilkan kegagalan Supabase dan melakukan rollback state; error saat ini masih dapat disembunyikan.
+- [ ] Tambahkan aksi nonaktif/hapus lahan dari aplikasi dengan penanganan booking historis dan foreign key yang aman.
+- [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
+- [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
+- [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
+- [ ] Tampilkan foto lahan dari `photo_url` pada halaman customer; upload sudah berjalan tetapi foto belum digunakan di katalog/detail.
+- [ ] Simpan dan tampilkan `duration_hours` dari booking. Durasi halaman pembayaran saat ini diturunkan dari total biaya dan dapat salah untuk tarif flat/harian.
+- [ ] Ganti QR tiket polos dengan token bertanda tangan/opaque agar tidak mudah ditebak, dibagikan, atau dipakai ulang.
+
+#### Masih Demo atau Estimasi
+
+- [ ] Jarak dan ETA lokasi masih bernilai tetap `0.8 km / 3 menit`; belum memakai posisi customer/GPS dan perhitungan rute.
+- [ ] QR pembayaran sebelum membuka Midtrans masih berlabel demo.
+- [ ] Input nomor e-wallet masih UI demo; transaksi sebenarnya tetap diteruskan ke Midtrans.
+- [ ] Pengeluaran laporan penyedia masih estimasi tetap 30% dari pendapatan.
+- [ ] Pilihan bahasa dan keamanan akun baru disimpan sebagai setting, belum mengubah bahasa atau mekanisme keamanan aplikasi.
+- [ ] Data seed lokasi, kendaraan, chat, notifikasi, dan laporan masih aktif pada build debug/profile; build release memakai state kosong.
+
+#### Hasil Pemeriksaan Teknis
+
+- [x] `flutter analyze --no-pub` lulus tanpa issue.
+- [x] Seluruh 6 test saat ini lulus.
+- [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
+- [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
+- [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
+- [ ] Build APK release belum berhasil diverifikasi. Flutter berhasil sampai tahap kompilasi/tree-shaking, lalu JVM Gradle crash; turunkan konfigurasi heap `-Xmx8G` dan ulangi build pada mesin yang cukup stabil.
+- [ ] Edit ulang data lahan live lama dengan alamat lengkap. Dua lahan yang diaudit masih memakai koordinat default yang sama `-6.2087145, 106.8224854`.
+- [ ] Wajib isi `PUSH_FUNCTION_SECRET`; function push tidak boleh menerima target `profileIds` bebas ketika secret kosong.
 
 ### Sudah Berjalan dan Terhubung Supabase
 
@@ -31,8 +78,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Penyedia bisa menambah slot parkir dari halaman kelola slot dan menyimpannya ke Supabase.
 - [x] Daftar lokasi penyedia punya aksi tambah lokasi, edit lokasi, dan kelola slot per lokasi.
 - [x] Kendaraan customer ke Supabase.
-- [x] Booking parkir ke Supabase memakai RPC aman untuk reserve slot dan membuat booking.
-- [x] Payment demo tersimpan ke Supabase.
+- [x] Booking parkir ke Supabase memakai RPC untuk reserve slot dan membuat booking secara bersamaan; validasi harga server masih menjadi pekerjaan kritis.
+- [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga belum benar dan dicatat sebagai pekerjaan kritis.
 - [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
 - [x] Payment gateway hanya memakai booking yang berhasil tersimpan di Supabase; fallback booking lokal/demo dihapus.
 - [x] Load booking aktif customer dari Supabase.
@@ -89,14 +136,15 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [x] Audit RLS sinkron antar-role dibuat dan kode memakai RPC optional untuk chat/notifikasi.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
-- [x] Payment tunai dikunci agar hanya penjaga berizin yang bisa konfirmasi.
+- [ ] UI payment tunai sudah memeriksa izin penjaga, tetapi penyimpanan oleh akun penjaga masih rusak dan harus dipindahkan ke RPC/Edge Function khusus.
 - [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
 - [x] Error handling dashboard penyedia, penjaga, dan super admin menampilkan kegagalan data Supabase.
 - [x] Data demo/lokal mulai dipisah dengan flag `isUsingDemoData` dan notice dashboard.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
-- [ ] Payment gateway Midtrans perlu deploy Edge Function, isi secret, dan setting webhook di dashboard Midtrans.
+- [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
+- [ ] Lakukan uji settlement Midtrans end-to-end berulang: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
@@ -105,7 +153,7 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - [ ] SQL RLS patch `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan di Supabase production.
 - [ ] SQL booking RPC terbaru di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar error booking customer karena RLS hilang.
 - [ ] SQL tambah slot penyedia `app_provider_add_parking_slot` di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar tombol tambah slot bisa melewati RLS.
-- [ ] Super admin hapus akun Auth perlu deploy Edge Function `admin-delete-user` dan secret `SERVICE_ROLE_KEY`.
+- [x] Edge Function `admin-delete-user` sudah terdeploy dan merespons; pastikan `SERVICE_ROLE_KEY` tetap tersedia serta audit aksi hapus memakai akun super admin.
 
 #### Catatan audit baris 48-66
 
@@ -125,14 +173,14 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 - Error handling form/detail utama sudah diperkuat dengan notice menetap di form tambah lahan, akun penjaga, komplain customer, dan komplain penjaga.
 - Checklist deploy eksternal dibuat di `docs/production_external_deploy_checklist.md`.
 - Forgot password mengirim link reset Supabase dan route `/reset-password` sudah tersedia untuk set password baru. Perlu cek konfigurasi email/redirect Supabase saat uji perangkat.
-- Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`. Perlu deploy function dan environment `SERVICE_ROLE_KEY`.
-- Payment gateway Midtrans sudah disiapkan di kode dan Edge Function, tetapi belum production penuh sampai secret `MIDTRANS_SERVER_KEY`, deploy function, dan webhook Midtrans aktif.
+- Delete account sungguhan memakai Edge Function `supabase/functions/delete-account`; function sudah terdeploy dan tetap membutuhkan environment `SERVICE_ROLE_KEY`.
+- Payment gateway Midtrans dan webhook sudah terdeploy serta merespons. Production tetap membutuhkan audit settlement end-to-end, idempotensi payment, callback/deep link, dan monitoring kegagalan webhook.
 - Payment gateway ditampung dulu; pilihan debit/kredit sudah dihapus dari aplikasi sesuai keputusan terbaru.
 - Receipt sudah baca Supabase dan tombol cetak/export sekarang menghasilkan PDF.
 - Upload foto lahan sudah berjalan lewat bucket `parking-lot-photos` dan menyimpan `photo_url` ke `parking_lots`.
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
-- Akun penjaga langsung membutuhkan Edge Function `supabase/functions/create-guard-account` dan secret `SERVICE_ROLE_KEY`.
+- Akun penjaga langsung memakai Edge Function `supabase/functions/create-guard-account`; function sudah terdeploy dan tetap membutuhkan secret `SERVICE_ROLE_KEY`.
 - Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
 - Matriks sinkron antar role dicatat di `docs/ROLE_SYNC_STATUS.md`.
 - Audit RLS sinkron antar role dicatat di `docs/RLS_AUDIT_STATUS.md`.
@@ -202,7 +250,8 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [x] Dashboard penyedia diaudit dan kartu utama membaca agregasi Supabase.
-- [ ] Payment provider untuk settlement asli masih menunggu deploy Midtrans dan webhook.
+- [x] Edge Function Midtrans dan webhook sudah terdeploy.
+- [ ] Audit settlement, idempotensi payment, dan rekonsiliasi pendapatan provider dengan transaksi Midtrans.
 
 #### Belum Ada/Belum Production
 
@@ -229,8 +278,9 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 - [x] Pembatasan route penjaga dasar sudah ada.
 - [ ] Pembatasan route penjaga perlu audit deep link production.
-- [x] Pembayaran tunai/manual hanya bisa dikonfirmasi penjaga yang punya izin.
-- [ ] Pembayaran tunai/manual perlu audit kas/settlement production.
+- [ ] Perbaiki konfirmasi tunai: izin sudah dicek di UI, tetapi service yang dipanggil masih service customer dan belum menyimpan pembayaran dari akun penjaga.
+- [ ] Pembayaran tunai/manual perlu RPC aman serta audit kas/settlement production.
+- [ ] Cek pembayaran dan daftar kendaraan aktif penjaga harus query Supabase lintas booking, bukan mengandalkan satu `activeBooking` lokal.
 
 #### Belum Ada/Belum Production
 
@@ -262,9 +312,11 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 #### Sudah Ada Tapi Masih Demo/Lokal
 
-- [ ] Payment online sudah diarahkan ke pondasi Midtrans, tetapi belum production sampai Edge Function, secret, dan webhook aktif.
+- [x] Payment online sudah diarahkan ke Midtrans dan Edge Function/webhook sudah terdeploy.
+- [ ] Audit payment end-to-end, callback/deep link, idempotensi, dan kegagalan webhook sebelum production.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
-- [ ] Payment tunai/manual perlu audit kas/settlement production.
+- [ ] Penyimpanan payment tunai oleh penjaga belum bekerja benar dan membutuhkan RPC/Edge Function khusus.
+- [ ] Perpanjang durasi dan biaya parkir customer masih lokal, belum tersimpan ke Supabase.
 
 #### Belum Ada/Belum Production
 
@@ -320,7 +372,13 @@ Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur
 
 ## Prioritas Aman Berikutnya
 
-1. Deploy Edge Function payment dan isi secret Midtrans.
-2. Pasang Firebase config agar token push notification bisa didaftarkan dari HP.
-3. Uji realtime slot/lokasi/notifikasi di dua perangkat.
-4. Uji production route protection di perangkat asli.
+1. Perketat RLS `bookings` dan `payments`, lalu hitung harga booking sepenuhnya di server.
+2. Buat RPC pembayaran tunai penjaga dan migrasikan tombol konfirmasi tunai ke RPC tersebut.
+3. Buat RPC atomik scan masuk/keluar beserta validasi status dan assignment penjaga.
+4. Tambahkan expiry reservasi server-side untuk melepas slot yang tidak dibayar.
+5. Ubah cek pembayaran dan kendaraan aktif penjaga menjadi query Supabase lintas booking.
+6. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
+7. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
+8. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
+9. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
+10. Tambah integration test multi-role/multi-device dan stabilkan build APK release.
