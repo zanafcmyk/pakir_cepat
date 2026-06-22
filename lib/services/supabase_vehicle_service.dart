@@ -32,34 +32,43 @@ class SupabaseVehicleService {
     ];
   }
 
-  Future<Vehicle?> saveCurrentCustomerVehicle({
-    required String plateNumber,
+  Future<List<Vehicle>> saveCurrentCustomerVehicles({
+    required List<String> plateNumbers,
     required VehicleKind kind,
-    required int quantity,
     required int durationHours,
   }) async {
     final customerId = await _currentCustomerId();
     if (customerId == null) {
-      return null;
+      throw StateError('Profil customer tidak ditemukan.');
     }
 
-    final row = await _client
+    final normalizedPlates = plateNumbers
+        .map((plate) => plate.trim().toUpperCase())
+        .where((plate) => plate.isNotEmpty)
+        .toList();
+    final rows = await _client
         .from('vehicles')
-        .upsert({
-          'customer_id': customerId,
-          'plate_number': plateNumber,
-          'kind': _kindToDb(kind),
-        }, onConflict: 'customer_id,plate_number')
+        .upsert([
+          for (final plateNumber in normalizedPlates)
+            {
+              'customer_id': customerId,
+              'plate_number': plateNumber,
+              'kind': _kindToDb(kind),
+            },
+        ], onConflict: 'customer_id,plate_number')
         .select('id, plate_number, kind')
-        .single();
+        .order('created_at', ascending: false);
 
-    return Vehicle(
-      id: row['id'] as String,
-      plateNumber: row['plate_number'] as String? ?? plateNumber,
-      kind: _kindFromDb(row['kind'] as String?),
-      quantity: quantity,
-      durationHours: durationHours,
-    );
+    return [
+      for (final row in rows)
+        Vehicle(
+          id: row['id'] as String,
+          plateNumber: row['plate_number'] as String? ?? '-',
+          kind: _kindFromDb(row['kind'] as String?),
+          quantity: 1,
+          durationHours: durationHours,
+        ),
+    ];
   }
 
   Future<String?> _currentCustomerId() async {

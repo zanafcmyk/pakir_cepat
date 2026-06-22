@@ -78,8 +78,11 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Penyedia bisa menambah slot parkir dari halaman kelola slot dan menyimpannya ke Supabase.
 - [x] Daftar lokasi penyedia punya aksi tambah lokasi, edit lokasi, dan kelola slot per lokasi.
 - [x] Kendaraan customer ke Supabase.
+- [x] Form tambah kendaraan membuat satu input plat untuk setiap jumlah kendaraan dan menyimpan setiap plat sebagai kendaraan terpisah.
+- [x] Halaman booking menyediakan pilihan kendaraan dan input waktu masuk manual dengan validasi format tanggal/jam.
 - [x] Booking parkir memakai RPC untuk reserve slot, menghitung tarif server, dan membuat booking secara bersamaan; patch SQL masih harus diterapkan di production.
 - [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga sudah dipindahkan ke RPC aman dan menunggu penerapan SQL live.
+- [x] Halaman pembayaran menyediakan dua aksi jelas: bayar melalui Midtrans atau bayar langsung/tunai di lokasi yang tetap membutuhkan konfirmasi penjaga/operator.
 - [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
 - [x] Payment gateway hanya memakai booking yang berhasil tersimpan di Supabase; fallback booking lokal/demo dihapus.
 - [x] Load booking aktif customer dari Supabase.

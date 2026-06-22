@@ -3179,6 +3179,10 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(selectedLot: lot);
   }
 
+  void selectVehicle(Vehicle vehicle) {
+    state = state.copyWith(selectedVehicle: vehicle);
+  }
+
   String createGuardChatRoom({
     required String id,
     required String title,
@@ -3846,38 +3850,30 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
-  Future<void> saveVehicle({
-    required String plateNumber,
+  Future<void> saveVehicles({
+    required List<String> plateNumbers,
     required VehicleKind kind,
-    required int quantity,
     required int durationHours,
   }) async {
-    final remoteVehicle = await _vehicleService
-        .saveCurrentCustomerVehicle(
-          plateNumber: plateNumber,
-          kind: kind,
-          quantity: quantity,
-          durationHours: durationHours,
-        )
-        .catchError((_) => null);
+    final savedVehicles = await _vehicleService.saveCurrentCustomerVehicles(
+      plateNumbers: plateNumbers,
+      kind: kind,
+      durationHours: durationHours,
+    );
+    if (savedVehicles.isEmpty) {
+      throw StateError('Tidak ada kendaraan yang berhasil disimpan.');
+    }
 
-    final vehicle =
-        remoteVehicle ??
-        Vehicle(
-          id: 'veh-${state.vehicles.length + 1}',
-          plateNumber: plateNumber,
-          kind: kind,
-          quantity: quantity,
-          durationHours: durationHours,
-        );
-
-    final remainingVehicles = state.vehicles
-        .where((item) => item.plateNumber != vehicle.plateNumber)
-        .toList();
+    final savedPlates = {
+      for (final vehicle in savedVehicles) vehicle.plateNumber.toUpperCase(),
+    };
+    final remainingVehicles = state.vehicles.where(
+      (item) => !savedPlates.contains(item.plateNumber.toUpperCase()),
+    );
 
     state = state.copyWith(
-      vehicles: [vehicle, ...remainingVehicles],
-      selectedVehicle: vehicle,
+      vehicles: [...savedVehicles, ...remainingVehicles],
+      selectedVehicle: savedVehicles.first,
     );
   }
 
@@ -8320,24 +8316,41 @@ class AddVehicleScreen extends ConsumerStatefulWidget {
 }
 
 class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
-  late final TextEditingController _plateController;
+  late final TextEditingController _quantityController;
+  final List<TextEditingController> _plateControllers = [];
   VehicleKind _kind = VehicleKind.mobil;
-  double _quantity = 1;
   double _duration = 2;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _plateController = TextEditingController(
-      text: kReleaseMode ? '' : 'B 5678 PCP',
-    );
+    _quantityController = TextEditingController(text: '1');
+    _syncPlateControllers(1);
+    if (!kReleaseMode) {
+      _plateControllers.first.text = 'B 5678 PCP';
+    }
   }
 
   @override
   void dispose() {
-    _plateController.dispose();
+    _quantityController.dispose();
+    for (final controller in _plateControllers) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  int get _quantity => int.tryParse(_quantityController.text.trim()) ?? 0;
+
+  void _syncPlateControllers(int quantity) {
+    final target = quantity.clamp(1, 10).toInt();
+    while (_plateControllers.length < target) {
+      _plateControllers.add(TextEditingController());
+    }
+    while (_plateControllers.length > target) {
+      _plateControllers.removeLast().dispose();
+    }
   }
 
   @override
@@ -8351,14 +8364,6 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: _plateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Plat nomor kendaraan',
-                    prefixIcon: Icon(Icons.directions_car_rounded),
-                  ),
-                ),
-                const SizedBox(height: 18),
                 SegmentedChoice<VehicleKind>(
                   items: const [
                     ChoiceItem(
@@ -8381,16 +8386,37 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   onChanged: (value) => setState(() => _kind = value),
                 ),
                 const SizedBox(height: 20),
-                TextFormField(
-                  initialValue: _quantity.toInt().toString(),
+                TextField(
+                  controller: _quantityController,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: 'Jumlah kendaraan',
                     prefixIcon: Icon(Icons.confirmation_number_outlined),
+                    helperText: 'Maksimal 10 kendaraan dalam sekali simpan.',
                   ),
-                  onChanged: (value) => _quantity = double.tryParse(value) ?? 0,
+                  onChanged: (value) {
+                    final quantity = int.tryParse(value);
+                    if (quantity != null && quantity >= 1 && quantity <= 10) {
+                      setState(() => _syncPlateControllers(quantity));
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
+                for (
+                  var index = 0;
+                  index < _plateControllers.length;
+                  index++
+                ) ...[
+                  TextField(
+                    controller: _plateControllers[index],
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      labelText: 'Plat kendaraan ${index + 1}',
+                      prefixIcon: const Icon(Icons.directions_car_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 TextFormField(
                   initialValue: _duration.toInt().toString(),
                   keyboardType: TextInputType.number,
@@ -8408,21 +8434,47 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   onPressed: _isSaving
                       ? null
                       : () async {
-                          final plateNumber = _plateController.text.trim();
-                          if (plateNumber.isEmpty) {
+                          final plateNumbers = _plateControllers
+                              .map((controller) => controller.text.trim())
+                              .toList();
+                          if (_quantity < 1 || _quantity > 10) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Plat nomor wajib diisi.'),
+                                content: Text(
+                                  'Jumlah kendaraan harus antara 1 sampai 10.',
+                                ),
                               ),
                             );
                             return;
                           }
-                          if (_quantity <= 0 || _duration <= 0) {
+                          if (plateNumbers.length != _quantity ||
+                              plateNumbers.any((plate) => plate.isEmpty)) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Jumlah kendaraan dan durasi harus lebih dari 0.',
+                                  'Semua plat kendaraan wajib diisi.',
                                 ),
+                              ),
+                            );
+                            return;
+                          }
+                          final normalizedPlates = plateNumbers
+                              .map((plate) => plate.toUpperCase())
+                              .toSet();
+                          if (normalizedPlates.length != plateNumbers.length) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Plat kendaraan tidak boleh sama.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          if (_duration <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Durasi harus lebih dari 0 jam.'),
                               ),
                             );
                             return;
@@ -8432,16 +8484,17 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                           try {
                             await ref
                                 .read(appControllerProvider.notifier)
-                                .saveVehicle(
-                                  plateNumber: plateNumber,
+                                .saveVehicles(
+                                  plateNumbers: plateNumbers,
                                   kind: _kind,
-                                  quantity: _quantity.toInt(),
                                   durationHours: _duration.toInt(),
                                 );
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Kendaraan berhasil disimpan.'),
+                                content: Text(
+                                  'Semua kendaraan berhasil disimpan.',
+                                ),
                               ),
                             );
                             context.pop();
@@ -8479,8 +8532,8 @@ class BookingScreen extends ConsumerStatefulWidget {
 
 class _BookingScreenState extends ConsumerState<BookingScreen> {
   late final TextEditingController _durationController;
+  late final TextEditingController _entryTimeController;
   String? _selectedSlot;
-  DateTime _entryTime = DateTime.now().add(const Duration(minutes: 15));
   bool _isBooking = false;
 
   @override
@@ -8491,15 +8544,42 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
     _durationController = TextEditingController(
       text: (vehicle?.durationHours ?? 2).toString(),
     );
+    _entryTimeController = TextEditingController(
+      text: formatDateTime(DateTime.now().add(const Duration(minutes: 15))),
+    );
   }
 
   @override
   void dispose() {
     _durationController.dispose();
+    _entryTimeController.dispose();
     super.dispose();
   }
 
   int get _durationHours => int.tryParse(_durationController.text.trim()) ?? 0;
+
+  DateTime? get _entryTime {
+    final match = RegExp(
+      r'^(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})$',
+    ).firstMatch(_entryTimeController.text.trim());
+    if (match == null) {
+      return null;
+    }
+    final day = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final year = int.parse(match.group(3)!);
+    final hour = int.parse(match.group(4)!);
+    final minute = int.parse(match.group(5)!);
+    final value = DateTime(year, month, day, hour, minute);
+    if (value.year != year ||
+        value.month != month ||
+        value.day != day ||
+        value.hour != hour ||
+        value.minute != minute) {
+      return null;
+    }
+    return value;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -8564,11 +8644,34 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  '${vehicle.plateNumber} • ${vehicle.label}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                DropdownButtonFormField<String>(
+                  initialValue: vehicle.id,
+                  decoration: const InputDecoration(
+                    labelText: 'Kendaraan yang akan parkir',
+                    prefixIcon: Icon(Icons.directions_car_rounded),
+                  ),
+                  items: [
+                    for (final item in state.vehicles)
+                      DropdownMenuItem(
+                        value: item.id,
+                        child: Text('${item.plateNumber} - ${item.label}'),
+                      ),
+                  ],
+                  onChanged: (vehicleId) {
+                    final selected = state.vehicles
+                        .where((item) => item.id == vehicleId)
+                        .firstOrNull;
+                    if (selected == null) {
+                      return;
+                    }
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .selectVehicle(selected);
+                    setState(
+                      () => _durationController.text = selected.durationHours
+                          .toString(),
+                    );
+                  },
                 ),
                 const SizedBox(height: 18),
                 const InlineNotice(
@@ -8644,16 +8747,21 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     ),
                   ),
                 const SizedBox(height: 20),
-                MiniInfoTile(
-                  icon: Icons.schedule_rounded,
-                  iconColor: AppTheme.emerald,
-                  title: 'Waktu masuk',
-                  subtitle: formatDateTime(_entryTime),
-                  onTap: () => setState(
-                    () => _entryTime = _entryTime.add(
-                      const Duration(minutes: 30),
-                    ),
+                TextField(
+                  controller: _entryTimeController,
+                  keyboardType: TextInputType.datetime,
+                  decoration: InputDecoration(
+                    labelText: 'Waktu masuk',
+                    hintText: '22/06/2026 20:33',
+                    prefixIcon: const Icon(Icons.schedule_rounded),
+                    helperText: 'Format: tanggal/bulan/tahun jam:menit',
+                    errorText:
+                        _entryTimeController.text.trim().isNotEmpty &&
+                            _entryTime == null
+                        ? 'Format waktu tidak valid.'
+                        : null,
                   ),
+                  onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -8690,7 +8798,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       : 'Konfirmasi booking',
                   icon: Icons.check_circle_rounded,
                   onPressed:
-                      _selectedSlot == null || _isBooking || _durationHours <= 0
+                      _selectedSlot == null ||
+                          _isBooking ||
+                          _durationHours <= 0 ||
+                          _entryTime == null
                       ? null
                       : () async {
                           setState(() => _isBooking = true);
@@ -8699,7 +8810,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 .read(appControllerProvider.notifier)
                                 .createBooking(
                                   slotCode: _selectedSlot!,
-                                  entryTime: _entryTime,
+                                  entryTime: _entryTime!,
                                   durationHours: _durationHours,
                                 );
                             if (!context.mounted) return;
@@ -9106,11 +9217,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     }
   }
 
-  Future<void> _payWithEWallet(Booking _) async {
-    setState(() => _paymentError = null);
-    await _startGatewayPayment();
-  }
-
   void _requestCashPaymentConfirmation(Booking booking) {
     final roomId = ref
         .read(appControllerProvider.notifier)
@@ -9174,19 +9280,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       if (mounted) {
         setState(() => _isStartingGateway = false);
       }
-    }
-  }
-
-  Future<void> _handlePayPressed(Booking booking) async {
-    switch (_method) {
-      case PaymentMethod.qris:
-        setState(() => _paymentError = null);
-        await _startGatewayPayment();
-      case PaymentMethod.cash:
-        setState(() => _paymentError = null);
-        _requestCashPaymentConfirmation(booking);
-      case PaymentMethod.ewallet:
-        await _payWithEWallet(booking);
     }
   }
 
@@ -9289,11 +9382,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                       label: 'E-wallet',
                       icon: Icons.account_balance_wallet_rounded,
                     ),
-                    ChoiceItem(
-                      value: PaymentMethod.cash,
-                      label: 'Tunai',
-                      icon: Icons.payments_rounded,
-                    ),
                   ],
                   value: _method,
                   onChanged: isPayable
@@ -9308,7 +9396,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                   icon: Icons.lock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'Scan QR dan e-wallet memakai payment gateway setelah Edge Function dideploy. Tunai tetap dikonfirmasi penjaga.',
+                      'Pembayaran online diproses Midtrans. Pembayaran langsung di lokasi tetap harus dikonfirmasi penjaga atau operator.',
                 ),
                 const SizedBox(height: 20),
                 _PaymentInstructionCard(
@@ -9340,16 +9428,23 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                 PrimaryButton(
                   label: _isStartingGateway
                       ? 'Membuka gateway...'
-                      : _method == PaymentMethod.cash
-                      ? 'Hubungi penjaga'
-                      : 'Bayar lewat gateway',
-                  icon: _method == PaymentMethod.cash
-                      ? Icons.support_agent_rounded
-                      : Icons.open_in_new_rounded,
+                      : 'Bayar melalui Midtrans',
+                  icon: Icons.open_in_new_rounded,
                   onPressed: isPayable
                       ? _isStartingGateway
                             ? null
-                            : () => _handlePayPressed(booking)
+                            : _startGatewayPayment
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: 'Bayar langsung di lokasi',
+                  icon: Icons.payments_rounded,
+                  onPressed: isPayable
+                      ? () {
+                          setState(() => _paymentError = null);
+                          _requestCashPaymentConfirmation(booking);
+                        }
                       : null,
                 ),
                 if (_gatewayOpened && isPayable) ...[
