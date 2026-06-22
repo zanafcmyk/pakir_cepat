@@ -4005,13 +4005,17 @@ class AppController extends StateNotifier<AppState> {
     if (booking == null) {
       return;
     }
-    if (state.currentMode != AccountMode.parkingGuard ||
-        method != PaymentMethod.cash) {
+    final isParkingOperator =
+        state.currentMode == AccountMode.parkingGuard ||
+        state.currentMode == AccountMode.provider;
+    if (!isParkingOperator || method != PaymentMethod.cash) {
       throw StateError(
         'Pembayaran online hanya dapat diselesaikan melalui Midtrans.',
       );
     }
-    await _paymentService.confirmCurrentGuardCashPayment(booking.ticketNumber);
+    await _paymentService.confirmCurrentOperatorCashPayment(
+      booking.ticketNumber,
+    );
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
       status: BookingStatus.paid,
@@ -9217,16 +9221,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     }
   }
 
-  void _requestCashPaymentConfirmation(Booking booking) {
-    final roomId = ref
-        .read(appControllerProvider.notifier)
-        .createCustomerGuardChatRoomForBooking(booking);
+  void _requestCashPaymentConfirmation() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Minta penjaga konfirmasi pembayaran tunai di lokasi.'),
+        content: Text(
+          'Tunjukkan tiket QR kepada penjaga atau operator penyedia di lokasi.',
+        ),
       ),
     );
-    context.push('/customer/chat-room?roomId=$roomId');
+    context.push('/customer/tickets');
   }
 
   Future<void> _startGatewayPayment() async {
@@ -9443,7 +9446,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                   onPressed: isPayable
                       ? () {
                           setState(() => _paymentError = null);
-                          _requestCashPaymentConfirmation(booking);
+                          _requestCashPaymentConfirmation();
                         }
                       : null,
                 ),
@@ -12267,6 +12270,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 onTap: () => context.push('/provider/manage-slots'),
               ),
               ActionCard(
+                label: 'Operator scan QR',
+                icon: Icons.qr_code_scanner_rounded,
+                accent: AppTheme.blueSoft,
+                onTap: () => context.push('/provider/scan-qr'),
+              ),
+              ActionCard(
                 label: 'Akun penjaga',
                 icon: Icons.badge_rounded,
                 accent: AppTheme.emeraldSoft,
@@ -13747,6 +13756,12 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     if (!mounted) {
       return;
     }
+    final appState = ref.read(appControllerProvider);
+    final guard = activeGuard(appState);
+    final canConfirmCash =
+        appState.currentMode == AccountMode.provider ||
+        (appState.currentMode == AccountMode.parkingGuard &&
+            (guard?.canConfirmCash ?? false));
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -13781,6 +13796,16 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
             },
             child: const Text('Scan Lagi'),
           ),
+          if (booking.status == BookingStatus.pendingPayment)
+            OutlinedButton(
+              onPressed: canConfirmCash
+                  ? () {
+                      Navigator.of(dialogContext).pop();
+                      _confirmCashPayment();
+                    }
+                  : null,
+              child: const Text('Konfirmasi Tunai'),
+            ),
           OutlinedButton(
             onPressed: booking.status == BookingStatus.active
                 ? () {
@@ -13804,14 +13829,65 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     );
   }
 
+  Future<void> _confirmCashPayment() async {
+    final booking = _scannedBooking;
+    if (booking == null) {
+      return;
+    }
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .payBooking(PaymentMethod.cash);
+      if (!mounted) {
+        return;
+      }
+      final updatedBooking = ref
+          .read(appControllerProvider.notifier)
+          .bookingByTicketNumber(booking.ticketNumber);
+      setState(() {
+        _scannedBooking =
+            updatedBooking ??
+            booking.copyWith(
+              status: BookingStatus.paid,
+              paymentMethod: PaymentMethod.cash,
+            );
+        _lastScanStatus = 'Pembayaran tunai terkonfirmasi';
+        _lastScanTime = DateTime.now();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pembayaran tunai berhasil dikonfirmasi.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Konfirmasi tunai ditolak: $error')),
+      );
+    }
+  }
+
   Future<void> _verifyEntry() async {
     final booking = _scannedBooking;
     if (booking == null) {
       return;
     }
-    final success = await ref
-        .read(appControllerProvider.notifier)
-        .verifyVehicleEntry(booking.ticketNumber);
+    late final bool success;
+    try {
+      success = await ref
+          .read(appControllerProvider.notifier)
+          .verifyVehicleEntry(booking.ticketNumber);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Verifikasi masuk ditolak: $error')),
+      );
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -13841,9 +13917,20 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     if (booking == null) {
       return;
     }
-    final success = await ref
-        .read(appControllerProvider.notifier)
-        .confirmVehicleExit(booking.ticketNumber);
+    late final bool success;
+    try {
+      success = await ref
+          .read(appControllerProvider.notifier)
+          .confirmVehicleExit(booking.ticketNumber);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Konfirmasi keluar ditolak: $error')),
+      );
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -13875,7 +13962,10 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
   @override
   Widget build(BuildContext context) {
     final booking = _scannedBooking;
-    final scanContextLot = _selectedGuardLot(ref.watch(appControllerProvider));
+    final appState = ref.watch(appControllerProvider);
+    final scanContextLot = appState.currentMode == AccountMode.provider
+        ? appState.selectedLot
+        : _selectedGuardLot(appState);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {

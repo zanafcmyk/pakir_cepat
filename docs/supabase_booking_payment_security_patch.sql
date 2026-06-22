@@ -174,7 +174,9 @@ begin
 end;
 $$;
 
-create or replace function public.app_guard_confirm_cash_payment(
+drop function if exists public.app_guard_confirm_cash_payment(text);
+
+create or replace function public.app_operator_confirm_cash_payment(
   p_ticket_number text
 )
 returns table (
@@ -187,25 +189,24 @@ set search_path = public
 as $$
 declare
   v_guard_id uuid;
+  v_provider_id uuid;
+  v_actor_role public.account_role;
   v_booking public.bookings%rowtype;
   v_payment_id uuid;
 begin
   if auth.uid() is null then
-    raise exception 'Guard session is required.';
+    raise exception 'Operator session is required.';
   end if;
 
-  select guard.id
-  into v_guard_id
-  from public.parking_guards guard
-  join public.profiles profile on profile.id = guard.profile_id
-  where guard.profile_id = auth.uid()
-    and guard.can_confirm_cash = true
-    and profile.role = 'parking_guard'
+  select profile.role
+  into v_actor_role
+  from public.profiles profile
+  where profile.id = auth.uid()
     and profile.access_status = 'active'
   limit 1;
 
-  if v_guard_id is null then
-    raise exception 'Guard is not allowed to confirm cash payments.';
+  if v_actor_role is null then
+    raise exception 'Active operator profile was not found.';
   end if;
 
   select booking.*
@@ -218,13 +219,52 @@ begin
     raise exception 'Booking was not found.';
   end if;
 
-  if not exists (
-    select 1
-    from public.guard_lot_assignments assignment
-    where assignment.guard_id = v_guard_id
-      and assignment.parking_lot_id = v_booking.parking_lot_id
-  ) then
-    raise exception 'Guard is not assigned to this parking lot.';
+  if v_actor_role = 'parking_guard' then
+    select guard.id
+    into v_guard_id
+    from public.parking_guards guard
+    where guard.profile_id = auth.uid()
+      and guard.can_confirm_cash = true
+    limit 1;
+
+    if v_guard_id is null or not exists (
+      select 1
+      from public.guard_lot_assignments assignment
+      where assignment.guard_id = v_guard_id
+        and assignment.parking_lot_id = v_booking.parking_lot_id
+    ) then
+      raise exception 'Guard is not allowed to confirm cash for this lot.';
+    end if;
+  elsif v_actor_role = 'provider' then
+    select provider.id
+    into v_provider_id
+    from public.providers provider
+    where provider.profile_id = auth.uid()
+      and provider.status = 'verified'
+    limit 1;
+
+    if v_provider_id is null or not exists (
+      select 1
+      from public.parking_lots lot
+      where lot.id = v_booking.parking_lot_id
+        and lot.provider_id = v_provider_id
+        and lot.is_active = true
+    ) then
+      raise exception 'Provider does not own this active parking lot.';
+    end if;
+
+    if exists (
+      select 1
+      from public.guard_lot_assignments assignment
+      join public.parking_guards guard on guard.id = assignment.guard_id
+      join public.profiles profile on profile.id = guard.profile_id
+      where assignment.parking_lot_id = v_booking.parking_lot_id
+        and profile.access_status = 'active'
+    ) then
+      raise exception 'An active guard is assigned to this parking lot.';
+    end if;
+  else
+    raise exception 'Only guards or providers can confirm cash payments.';
   end if;
 
   if v_booking.status <> 'pending_payment' then
@@ -295,14 +335,19 @@ begin
     v_guard_id,
     auth.uid(),
     'cash_confirm',
-    'Pembayaran tunai dikonfirmasi penjaga.'
+    case v_actor_role
+      when 'provider' then 'Pembayaran tunai dikonfirmasi operator penyedia.'
+      else 'Pembayaran tunai dikonfirmasi penjaga.'
+    end
   );
 
   return query select v_payment_id, v_booking.estimated_cost;
 end;
 $$;
 
-create or replace function public.app_guard_process_ticket(
+drop function if exists public.app_guard_process_ticket(text, text);
+
+create or replace function public.app_operator_process_ticket(
   p_ticket_number text,
   p_action text
 )
@@ -317,31 +362,30 @@ set search_path = public
 as $$
 declare
   v_guard_id uuid;
+  v_provider_id uuid;
+  v_actor_role public.account_role;
   v_booking public.bookings%rowtype;
   v_action text := lower(trim(coalesce(p_action, '')));
   v_booking_status public.booking_status;
   v_slot_status public.parking_slot_status;
 begin
   if auth.uid() is null then
-    raise exception 'Guard session is required.';
+    raise exception 'Operator session is required.';
   end if;
 
   if v_action not in ('check_in', 'check_out') then
     raise exception 'Ticket action is invalid.';
   end if;
 
-  select guard.id
-  into v_guard_id
-  from public.parking_guards guard
-  join public.profiles profile on profile.id = guard.profile_id
-  where guard.profile_id = auth.uid()
-    and guard.can_scan_qr = true
-    and profile.role = 'parking_guard'
+  select profile.role
+  into v_actor_role
+  from public.profiles profile
+  where profile.id = auth.uid()
     and profile.access_status = 'active'
   limit 1;
 
-  if v_guard_id is null then
-    raise exception 'Guard is not allowed to scan tickets.';
+  if v_actor_role is null then
+    raise exception 'Active operator profile was not found.';
   end if;
 
   select booking.*
@@ -354,13 +398,52 @@ begin
     raise exception 'Booking was not found.';
   end if;
 
-  if not exists (
-    select 1
-    from public.guard_lot_assignments assignment
-    where assignment.guard_id = v_guard_id
-      and assignment.parking_lot_id = v_booking.parking_lot_id
-  ) then
-    raise exception 'Guard is not assigned to this parking lot.';
+  if v_actor_role = 'parking_guard' then
+    select guard.id
+    into v_guard_id
+    from public.parking_guards guard
+    where guard.profile_id = auth.uid()
+      and guard.can_scan_qr = true
+    limit 1;
+
+    if v_guard_id is null or not exists (
+      select 1
+      from public.guard_lot_assignments assignment
+      where assignment.guard_id = v_guard_id
+        and assignment.parking_lot_id = v_booking.parking_lot_id
+    ) then
+      raise exception 'Guard is not allowed to scan tickets for this lot.';
+    end if;
+  elsif v_actor_role = 'provider' then
+    select provider.id
+    into v_provider_id
+    from public.providers provider
+    where provider.profile_id = auth.uid()
+      and provider.status = 'verified'
+    limit 1;
+
+    if v_provider_id is null or not exists (
+      select 1
+      from public.parking_lots lot
+      where lot.id = v_booking.parking_lot_id
+        and lot.provider_id = v_provider_id
+        and lot.is_active = true
+    ) then
+      raise exception 'Provider does not own this active parking lot.';
+    end if;
+
+    if exists (
+      select 1
+      from public.guard_lot_assignments assignment
+      join public.parking_guards guard on guard.id = assignment.guard_id
+      join public.profiles profile on profile.id = guard.profile_id
+      where assignment.parking_lot_id = v_booking.parking_lot_id
+        and profile.access_status = 'active'
+    ) then
+      raise exception 'An active guard is assigned to this parking lot.';
+    end if;
+  else
+    raise exception 'Only guards or providers can process parking tickets.';
   end if;
 
   if v_action = 'check_in' then
@@ -417,8 +500,13 @@ begin
     v_guard_id,
     auth.uid(),
     v_action::public.parking_activity_action,
-    case v_action
-      when 'check_in' then 'Kendaraan masuk diverifikasi dari scan QR.'
+    case
+      when v_actor_role = 'provider' and v_action = 'check_in'
+        then 'Kendaraan masuk diverifikasi operator penyedia.'
+      when v_actor_role = 'provider' and v_action = 'check_out'
+        then 'Kendaraan keluar dikonfirmasi operator penyedia.'
+      when v_action = 'check_in'
+        then 'Kendaraan masuk diverifikasi dari scan QR.'
       else 'Kendaraan keluar dikonfirmasi dari scan QR.'
     end
   );
@@ -486,17 +574,17 @@ grant select on public.payments to authenticated;
 revoke all on function public.app_create_customer_booking(
   uuid, uuid, text, text, timestamptz, integer
 ) from public, anon;
-revoke all on function public.app_guard_confirm_cash_payment(text)
+revoke all on function public.app_operator_confirm_cash_payment(text)
 from public, anon;
-revoke all on function public.app_guard_process_ticket(text, text)
+revoke all on function public.app_operator_process_ticket(text, text)
 from public, anon;
 
 grant execute on function public.app_create_customer_booking(
   uuid, uuid, text, text, timestamptz, integer
 ) to authenticated;
-grant execute on function public.app_guard_confirm_cash_payment(text)
+grant execute on function public.app_operator_confirm_cash_payment(text)
 to authenticated;
-grant execute on function public.app_guard_process_ticket(text, text)
+grant execute on function public.app_operator_process_ticket(text, text)
 to authenticated;
 
 commit;

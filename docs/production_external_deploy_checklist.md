@@ -15,8 +15,9 @@ Patch ini wajib karena:
 
 - mencabut `INSERT/UPDATE/DELETE` langsung client pada `bookings` dan `payments`;
 - menghitung tarif booking di server;
-- menyediakan RPC pembayaran tunai penjaga;
-- menyediakan RPC atomik scan masuk/keluar.
+- menyediakan RPC pembayaran tunai untuk penjaga atau operator penyedia;
+- menyediakan RPC atomik scan masuk/keluar;
+- mengizinkan penyedia mengoperasikan lokasi miliknya hanya saat tidak ada penjaga aktif.
 
 Setelah berhasil, uji customer booking, pembayaran Midtrans, pembayaran tunai
 penjaga, scan masuk, scan keluar, receipt, dan laporan provider.

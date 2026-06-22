@@ -162,11 +162,11 @@ class SupabaseBookingService {
   }
 
   Future<void> checkInBooking(String ticketNumber) async {
-    await _processGuardTicket(ticketNumber, 'check_in');
+    await _processOperatorTicket(ticketNumber, 'check_in');
   }
 
   Future<void> checkOutBooking(String ticketNumber) async {
-    await _processGuardTicket(ticketNumber, 'check_out');
+    await _processOperatorTicket(ticketNumber, 'check_out');
   }
 
   Future<String> _currentCustomerId(String profileId) async {
@@ -198,9 +198,12 @@ class SupabaseBookingService {
     return _paymentMethodFromDb((rows.first as Map)['method'] as String?);
   }
 
-  Future<void> _processGuardTicket(String ticketNumber, String action) async {
+  Future<void> _processOperatorTicket(
+    String ticketNumber,
+    String action,
+  ) async {
     final rows = await _client.rpc(
-      'app_guard_process_ticket',
+      'app_operator_process_ticket',
       params: {'p_ticket_number': ticketNumber, 'p_action': action},
     );
     if (rows is! List || rows.isEmpty) {

@@ -73,9 +73,9 @@ class SupabasePaymentService {
     );
   }
 
-  Future<void> confirmCurrentGuardCashPayment(String ticketNumber) async {
+  Future<void> confirmCurrentOperatorCashPayment(String ticketNumber) async {
     final rows = await _client.rpc(
-      'app_guard_confirm_cash_payment',
+      'app_operator_confirm_cash_payment',
       params: {'p_ticket_number': ticketNumber},
     );
     if (rows is! List || rows.isEmpty) {

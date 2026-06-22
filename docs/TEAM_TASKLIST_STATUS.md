@@ -24,6 +24,7 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Jalankan `docs/supabase_booking_payment_security_patch.sql` di Supabase production dan uji ulang semua role. Database live belum memakai hardening ini sampai SQL berhasil dijalankan.
 - [x] Konfirmasi pembayaran tunai penjaga dipindahkan dari service customer ke RPC khusus yang memvalidasi izin, assignment, status booking, nominal server, payment, receipt, dan activity log.
 - [x] Scan masuk/keluar dipindahkan ke RPC atomik yang memvalidasi assignment penjaga, status sebelumnya, update slot, waktu scan, dan activity log.
+- [x] Penyedia dapat menjadi operator scan/tunai untuk lokasi miliknya ketika tidak ada penjaga aktif yang ditugaskan; validasi kepemilikan dan ketiadaan penjaga dilakukan server-side.
 - [ ] Tambahkan proses kedaluwarsa reservasi 15 menit agar booking `pending_payment` dibatalkan dan slot `reserved` kembali `available`.
 
 #### Belum Berjalan Penuh
