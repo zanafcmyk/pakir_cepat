@@ -138,6 +138,77 @@ class SupabaseBookingService {
     return _activeBookingFromRow(row);
   }
 
+  Future<List<SupabaseActiveBooking>> fetchGuardOperationalBookings(
+    List<String> assignedLotIds,
+  ) async {
+    if (assignedLotIds.isEmpty) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'id, ticket_number, entry_time, estimated_cost, status, '
+          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind), '
+          'payments(method, status, created_at)',
+        )
+        .inFilter('parking_lot_id', assignedLotIds)
+        .inFilter('status', ['pending_payment', 'paid', 'active'])
+        .order('created_at', ascending: false)
+        .limit(200);
+
+    return Future.wait([
+      for (final row in rows)
+        _activeBookingFromRow(Map<String, dynamic>.from(row as Map)),
+    ]);
+  }
+
+  Future<SupabaseActiveBooking?> searchGuardBooking({
+    required List<String> assignedLotIds,
+    required String ticketNumber,
+    required String plateNumber,
+  }) async {
+    if (assignedLotIds.isEmpty) {
+      return null;
+    }
+
+    final normalizedTicket = ticketNumber.trim().toUpperCase();
+    final normalizedPlate = _normalizePlate(plateNumber);
+    if (normalizedTicket.isEmpty && normalizedPlate.isEmpty) {
+      return null;
+    }
+
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'id, ticket_number, entry_time, estimated_cost, status, '
+          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind), '
+          'payments(method, status, created_at)',
+        )
+        .inFilter('parking_lot_id', assignedLotIds)
+        .order('created_at', ascending: false)
+        .limit(200);
+
+    for (final value in rows) {
+      final row = Map<String, dynamic>.from(value as Map);
+      final rowTicket = (row['ticket_number'] as String? ?? '').toUpperCase();
+      final rowPlate = _normalizePlate(
+        _nestedValue(row, 'vehicles', 'plate_number') ?? '',
+      );
+      final ticketMatches =
+          normalizedTicket.isEmpty || rowTicket == normalizedTicket;
+      final plateMatches =
+          normalizedPlate.isEmpty || rowPlate == normalizedPlate;
+      if (ticketMatches && plateMatches) {
+        return _activeBookingFromRow(row);
+      }
+    }
+
+    return null;
+  }
+
   Future<List<TransactionRecord>> fetchCurrentCustomerHistory() async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -236,10 +307,11 @@ class SupabaseBookingService {
   Future<SupabaseActiveBooking> _activeBookingFromRow(
     Map<String, dynamic> row,
   ) async {
-    final paymentMethod = await _latestPaymentMethod(row['id'] as String);
+    final paymentMethod = await _paymentMethodFromBookingRow(row);
 
     return SupabaseActiveBooking(
       booking: Booking(
+        parkingLotId: row['parking_lot_id'] as String?,
         ticketNumber: row['ticket_number'] as String? ?? '-',
         slotCode: _nestedValue(row, 'parking_slots', 'label') ?? '-',
         locationName: _nestedValue(row, 'parking_lots', 'name') ?? '-',
@@ -255,6 +327,28 @@ class SupabaseBookingService {
       slotId: row['parking_slot_id'] as String?,
     );
   }
+
+  Future<PaymentMethod> _paymentMethodFromBookingRow(
+    Map<String, dynamic> row,
+  ) async {
+    final paymentValues = row['payments'];
+    if (paymentValues is List && paymentValues.isNotEmpty) {
+      final payments =
+          [
+            for (final value in paymentValues)
+              Map<String, dynamic>.from(value as Map),
+          ]..sort(
+            (a, b) => (b['created_at'] as String? ?? '').compareTo(
+              a['created_at'] as String? ?? '',
+            ),
+          );
+      return _paymentMethodFromDb(payments.first['method'] as String?);
+    }
+    return _latestPaymentMethod(row['id'] as String);
+  }
+
+  String _normalizePlate(String value) =>
+      value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
 
   TransactionRecord _transactionRecordFromRow(Map<String, dynamic> row) {
     final status = _bookingStatusFromDb(row['status'] as String?);

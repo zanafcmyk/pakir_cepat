@@ -30,8 +30,10 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 #### Belum Berjalan Penuh
 
-- [ ] Cek pembayaran penjaga harus mencari tiket/plat ke Supabase, bukan hanya `activeBooking` yang sedang ada di memori aplikasi.
-- [ ] Daftar kendaraan aktif penjaga harus membaca seluruh booking aktif pada lokasi assignment, bukan hanya satu booking terakhir.
+- [x] Cek pembayaran penjaga mencari nomor tiket/plat dari booking Supabase dan membatasi hasil ke lokasi assignment penjaga.
+- [x] Daftar kendaraan aktif penjaga membaca seluruh booking operasional pada lokasi assignment, mendukung filter lokasi, muat ulang, dan konfirmasi tunai per tiket.
+- [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
+- [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
 - [ ] Perpanjang durasi parkir harus memperbarui booking, biaya, dan pembayaran di Supabase; saat ini hanya mengubah state lokal.
 - [ ] Perubahan status slot harus menampilkan kegagalan Supabase dan melakukan rollback state; error saat ini masih dapat disembunyikan.
 - [ ] Tambahkan aksi nonaktif/hapus lahan dari aplikasi dengan penanganan booking historis dan foreign key yang aman.
@@ -285,7 +287,8 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Pembatasan route penjaga perlu audit deep link production.
 - [x] Konfirmasi tunai sudah memakai RPC khusus dengan validasi izin dan assignment penjaga.
 - [ ] Jalankan patch SQL lalu audit kas/settlement payment tunai di production.
-- [ ] Cek pembayaran dan daftar kendaraan aktif penjaga harus query Supabase lintas booking, bukan mengandalkan satu `activeBooking` lokal.
+- [x] Cek pembayaran dan daftar kendaraan aktif penjaga memakai query Supabase lintas booking yang dibatasi assignment lokasi.
+- [ ] Jalankan SQL publication booking/payment dan audit realtime penjaga di production.
 
 #### Belum Ada/Belum Production
 
@@ -379,7 +382,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 1. Uji ulang booking, Midtrans, tunai, masuk, serta keluar setelah patch keamanan production.
 2. Jalankan dan uji expiry reservasi server-side di Supabase production.
-3. Ubah cek pembayaran dan kendaraan aktif penjaga menjadi query Supabase lintas booking.
+3. Jalankan SQL realtime operasional penjaga dan uji dengan akun customer serta penjaga.
 4. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
 5. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
 6. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.

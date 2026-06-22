@@ -38,6 +38,19 @@ notifikasi in-app.
 Setelah menunggu satu menit, jalankan query verifikasi yang tersedia pada bagian
 bawah file SQL. Pastikan job aktif dan eksekusi terakhir berstatus `succeeded`.
 
+## Realtime Operasional Penjaga
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_realtime_guard_operations.sql
+```
+
+Patch ini memasukkan tabel `bookings`, `payments`, dan `guard_lot_assignments`
+ke publication realtime. Setelah dijalankan, halaman kendaraan aktif dan hasil
+cek pembayaran penjaga akan memuat ulang data ketika pembayaran, scan masuk,
+scan keluar, atau assignment lokasi berubah.
+
 ## Supabase Edge Functions
 
 Deploy dari terminal project setelah Supabase CLI login dan project sudah linked.

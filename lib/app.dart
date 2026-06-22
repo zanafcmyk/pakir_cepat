@@ -506,6 +506,7 @@ class AppState {
     required this.selectedVehicle,
     required this.slots,
     required this.activeBooking,
+    required this.guardBookings,
     required this.reservationLockedUntil,
     required this.favoriteLotIds,
     required this.providerApplication,
@@ -557,6 +558,7 @@ class AppState {
   final Vehicle? selectedVehicle;
   final List<ParkingSlot> slots;
   final Booking? activeBooking;
+  final List<Booking> guardBookings;
   final DateTime? reservationLockedUntil;
   final List<String> favoriteLotIds;
   final ProviderApplication? providerApplication;
@@ -612,6 +614,7 @@ class AppState {
     bool clearSelectedVehicle = false,
     List<ParkingSlot>? slots,
     Booking? activeBooking,
+    List<Booking>? guardBookings,
     DateTime? reservationLockedUntil,
     bool clearBooking = false,
     List<String>? favoriteLotIds,
@@ -679,6 +682,7 @@ class AppState {
       activeBooking: clearBooking
           ? null
           : (activeBooking ?? this.activeBooking),
+      guardBookings: guardBookings ?? this.guardBookings,
       reservationLockedUntil:
           reservationLockedUntil ?? this.reservationLockedUntil,
       favoriteLotIds: favoriteLotIds ?? this.favoriteLotIds,
@@ -1384,6 +1388,7 @@ class AppState {
       selectedVehicle: vehicles.first,
       slots: slots,
       activeBooking: null,
+      guardBookings: const [],
       reservationLockedUntil: null,
       favoriteLotIds: ['lot-1'],
       providerApplication: null,
@@ -1574,8 +1579,10 @@ class AppController extends StateNotifier<AppState> {
   RealtimeChannel? _parkingSlotRealtimeChannel;
   RealtimeChannel? _parkingLotRealtimeChannel;
   RealtimeChannel? _parkingGuardRealtimeChannel;
+  RealtimeChannel? _guardOperationsRealtimeChannel;
   RealtimeChannel? _notificationRealtimeChannel;
   Timer? _parkingSlotRealtimeDebounce;
+  Timer? _guardOperationsRealtimeDebounce;
   Timer? _notificationRealtimeDebounce;
   String? _notificationRealtimeProfileId;
 
@@ -1955,6 +1962,12 @@ class AppController extends StateNotifier<AppState> {
           table: 'parking_guards',
           callback: (_) => _scheduleParkingDataRealtimeRefresh(),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'guard_lot_assignments',
+          callback: (_) => _scheduleParkingDataRealtimeRefresh(),
+        )
         .subscribe();
   }
 
@@ -2003,7 +2016,12 @@ class AppController extends StateNotifier<AppState> {
       }
 
       if (guard == null) {
-        state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+        state = state.copyWith(
+          parkingGuards: const [],
+          guardBookings: const [],
+          clearActiveGuard: true,
+          clearSelectedLot: true,
+        );
         return;
       }
 
@@ -2017,6 +2035,7 @@ class AppController extends StateNotifier<AppState> {
         selectedLot: selectedLotStillAssigned ? selectedLot : null,
         clearSelectedLot: !selectedLotStillAssigned,
       );
+      await loadGuardBookingsFromSupabase();
     } catch (_) {
       // Realtime assignment refresh is best-effort; dashboard open reloads it.
     }
@@ -2170,14 +2189,105 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadCurrentGuardFromSupabase() async {
     final guard = await _guardService.fetchCurrentGuardAccount();
     if (guard == null) {
-      state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+      state = state.copyWith(
+        parkingGuards: const [],
+        guardBookings: const [],
+        clearActiveGuard: true,
+        clearSelectedLot: true,
+      );
       return;
     }
 
-    state = state.copyWith(parkingGuards: [guard], activeGuardId: guard.id);
+    final assignedLots = state.lots
+        .where((lot) => guard.assignedLotIds.contains(lot.id))
+        .toList();
+    final selectedLot = assignedLots
+        .where((lot) => lot.id == state.selectedLot?.id)
+        .firstOrNull;
+    state = state.copyWith(
+      parkingGuards: [guard],
+      activeGuardId: guard.id,
+      selectedLot: selectedLot ?? assignedLots.firstOrNull,
+      clearSelectedLot: assignedLots.isEmpty,
+    );
     startParkingGuardRealtime();
     startParkingSlotRealtime();
     startParkingLocationRealtime();
+    startGuardOperationsRealtime();
+  }
+
+  Future<void> loadGuardBookingsFromSupabase() async {
+    final guard = activeGuard(state);
+    if (guard == null || guard.assignedLotIds.isEmpty) {
+      state = state.copyWith(guardBookings: const []);
+      return;
+    }
+
+    final remoteBookings = await _bookingService.fetchGuardOperationalBookings(
+      guard.assignedLotIds,
+    );
+    state = state.copyWith(
+      guardBookings: [for (final item in remoteBookings) item.booking],
+    );
+    startGuardOperationsRealtime();
+  }
+
+  Future<Booking?> searchGuardBookingFromSupabase({
+    required String ticketNumber,
+    required String plateNumber,
+  }) async {
+    final guard = activeGuard(state);
+    if (guard == null) {
+      throw StateError('Assignment penjaga belum dimuat.');
+    }
+
+    final result = await _bookingService.searchGuardBooking(
+      assignedLotIds: guard.assignedLotIds,
+      ticketNumber: ticketNumber,
+      plateNumber: plateNumber,
+    );
+    return result?.booking;
+  }
+
+  void startGuardOperationsRealtime() {
+    if (_guardOperationsRealtimeChannel != null) {
+      return;
+    }
+
+    _guardOperationsRealtimeChannel = Supabase.instance.client
+        .channel('public:guard-operations:realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bookings',
+          callback: (_) => _scheduleGuardOperationsRealtimeRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'payments',
+          callback: (_) => _scheduleGuardOperationsRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleGuardOperationsRealtimeRefresh() {
+    _guardOperationsRealtimeDebounce?.cancel();
+    _guardOperationsRealtimeDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () => unawaited(_refreshGuardOperationsFromRealtime()),
+    );
+  }
+
+  Future<void> _refreshGuardOperationsFromRealtime() async {
+    if (state.currentMode != AccountMode.parkingGuard) {
+      return;
+    }
+    try {
+      await loadGuardBookingsFromSupabase();
+    } catch (_) {
+      // Manual refresh remains available if a realtime refresh fails.
+    }
   }
 
   Future<SupabaseReceiptRecord?> fetchReceiptFromSupabase({
@@ -4100,10 +4210,12 @@ class AppController extends StateNotifier<AppState> {
 
   Booking? bookingByTicketNumber(String ticketNumber) {
     final booking = state.activeBooking;
-    if (booking == null || booking.ticketNumber != ticketNumber) {
-      return null;
+    if (booking != null && booking.ticketNumber == ticketNumber) {
+      return booking;
     }
-    return booking;
+    return state.guardBookings
+        .where((item) => item.ticketNumber == ticketNumber)
+        .firstOrNull;
   }
 
   Future<Booking?> loadBookingByTicketNumberFromSupabase(
@@ -4121,8 +4233,45 @@ class AppController extends StateNotifier<AppState> {
       return null;
     }
 
-    state = state.copyWith(activeBooking: remoteBooking.booking);
+    state = state.copyWith(
+      activeBooking: remoteBooking.booking,
+      guardBookings: state.currentMode == AccountMode.parkingGuard
+          ? [
+              remoteBooking.booking,
+              for (final booking in state.guardBookings)
+                if (booking.ticketNumber != remoteBooking.booking.ticketNumber)
+                  booking,
+            ]
+          : state.guardBookings,
+    );
     return remoteBooking.booking;
+  }
+
+  Future<Booking> confirmOperatorCashPaymentForBooking(Booking booking) async {
+    if (state.currentMode != AccountMode.parkingGuard &&
+        state.currentMode != AccountMode.provider) {
+      throw StateError('Hanya operator lokasi yang dapat mengonfirmasi tunai.');
+    }
+    await _paymentService.confirmCurrentOperatorCashPayment(
+      booking.ticketNumber,
+    );
+    final updatedBooking = booking.copyWith(
+      paymentMethod: PaymentMethod.cash,
+      status: BookingStatus.paid,
+    );
+    state = state.copyWith(
+      activeBooking: state.activeBooking?.ticketNumber == booking.ticketNumber
+          ? updatedBooking
+          : state.activeBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
+    );
+    return updatedBooking;
   }
 
   Future<bool> verifyVehicleEntry(String ticketNumber) async {
@@ -4149,6 +4298,13 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(
       activeBooking: updatedBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
       slots: updatedSlots,
       history: [activity, ...state.history],
       adminNotifications: [
@@ -4190,6 +4346,13 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(
       activeBooking: updatedBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
       slots: updatedSlots,
       reservationLockedUntil: null,
       history: [activity, ...state.history],
@@ -4386,12 +4549,14 @@ class AppController extends StateNotifier<AppState> {
 
   void _stopRealtimeSubscriptions() {
     _parkingSlotRealtimeDebounce?.cancel();
+    _guardOperationsRealtimeDebounce?.cancel();
     _notificationRealtimeDebounce?.cancel();
 
     final channels = [
       _parkingSlotRealtimeChannel,
       _parkingLotRealtimeChannel,
       _parkingGuardRealtimeChannel,
+      _guardOperationsRealtimeChannel,
       _notificationRealtimeChannel,
     ];
     for (final channel in channels) {
@@ -4403,6 +4568,7 @@ class AppController extends StateNotifier<AppState> {
     _parkingSlotRealtimeChannel = null;
     _parkingLotRealtimeChannel = null;
     _parkingGuardRealtimeChannel = null;
+    _guardOperationsRealtimeChannel = null;
     _notificationRealtimeChannel = null;
     _notificationRealtimeProfileId = null;
   }
@@ -5115,6 +5281,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .catchError((_) {});
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+      await controller.loadGuardBookingsFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -13837,7 +14004,7 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     try {
       await ref
           .read(appControllerProvider.notifier)
-          .payBooking(PaymentMethod.cash);
+          .confirmOperatorCashPaymentForBooking(booking);
       if (!mounted) {
         return;
       }
@@ -15609,6 +15776,11 @@ class _ParkingGuardDashboardScreenState
       } catch (_) {
         failures.add('akun penjaga');
       }
+      try {
+        await controller.loadGuardBookingsFromSupabase();
+      } catch (_) {
+        failures.add('booking aktif');
+      }
       if (mounted && failures.isNotEmpty) {
         setState(
           () => _loadError =
@@ -15632,6 +15804,9 @@ class _ParkingGuardDashboardScreenState
       (total, lot) => total + lot.totalSlots,
     );
     final occupiedSlots = math.max(0, totalSlots - availableSlots);
+    final pendingPayments = state.guardBookings
+        .where((booking) => booking.status == BookingStatus.pendingPayment)
+        .length;
     return GuardShell(
       currentIndex: 0,
       floatingActionButton: FloatingActionButton.extended(
@@ -15693,7 +15868,7 @@ class _ParkingGuardDashboardScreenState
               ),
               StatCard(
                 label: 'Cek Pembayaran',
-                value: state.activeBooking?.isPaid ?? false ? 'Lunas' : 'Cek',
+                value: '$pendingPayments pending',
                 accent: AppTheme.ink,
                 icon: Icons.payments_rounded,
                 onTap: () => context.push('/guard/check-payment'),
@@ -16098,6 +16273,7 @@ class _GuardCheckPaymentScreenState
   final TextEditingController _plateController = TextEditingController();
   Booking? _result;
   String? _errorMessage;
+  bool _isChecking = false;
 
   @override
   void dispose() {
@@ -16106,31 +16282,59 @@ class _GuardCheckPaymentScreenState
     super.dispose();
   }
 
-  void _checkPayment() {
+  Future<void> _checkPayment() async {
     final ticket = _ticketController.text.trim();
     final plate = _plateController.text.trim().toUpperCase();
-    final booking = ref.read(appControllerProvider).activeBooking;
-    final ticketMatches = ticket.isEmpty || booking?.ticketNumber == ticket;
-    final plateMatches =
-        plate.isEmpty || booking?.plateNumber.toUpperCase() == plate;
-
-    if (booking != null && ticketMatches && plateMatches) {
+    if (ticket.isEmpty && plate.isEmpty) {
       setState(() {
-        _result = booking;
-        _errorMessage = null;
+        _result = null;
+        _errorMessage = 'Isi nomor tiket atau plat kendaraan terlebih dahulu.';
       });
       return;
     }
 
     setState(() {
-      _result = null;
-      _errorMessage =
-          'Tiket tidak ditemukan. Periksa nomor tiket atau plat kendaraan.';
+      _isChecking = true;
+      _errorMessage = null;
     });
+    try {
+      final booking = await ref
+          .read(appControllerProvider.notifier)
+          .searchGuardBookingFromSupabase(
+            ticketNumber: ticket,
+            plateNumber: plate,
+          );
+      if (!mounted) return;
+      setState(() {
+        _result = booking;
+        _errorMessage = booking == null
+            ? 'Tiket tidak ditemukan pada lokasi tugas Anda.'
+            : null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _result = null;
+        _errorMessage = 'Gagal memeriksa pembayaran: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final result = _result == null
+        ? null
+        : state.guardBookings
+                  .where(
+                    (booking) => booking.ticketNumber == _result!.ticketNumber,
+                  )
+                  .firstOrNull ??
+              _result;
     return GuardShell(
       currentIndex: 0,
       child: _GuardSubPage(
@@ -16161,9 +16365,9 @@ class _GuardCheckPaymentScreenState
                 ),
                 const SizedBox(height: 18),
                 PrimaryButton(
-                  label: 'Cek Status Pembayaran',
+                  label: _isChecking ? 'Memeriksa...' : 'Cek Status Pembayaran',
                   icon: Icons.search_rounded,
-                  onPressed: _checkPayment,
+                  onPressed: _isChecking ? null : _checkPayment,
                 ),
               ],
             ),
@@ -16176,37 +16380,31 @@ class _GuardCheckPaymentScreenState
               message: _errorMessage!,
             ),
           ],
-          if (_result != null) ...[
+          if (result != null) ...[
             const SizedBox(height: 14),
             PremiumCard(
               accent: AppTheme.blueSoft,
               child: Column(
                 children: [
-                  SummaryRow(
-                    label: 'Nomor tiket',
-                    value: _result!.ticketNumber,
-                  ),
-                  SummaryRow(
-                    label: 'Nama lokasi',
-                    value: _result!.locationName,
-                  ),
+                  SummaryRow(label: 'Nomor tiket', value: result.ticketNumber),
+                  SummaryRow(label: 'Nama lokasi', value: result.locationName),
                   SummaryRow(
                     label: 'Plat kendaraan',
-                    value: _result!.plateNumber,
+                    value: result.plateNumber,
                   ),
                   SummaryRow(
                     label: 'Total bayar',
-                    value: formatCurrency(_result!.estimatedCost),
+                    value: formatCurrency(result.estimatedCost),
                     valueColor: AppTheme.blue,
                   ),
                   SummaryRow(
                     label: 'Metode pembayaran',
-                    value: _paymentMethodLabel(_result!.paymentMethod),
+                    value: _paymentMethodLabel(result.paymentMethod),
                   ),
                   SummaryRow(
                     label: 'Status pembayaran',
-                    value: _result!.isPaid ? 'Sudah Bayar' : 'Belum Bayar',
-                    valueColor: _result!.isPaid
+                    value: result.isPaid ? 'Sudah Bayar' : 'Belum Bayar',
+                    valueColor: result.isPaid
                         ? AppTheme.emerald
                         : const Color(0xFFD97706),
                   ),
@@ -16327,20 +16525,87 @@ ParkingLot? _selectedGuardLot(AppState state) {
   return null;
 }
 
-class GuardVehiclesScreen extends ConsumerWidget {
+class GuardVehiclesScreen extends ConsumerStatefulWidget {
   const GuardVehiclesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GuardVehiclesScreen> createState() =>
+      _GuardVehiclesScreenState();
+}
+
+class _GuardVehiclesScreenState extends ConsumerState<GuardVehiclesScreen> {
+  final Set<String> _confirmingCashTickets = {};
+  bool _isRefreshing = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_refresh);
+  }
+
+  Future<void> _refresh() async {
+    if (_isRefreshing) return;
+    setState(() {
+      _isRefreshing = true;
+      _loadError = null;
+    });
+    try {
+      final controller = ref.read(appControllerProvider.notifier);
+      if (activeGuard(ref.read(appControllerProvider)) == null) {
+        await controller.loadCurrentGuardFromSupabase();
+      }
+      await controller.loadGuardBookingsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Gagal memuat kendaraan aktif: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  Future<void> _confirmCash(Booking booking) async {
+    setState(() => _confirmingCashTickets.add(booking.ticketNumber));
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .confirmOperatorCashPaymentForBooking(booking);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Pembayaran tunai ${booking.ticketNumber} berhasil dikonfirmasi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Konfirmasi tunai ditolak: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _confirmingCashTickets.remove(booking.ticketNumber));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final selectedLot = _selectedGuardLot(state);
+    final assignedLots = visibleLotsFor(state);
     final guard = activeGuard(state);
     final canConfirmCash = guard?.canConfirmCash ?? false;
-    final activeBooking = state.activeBooking;
-    final booking =
-        selectedLot == null || activeBooking?.locationName == selectedLot.name
-        ? activeBooking
-        : null;
+    final bookings = state.guardBookings.where((booking) {
+      if (selectedLot == null) return true;
+      return booking.parkingLotId == selectedLot.id ||
+          (booking.parkingLotId == null &&
+              booking.locationName == selectedLot.name);
+    }).toList();
     return GuardShell(
       currentIndex: 2,
       child: ListView(
@@ -16349,10 +16614,63 @@ class GuardVehiclesScreen extends ConsumerWidget {
           HeaderSection(
             title: 'Kendaraan aktif',
             subtitle:
-                'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
+                '${bookings.length} booking operasional pada lokasi tugas.',
           ),
           const SizedBox(height: 18),
-          if (booking == null)
+          if (assignedLots.isNotEmpty) ...[
+            DropdownButtonFormField<String>(
+              initialValue: selectedLot?.id,
+              decoration: const InputDecoration(
+                labelText: 'Lokasi tugas',
+                prefixIcon: Icon(Icons.local_parking_rounded),
+              ),
+              items: [
+                for (final lot in assignedLots)
+                  DropdownMenuItem(value: lot.id, child: Text(lot.name)),
+              ],
+              onChanged: (lotId) {
+                final lot = assignedLots
+                    .where((item) => item.id == lotId)
+                    .firstOrNull;
+                if (lot != null) {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                }
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (_loadError != null) ...[
+            InlineNotice(
+              icon: Icons.wifi_off_rounded,
+              accent: const Color(0xFFD97706),
+              message: _loadError!,
+            ),
+            const SizedBox(height: 14),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  selectedLot?.name ?? 'Semua lokasi tugas',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Muat ulang kendaraan',
+                onPressed: _isRefreshing ? null : _refresh,
+                icon: _isRefreshing
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (bookings.isEmpty)
             EmptyStateCard(
               title: 'Belum ada kendaraan aktif',
               body: selectedLot == null
@@ -16362,66 +16680,62 @@ class GuardVehiclesScreen extends ConsumerWidget {
               onPressed: () => context.push('/guard/scan-qr'),
             )
           else
-            PremiumCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SummaryRow(label: 'Tiket', value: booking.ticketNumber),
-                  SummaryRow(label: 'Plat nomor', value: booking.plateNumber),
-                  SummaryRow(label: 'Lokasi', value: booking.locationName),
-                  SummaryRow(label: 'Slot', value: booking.slotCode),
-                  SummaryRow(
-                    label: 'Pembayaran',
-                    value: booking.isPaid ? 'Lunas' : 'Belum lunas',
-                    valueColor: booking.isPaid
-                        ? AppTheme.emerald
-                        : const Color(0xFFD97706),
+            ...bookings.map(
+              (booking) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: PremiumCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SummaryRow(label: 'Tiket', value: booking.ticketNumber),
+                      SummaryRow(
+                        label: 'Plat nomor',
+                        value: booking.plateNumber,
+                      ),
+                      SummaryRow(label: 'Lokasi', value: booking.locationName),
+                      SummaryRow(label: 'Slot', value: booking.slotCode),
+                      SummaryRow(
+                        label: 'Status',
+                        value: _guardBookingStatusLabel(booking.status),
+                        valueColor: booking.isPaid
+                            ? AppTheme.emerald
+                            : const Color(0xFFD97706),
+                      ),
+                      const SizedBox(height: 16),
+                      PrimaryButton(
+                        label: 'Chat Customer',
+                        icon: Icons.chat_bubble_rounded,
+                        onPressed: () {
+                          final roomId = ref
+                              .read(appControllerProvider.notifier)
+                              .createCustomerChatRoomForBooking(booking);
+                          context.push('/guard/chat-room?roomId=$roomId');
+                        },
+                      ),
+                      if (booking.status == BookingStatus.pendingPayment) ...[
+                        const SizedBox(height: 10),
+                        SecondaryButton(
+                          label:
+                              _confirmingCashTickets.contains(
+                                booking.ticketNumber,
+                              )
+                              ? 'Mengonfirmasi...'
+                              : canConfirmCash
+                              ? 'Konfirmasi pembayaran tunai'
+                              : 'Tidak punya izin tunai',
+                          icon: Icons.payments_rounded,
+                          onPressed:
+                              !canConfirmCash ||
+                                  _confirmingCashTickets.contains(
+                                    booking.ticketNumber,
+                                  )
+                              ? null
+                              : () => _confirmCash(booking),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  PrimaryButton(
-                    label: 'Chat Customer',
-                    icon: Icons.chat_bubble_rounded,
-                    onPressed: () {
-                      final roomId = ref
-                          .read(appControllerProvider.notifier)
-                          .createCustomerChatRoomForBooking(booking);
-                      context.push('/guard/chat-room?roomId=$roomId');
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  SecondaryButton(
-                    label: canConfirmCash
-                        ? 'Konfirmasi pembayaran tunai'
-                        : 'Tidak punya izin tunai',
-                    icon: Icons.payments_rounded,
-                    onPressed: booking.isPaid || !canConfirmCash
-                        ? null
-                        : () async {
-                            try {
-                              await ref
-                                  .read(appControllerProvider.notifier)
-                                  .payBooking(PaymentMethod.cash);
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Pembayaran tunai berhasil dikonfirmasi.',
-                                  ),
-                                ),
-                              );
-                            } catch (error) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Gagal mengonfirmasi pembayaran tunai: $error',
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                  ),
-                ],
+                ),
               ),
             ),
         ],
@@ -16429,6 +16743,14 @@ class GuardVehiclesScreen extends ConsumerWidget {
     );
   }
 }
+
+String _guardBookingStatusLabel(BookingStatus status) => switch (status) {
+  BookingStatus.pendingPayment => 'Menunggu pembayaran',
+  BookingStatus.paid => 'Lunas, menunggu masuk',
+  BookingStatus.active => 'Sedang parkir',
+  BookingStatus.completed => 'Selesai',
+  BookingStatus.cancelled => 'Dibatalkan',
+};
 
 class GuardChatListScreen extends ConsumerWidget {
   const GuardChatListScreen({super.key});
