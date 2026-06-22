@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingError } = await adminClient
       .from("bookings")
-      .select("id, ticket_number, customer_id, estimated_cost, status")
+      .select(
+        "id, ticket_number, customer_id, estimated_cost, status, created_at",
+      )
       .eq("ticket_number", ticketNumber)
       .eq("customer_id", customer.id)
       .single();
@@ -76,6 +78,11 @@ Deno.serve(async (req) => {
 
     if (booking.status !== "pending_payment") {
       return json({ error: "Booking is not waiting for payment." }, 400);
+    }
+
+    const expiresAt = new Date(booking.created_at).getTime() + 15 * 60 * 1000;
+    if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+      return json({ error: "Booking reservation has expired." }, 410);
     }
 
     const amount = Number(booking.estimated_cost ?? 0);
@@ -153,7 +160,10 @@ Deno.serve(async (req) => {
       redirectUrl: snapBody.redirect_url,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error" },
+      500,
+    );
   }
 });
 
@@ -170,7 +180,7 @@ function paymentMethod(value: string) {
 
 function map(value: unknown) {
   return value && typeof value === "object"
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 

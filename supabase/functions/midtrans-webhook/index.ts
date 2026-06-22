@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
     const { data: payment, error: paymentError } = await adminClient
       .from("payments")
-      .select("id, booking_id, amount")
+      .select("id, booking_id, amount, status")
       .eq("provider_reference", orderId)
       .single();
 
@@ -43,6 +43,55 @@ Deno.serve(async (req) => {
     }
 
     const status = paymentStatus(transactionStatus, fraudStatus);
+    const { data: booking, error: bookingError } = await adminClient
+      .from("bookings")
+      .select("status, ticket_number, customer_id, customers(profile_id)")
+      .eq("id", payment.booking_id)
+      .single();
+
+    if (bookingError || !booking) {
+      return json({ error: "Booking was not found." }, 404);
+    }
+
+    if (booking.status === "cancelled") {
+      if (status === "paid") {
+        const paidAt = new Date().toISOString();
+        const { data: latePayment, error: latePaymentError } = await adminClient
+          .from("payments")
+          .update({ status: "paid", paid_at: paidAt })
+          .eq("id", payment.id)
+          .eq("status", "cancelled")
+          .select("id")
+          .maybeSingle();
+
+        if (latePaymentError) {
+          return json({ error: latePaymentError.message }, 400);
+        }
+
+        const profileId = map(booking.customers).profile_id;
+        if (latePayment && typeof profileId === "string" && profileId) {
+          await adminClient.from("notifications").insert({
+            profile_id: profileId,
+            title: "Pembayaran diterima setelah reservasi berakhir",
+            message: `Pembayaran ${text(booking.ticket_number)} diterima setelah reservasi dibatalkan. Hubungi dukungan untuk proses pengembalian dana.`,
+            type: "late_payment",
+            data: {
+              booking_id: payment.booking_id,
+              ticket_number: text(booking.ticket_number),
+              requires_refund: true,
+            },
+          });
+        }
+      }
+
+      return json({
+        ok: true,
+        status: status === "paid" ? "paid" : payment.status,
+        bookingStatus: "cancelled",
+        requiresRefund: status === "paid",
+      });
+    }
+
     const paidAt = status === "paid" ? new Date().toISOString() : null;
     const { error: updatePaymentError } = await adminClient
       .from("payments")
@@ -54,29 +103,80 @@ Deno.serve(async (req) => {
     }
 
     if (status === "paid") {
-      await adminClient
+      const { data: paidBooking, error: paidBookingError } = await adminClient
         .from("bookings")
         .update({ status: "paid", final_cost: payment.amount })
-        .eq("id", payment.booking_id);
-
-      const { data: booking } = await adminClient
-        .from("bookings")
-        .select("ticket_number, customer_id, customers(profile_id)")
         .eq("id", payment.booking_id)
-        .single();
+        .eq("status", "pending_payment")
+        .select("id")
+        .maybeSingle();
+
+      if (paidBookingError) {
+        return json({ error: paidBookingError.message }, 400);
+      }
+
+      if (!paidBooking) {
+        const { data: currentBooking } = await adminClient
+          .from("bookings")
+          .select("status, ticket_number, customers(profile_id)")
+          .eq("id", payment.booking_id)
+          .single();
+        const currentBookingStatus = text(currentBooking?.status);
+
+        if (currentBookingStatus === "cancelled") {
+          const profileId = map(currentBooking.customers).profile_id;
+          if (typeof profileId === "string" && profileId) {
+            await adminClient.from("notifications").insert({
+              profile_id: profileId,
+              title: "Pembayaran diterima setelah reservasi berakhir",
+              message: `Pembayaran ${text(currentBooking.ticket_number)} diterima setelah reservasi dibatalkan. Hubungi dukungan untuk proses pengembalian dana.`,
+              type: "late_payment",
+              data: {
+                booking_id: payment.booking_id,
+                ticket_number: text(currentBooking.ticket_number),
+                requires_refund: true,
+              },
+            });
+          }
+
+          return json({
+            ok: true,
+            status,
+            bookingStatus: "cancelled",
+            requiresRefund: true,
+          });
+        }
+
+        if (!["paid", "active", "completed"].includes(currentBookingStatus)) {
+          return json({
+            ok: true,
+            status,
+            bookingStatus: currentBookingStatus || booking.status,
+            bookingUpdated: false,
+          });
+        }
+
+        // A repeated callback still repairs a receipt missing from an earlier run.
+      }
 
       const ticketNumber = text(booking?.ticket_number);
-      await adminClient.from("receipts").upsert({
-        booking_id: payment.booking_id,
-        payment_id: payment.id,
-        receipt_number: `RCT-${ticketNumber || orderId}`,
-        issued_by: map(booking?.customers).profile_id ?? null,
-      }, { onConflict: "booking_id" });
+      await adminClient.from("receipts").upsert(
+        {
+          booking_id: payment.booking_id,
+          payment_id: payment.id,
+          receipt_number: `RCT-${ticketNumber || orderId}`,
+          issued_by: map(booking?.customers).profile_id ?? null,
+        },
+        { onConflict: "booking_id" },
+      );
     }
 
     return json({ ok: true, status });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error" },
+      500,
+    );
   }
 });
 
@@ -90,7 +190,10 @@ function paymentStatus(transactionStatus: string, fraudStatus: string) {
   if (["deny", "cancel", "expire", "failure"].includes(transactionStatus)) {
     return "failed";
   }
-  if (transactionStatus === "refund" || transactionStatus === "partial_refund") {
+  if (
+    transactionStatus === "refund" ||
+    transactionStatus === "partial_refund"
+  ) {
     return "refunded";
   }
   return "pending";
@@ -102,7 +205,7 @@ function text(value: unknown) {
 
 function map(value: unknown) {
   return value && typeof value === "object"
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
 }
 

@@ -2,7 +2,7 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, dan percobaan build release.
+Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, dan percobaan build release.
 
 ## Cara Pakai
 
@@ -21,11 +21,12 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Patch kode dan SQL untuk memperketat RLS `bookings`/`payments` serta mencabut write langsung client sudah dibuat di `docs/supabase_booking_payment_security_patch.sql`.
 - [x] Flutter tidak lagi mengirim `price_per_hour` atau `estimated_cost`; RPC menghitung tarif dari lahan, jenis kendaraan, tipe tarif, dan durasi lalu mengembalikan nominal server.
-- [ ] Jalankan `docs/supabase_booking_payment_security_patch.sql` di Supabase production dan uji ulang semua role. Database live belum memakai hardening ini sampai SQL berhasil dijalankan.
+- [x] `docs/supabase_booking_payment_security_patch.sql` sudah dijalankan di Supabase production berdasarkan konfirmasi owner; uji ulang semua role tetap perlu dilanjutkan.
 - [x] Konfirmasi pembayaran tunai penjaga dipindahkan dari service customer ke RPC khusus yang memvalidasi izin, assignment, status booking, nominal server, payment, receipt, dan activity log.
 - [x] Scan masuk/keluar dipindahkan ke RPC atomik yang memvalidasi assignment penjaga, status sebelumnya, update slot, waktu scan, dan activity log.
 - [x] Penyedia dapat menjadi operator scan/tunai untuk lokasi miliknya ketika tidak ada penjaga aktif yang ditugaskan; validasi kepemilikan dan ketiadaan penjaga dilakukan server-side.
-- [ ] Tambahkan proses kedaluwarsa reservasi 15 menit agar booking `pending_payment` dibatalkan dan slot `reserved` kembali `available`.
+- [x] Proses kedaluwarsa reservasi server-side tersedia di `docs/supabase_booking_expiry.sql`: booking lewat 15 menit dibatalkan, slot dilepas, payment pending dibatalkan, customer diberi notifikasi, dan proses dijadwalkan tiap menit dengan `pg_cron`.
+- [ ] Jalankan `docs/supabase_booking_expiry.sql` di Supabase production, deploy ulang Edge Function Midtrans, lalu uji expiry dan callback terlambat.
 
 #### Belum Berjalan Penuh
 
@@ -376,8 +377,8 @@ Terakhir diperbarui: 21 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ## Prioritas Aman Berikutnya
 
-1. Jalankan `docs/supabase_booking_payment_security_patch.sql` di Supabase production dan uji booking, Midtrans, tunai, masuk, serta keluar.
-2. Tambahkan expiry reservasi server-side untuk melepas slot yang tidak dibayar.
+1. Uji ulang booking, Midtrans, tunai, masuk, serta keluar setelah patch keamanan production.
+2. Jalankan dan uji expiry reservasi server-side di Supabase production.
 3. Ubah cek pembayaran dan kendaraan aktif penjaga menjadi query Supabase lintas booking.
 4. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
 5. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.

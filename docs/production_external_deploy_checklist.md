@@ -22,6 +22,22 @@ Patch ini wajib karena:
 Setelah berhasil, uji customer booking, pembayaran Midtrans, pembayaran tunai
 penjaga, scan masuk, scan keluar, receipt, dan laporan provider.
 
+## Kedaluwarsa Reservasi
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_booking_expiry.sql
+```
+
+Patch ini membuat job `pg_cron` setiap menit. Booking `pending_payment` yang
+berumur lebih dari 15 menit akan menjadi `cancelled`, payment `pending` menjadi
+`cancelled`, slot `reserved` kembali `available`, dan customer menerima
+notifikasi in-app.
+
+Setelah menunggu satu menit, jalankan query verifikasi yang tersedia pada bagian
+bawah file SQL. Pastikan job aktif dan eksekusi terakhir berstatus `succeeded`.
+
 ## Supabase Edge Functions
 
 Deploy dari terminal project setelah Supabase CLI login dan project sudah linked.
