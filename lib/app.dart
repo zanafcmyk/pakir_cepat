@@ -9777,9 +9777,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       final booking = ref.read(appControllerProvider).activeBooking;
       if (booking?.isPaid ?? false) {
         _gatewayOpened = false;
-        await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
         if (mounted) {
-          await _showPaymentSuccess(booking!);
+          unawaited(
+            controller.loadCustomerHistoryFromSupabase().catchError((_) {}),
+          );
+          _openPaidTicket();
         }
         return;
       }
@@ -9882,7 +9884,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       if (!mounted || booking == null) {
         return;
       }
-      await _showPaymentSuccess(booking);
+      _openPaidTicket();
     } catch (error) {
       if (!mounted) {
         return;
@@ -9896,6 +9898,15 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         setState(() => _isSimulatingPayment = false);
       }
     }
+  }
+
+  void _openPaidTicket() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Pembayaran berhasil. Tiket QR sudah aktif.'),
+      ),
+    );
+    context.go('/customer/tickets');
   }
 
   @override
