@@ -9052,13 +9052,14 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                               ),
                             );
                             context.pop();
-                          } catch (_) {
+                          } catch (error) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Gagal menyimpan kendaraan ke Supabase.',
+                                  'Gagal menyimpan kendaraan ke Supabase: $error',
                                 ),
+                                duration: const Duration(seconds: 6),
                               ),
                             );
                           } finally {

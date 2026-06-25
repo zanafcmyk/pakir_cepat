@@ -37,7 +37,7 @@ class SupabaseVehicleService {
     required VehicleKind kind,
     required int durationHours,
   }) async {
-    final customerId = await _currentCustomerId();
+    final customerId = await _ensureCurrentCustomerId();
     if (customerId == null) {
       throw StateError('Profil customer tidak ditemukan.');
     }
@@ -81,6 +81,44 @@ class SupabaseVehicleService {
         .from('customers')
         .select('id')
         .eq('profile_id', user.id)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    return rows.first['id'] as String?;
+  }
+
+  Future<String?> _ensureCurrentCustomerId() async {
+    final existingCustomerId = await _currentCustomerId();
+    if (existingCustomerId != null) {
+      return existingCustomerId;
+    }
+
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final fullName =
+        user.userMetadata?['full_name'] as String? ??
+        user.email?.split('@').first ??
+        'Customer';
+    await _client.from('profiles').upsert({
+      'id': user.id,
+      'full_name': fullName,
+      'email': user.email,
+      'role': 'customer',
+      'account_status': 'verified',
+      'access_status': 'active',
+      'verified_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'id');
+
+    final rows = await _client
+        .from('customers')
+        .upsert({'profile_id': user.id}, onConflict: 'profile_id')
+        .select('id')
         .limit(1);
 
     if (rows.isEmpty) {
