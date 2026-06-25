@@ -65,7 +65,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
 - [ ] Build APK release belum berhasil diverifikasi. Flutter berhasil sampai tahap kompilasi/tree-shaking, lalu JVM Gradle crash; turunkan konfigurasi heap `-Xmx8G` dan ulangi build pada mesin yang cukup stabil.
 - [ ] Edit ulang data lahan live lama dengan alamat lengkap. Dua lahan yang diaudit masih memakai koordinat default yang sama `-6.2087145, 106.8224854`.
-- [ ] Wajib isi `PUSH_FUNCTION_SECRET`; function push tidak boleh menerima target `profileIds` bebas ketika secret kosong.
+- [x] `send-push-notification` sekarang mewajibkan `PUSH_FUNCTION_SECRET`; function sudah dideploy ulang sebagai version 6.
 
 ### Sudah Berjalan dan Terhubung Supabase
 
@@ -155,7 +155,8 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
 - [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
-- [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
+- [ ] Push notification asli perlu Firebase project/file konfigurasi Android/iOS, secret FCM, dan pemicu server-side otomatis untuk event app.
+- [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
@@ -191,7 +192,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - Settings penyedia dan penjaga membutuhkan SQL `docs/supabase_profile_settings.sql` dijalankan di Supabase.
 - Upload dokumen identitas penyedia membutuhkan SQL `docs/supabase_storage_provider_identity_documents.sql` dijalankan di Supabase.
 - Akun penjaga langsung memakai Edge Function `supabase/functions/create-guard-account`; function sudah terdeploy dan tetap membutuhkan secret `SERVICE_ROLE_KEY`.
-- Push notification production sudah punya tabel token dan Edge Function FCM, tetapi belum production penuh sampai Firebase config, permission device, token registration, dan trigger pengiriman diaktifkan.
+- Push notification production sudah punya tabel token, registrasi token app-side, permission device, dan Edge Function FCM. Belum production penuh sampai Firebase config/secret dipasang dan trigger pengiriman otomatis diaktifkan.
 - Matriks sinkron antar role dicatat di `docs/ROLE_SYNC_STATUS.md`.
 - Audit RLS sinkron antar role dicatat di `docs/RLS_AUDIT_STATUS.md`.
 
@@ -202,7 +203,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Search/filter lokasi sungguhan dari database.
 - [x] Laporan pendapatan utama dari query Supabase.
 - [x] Statistik utama dari query Supabase.
-- [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
+- [ ] Push notification asli ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
 - [x] Role guard/route protection dasar.
 - [x] Middleware/auth redirect dasar.
 - [x] Realtime slot dari tabel `parking_slots` di aplikasi.
@@ -234,7 +235,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Role guard dasar dan redirect auth sudah tersedia.
 - [x] Audit role guard dan middleware auth dasar untuk deep link role.
 - [ ] Audit deep link production di perangkat asli sebelum release.
-- [ ] Push notification asli ke HP dengan Firebase config di aplikasi.
+- [ ] Push notification asli ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
 - [ ] Review final sebelum merge ke `development` atau `master`.
 
 ### maulana-bintang - Penyedia Parkir
@@ -297,7 +298,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
 - [x] Realtime status slot/lokasi/assignment untuk penjaga.
-- [ ] Push notification tugas/booking untuk penjaga.
+- [ ] Push notification tugas/booking untuk penjaga setelah Database Webhook/trigger event diaktifkan.
 
 ### Customer Flow - Pelanggan Bersama
 
@@ -335,7 +336,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Reset password Supabase punya halaman set password baru dari link email.
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
 - [x] Search/filter lokasi sungguhan dari database.
-- [ ] Push notification booking/payment ke HP setelah Firebase config dipasang.
+- [ ] Push notification booking/payment ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
 
 ### Backend/Supabase Bersama
 
@@ -380,7 +381,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Query agregasi laporan/statistik utama.
 - [x] Realtime lokasi/notifikasi in-app dasar.
 - [ ] Realtime production perlu audit perangkat setelah SQL publication dijalankan.
-- [ ] Push notification provider production setelah Firebase config dipasang.
+- [ ] Push notification provider production setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
 
 ## Prioritas Aman Berikutnya
 

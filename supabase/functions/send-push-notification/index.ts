@@ -13,18 +13,23 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey =
-      Deno.env.get("SERVICE_ROLE_KEY") ??
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const firebaseProjectId = Deno.env.get("FIREBASE_PROJECT_ID");
     const serviceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
     const pushSecret = Deno.env.get("PUSH_FUNCTION_SECRET");
 
-    if (!supabaseUrl || !serviceRoleKey || !firebaseProjectId || !serviceAccountJson) {
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey ||
+      !firebaseProjectId ||
+      !serviceAccountJson ||
+      !pushSecret
+    ) {
       return json({ error: "Missing push notification configuration." }, 401);
     }
 
-    if (pushSecret && req.headers.get("x-push-secret") !== pushSecret) {
+    if (req.headers.get("x-push-secret") !== pushSecret) {
       return json({ error: "Invalid push secret." }, 403);
     }
 
@@ -37,7 +42,10 @@ Deno.serve(async (req) => {
     const data = map(payload.data);
 
     if (profileIds.length === 0 || !title || !body) {
-      return json({ error: "profileIds, title, and message are required." }, 400);
+      return json(
+        { error: "profileIds, title, and message are required." },
+        400,
+      );
     }
 
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -87,7 +95,10 @@ Deno.serve(async (req) => {
 
     return json({ sent, failed: failedTokens.length });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error" },
+      500,
+    );
   }
 });
 
@@ -168,7 +179,10 @@ function base64Url(bytes: Uint8Array) {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
   }
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll(
+    "=",
+    "",
+  );
 }
 
 function stringifyData(data: Record<string, unknown>) {

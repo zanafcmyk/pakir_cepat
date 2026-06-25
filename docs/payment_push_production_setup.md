@@ -71,8 +71,8 @@ Yang masih perlu sebelum push notification benar-benar muncul di HP:
 
 1. Buat project Firebase.
 2. Tambahkan app Android/iOS.
-3. Pasang file Firebase ke project Flutter.
-4. Tambahkan package Firebase di Flutter.
-5. Minta permission notifikasi.
-6. Ambil FCM token dan simpan ke `device_push_tokens`.
-7. Panggil `send-push-notification` saat ada event booking/payment/komplain.
+3. Pasang file Firebase ke project Flutter atau jalankan dengan dart-define Firebase.
+4. Isi secret Firebase dan `PUSH_FUNCTION_SECRET` di Supabase.
+5. Deploy ulang `send-push-notification`.
+6. Login di HP dan pastikan FCM token tersimpan ke `device_push_tokens`.
+7. Aktifkan Database Webhook/trigger agar event booking/payment/komplain memanggil `send-push-notification`.

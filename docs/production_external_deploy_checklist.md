@@ -193,19 +193,26 @@ Uji sandbox:
 
 ## Firebase Push Notification
 
-Yang belum ada di Flutter saat dokumen ini dibuat:
+Yang sudah ada di Flutter:
 
 - Package Firebase di `pubspec.yaml`.
-- File `android/app/google-services.json`.
-- File `ios/Runner/GoogleService-Info.plist`.
+- Permission notifikasi Android.
 - Registrasi FCM token device ke tabel `device_push_tokens`.
+
+Yang masih harus dipasang dari dashboard Firebase:
+
+- File `android/app/google-services.json` atau dart-define Firebase.
+- File `ios/Runner/GoogleService-Info.plist` atau dart-define Firebase.
+- Secret Supabase `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON`, dan
+  `PUSH_FUNCTION_SECRET`.
 
 Langkah production:
 
 1. Buat Firebase project.
 2. Tambahkan app Android dan iOS.
 3. Pasang file config Firebase ke folder platform.
-4. Tambahkan dependency Firebase Messaging di Flutter.
-5. Minta permission notifikasi di aplikasi.
-6. Simpan FCM token ke `device_push_tokens`.
-7. Panggil `send-push-notification` dari trigger/event booking, payment, komplain, atau tugas penjaga.
+4. Isi secret Firebase di Supabase.
+5. Deploy ulang `send-push-notification`.
+6. Login di HP dan pastikan token masuk ke `device_push_tokens`.
+7. Aktifkan Database Webhook/trigger agar insert `notifications` memanggil
+   `send-push-notification`.

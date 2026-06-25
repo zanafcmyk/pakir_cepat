@@ -23,6 +23,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/app_models.dart';
+import 'services/firebase_push_notification_service.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
@@ -1703,6 +1704,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseReviewService _reviewService = SupabaseReviewService();
   final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
+  final FirebasePushNotificationService _pushNotificationService =
+      FirebasePushNotificationService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
   RealtimeChannel? _parkingLotRealtimeChannel;
   RealtimeChannel? _parkingGuardRealtimeChannel;
@@ -2649,6 +2652,11 @@ class AppController extends StateNotifier<AppState> {
       providerApplication: providerApplication,
       clearProviderApplication: clearProviderApplication,
     );
+    unawaited(registerPushNotificationsForCurrentUser());
+  }
+
+  Future<PushRegistrationStatus> registerPushNotificationsForCurrentUser() {
+    return _pushNotificationService.registerCurrentUserDevice();
   }
 
   void register({
@@ -2717,12 +2725,18 @@ class AppController extends StateNotifier<AppState> {
     await preferences.setBool(_rememberMeKey, false);
     await preferences.remove(_lastEmailKey);
     await preferences.remove(_lastPhoneKey);
+    await _pushNotificationService.unregisterCurrentUserDevice().catchError(
+      (_) {},
+    );
     await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
     state = state.copyWith(isAuthenticated: false, rememberMe: false);
   }
 
   Future<void> deleteAccount() async {
+    await _pushNotificationService.unregisterCurrentUserDevice().catchError(
+      (_) {},
+    );
     await Supabase.instance.client.functions.invoke('delete-account');
     await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
