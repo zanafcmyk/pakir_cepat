@@ -40,7 +40,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
 - [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
 - [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
-- [ ] Tampilkan foto lahan dari `photo_url` pada halaman customer; upload sudah berjalan tetapi foto belum digunakan di katalog/detail.
+- [x] Tampilkan foto lahan dari `photo_url` pada kartu lokasi customer dan halaman detail; fallback tetap tersedia jika foto belum ada/gagal dimuat.
 - [x] Simpan dan tampilkan `duration_hours` dari booking. Halaman pembayaran memakai durasi dari Supabase, bukan menurunkan dari total biaya.
 - [ ] Ganti QR tiket polos dengan token bertanda tangan/opaque agar tidak mudah ditebak, dibagikan, atau dipakai ulang.
 

@@ -8368,21 +8368,16 @@ class ParkingDetailScreen extends ConsumerWidget {
               children: [
                 Container(
                   height: 220,
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
+                  decoration: const BoxDecoration(
+                    borderRadius: BorderRadius.vertical(
                       top: Radius.circular(28),
                     ),
-                    gradient: LinearGradient(
-                      colors: [
-                        lot.accent.withValues(alpha: 0.9),
-                        AppTheme.white,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
                   ),
-                  child: const Center(
-                    child: SmartCityIllustration(height: 160),
+                  clipBehavior: Clip.antiAlias,
+                  child: ParkingLotPhoto(
+                    lot: lot,
+                    height: 220,
+                    borderRadius: BorderRadius.zero,
                   ),
                 ),
                 Padding(
@@ -18419,6 +18414,8 @@ class ParkingLotCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ParkingLotPhoto(lot: lot, height: 150),
+          const SizedBox(height: 16),
           Row(
             children: [
               Container(
@@ -18510,6 +18507,126 @@ class ParkingLotCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ParkingLotPhoto extends StatelessWidget {
+  const ParkingLotPhoto({
+    super.key,
+    required this.lot,
+    required this.height,
+    this.borderRadius = const BorderRadius.all(Radius.circular(18)),
+  });
+
+  final ParkingLot lot;
+  final double height;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = lot.photoLabel?.trim();
+    final hasNetworkPhoto =
+        photoUrl != null &&
+        photoUrl.isNotEmpty &&
+        (photoUrl.startsWith('http://') || photoUrl.startsWith('https://'));
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: SizedBox(
+        width: double.infinity,
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (lot.photoBytes != null)
+              Image.memory(lot.photoBytes!, fit: BoxFit.cover)
+            else if (hasNetworkPhoto)
+              Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _ParkingLotPhotoFallback(lot: lot),
+              )
+            else
+              _ParkingLotPhotoFallback(lot: lot),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.32),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 14,
+              bottom: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.local_parking_rounded,
+                      color: AppTheme.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${lot.availableSlots}/${lot.totalSlots} slot',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppTheme.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ParkingLotPhotoFallback extends StatelessWidget {
+  const _ParkingLotPhotoFallback({required this.lot});
+
+  final ParkingLot lot;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            lot.accent.withValues(alpha: 0.9),
+            AppTheme.blueSoft,
+            AppTheme.white,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.local_parking_rounded,
+          size: 64,
+          color: AppTheme.white.withValues(alpha: 0.92),
+        ),
       ),
     );
   }
