@@ -56,6 +56,28 @@ Deno.serve(async (req) => {
       return json({ error: "Booking was not found." }, 404);
     }
 
+    const currentPaymentStatus = text(payment.status);
+    if (
+      currentPaymentStatus === "paid" &&
+      (status === "pending" || status === "failed")
+    ) {
+      return json({
+        ok: true,
+        status: currentPaymentStatus,
+        ignoredStatus: status,
+        reason: "paid_payment_cannot_be_downgraded",
+      });
+    }
+
+    if (currentPaymentStatus === "refunded" && status !== "refunded") {
+      return json({
+        ok: true,
+        status: currentPaymentStatus,
+        ignoredStatus: status,
+        reason: "refunded_payment_is_terminal",
+      });
+    }
+
     if (booking.status === "cancelled") {
       if (status === "paid") {
         const paidAt = new Date().toISOString();

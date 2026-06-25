@@ -59,6 +59,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Seluruh 6 test saat ini lulus.
 - [x] Audit alur utama end-to-end terbaru dicatat di `docs/e2e_main_flow_audit_2026-06-25.md`.
 - [x] Verifikasi SQL production terbaru via `docs/supabase_production_sql_verification.sql` lulus: tabel, kolom, RPC, RLS, policy, trigger, realtime publication, storage bucket, dan cron expiry semuanya `OK`.
+- [x] Audit kode dan deploy webhook Midtrans terbaru dicatat di `docs/midtrans_audit_2026-06-25.md`; webhook production aktif version 10 dan sudah diberi guard idempotensi agar payment `paid` tidak downgrade.
 - [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
 - [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
@@ -153,7 +154,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
-- [ ] Lakukan uji settlement Midtrans end-to-end berulang: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
+- [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
 - [ ] Push notification asli perlu Firebase project, file konfigurasi Android/iOS, secret FCM, dan registrasi token device.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
