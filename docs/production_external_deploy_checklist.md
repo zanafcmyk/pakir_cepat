@@ -39,6 +39,19 @@ booking agar booking baru otomatis memakai token aman. Setelah berhasil, uji:
 - penjaga/operator bisa scan QR token baru untuk masuk dan keluar;
 - input manual nomor tiket `TKT-...` masih bisa dipakai untuk pengecekan.
 
+## Validasi Assignment Penjaga
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_guard_assignment_validation.sql
+```
+
+Patch ini memastikan akun penjaga tidak bisa tersimpan tanpa assignment lahan
+aktif milik penyedia. Setelah patch berhasil, buka akun penyedia > Akun penjaga,
+pilih lahan yang boleh diakses, simpan ulang penjaga, lalu uji scan tiket pada
+lahan yang sama.
+
 ## Perpanjangan Durasi Booking
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:
@@ -158,6 +171,7 @@ Catatan:
 
 - `SERVICE_ROLE_KEY` berisi service role key Supabase dan jangan dimasukkan ke Flutter.
 - `MIDTRANS_IS_PRODUCTION=false` untuk sandbox.
+- `create-midtrans-payment` memakai fallback `parkircepat://payment-finish` jika `APP_PAYMENT_FINISH_URL` kosong, tetapi function tetap perlu deploy ulang setelah update kode ini.
 - `midtrans-webhook` perlu `--no-verify-jwt` agar Midtrans bisa memanggil webhook.
 - `APP_PAYMENT_FINISH_URL=parkircepat://payment-finish` agar aplikasi terbuka kembali setelah pembayaran.
 

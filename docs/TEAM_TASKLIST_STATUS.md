@@ -17,9 +17,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 260.
+- Total item terhitung: 262.
 - Selesai: 245.
-- Belum selesai: 15.
+- Belum selesai: 17.
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -41,6 +41,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Daftar kendaraan aktif penjaga membaca seluruh booking operasional pada lokasi assignment, mendukung filter lokasi, muat ulang, dan konfirmasi tunai per tiket.
 - [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
 - [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
+- [ ] Jalankan `docs/supabase_guard_assignment_validation.sql`, simpan ulang assignment penjaga dari akun penyedia, lalu uji scan tiket di lahan yang sama.
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
 - [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
@@ -162,6 +163,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
 - [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
+- [ ] Deploy ulang `create-midtrans-payment` agar callback selesai pembayaran memakai fallback `parkircepat://payment-finish`, lalu uji kembali otomatis dari Midtrans sandbox ke aplikasi.
 - [ ] Push notification asli perlu audit akhir: pastikan Firebase config/secret live, token device tersimpan, dan pemicu server-side otomatis mengirim event booking/payment/guard ke HP.
 - [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.

@@ -18,7 +18,8 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const midtransServerKey = Deno.env.get("MIDTRANS_SERVER_KEY");
     const isProduction = Deno.env.get("MIDTRANS_IS_PRODUCTION") === "true";
-    const finishUrl = Deno.env.get("APP_PAYMENT_FINISH_URL") ?? "";
+    const finishUrl = Deno.env.get("APP_PAYMENT_FINISH_URL") ??
+      "parkircepat://payment-finish";
     const authorization = req.headers.get("Authorization");
 
     if (

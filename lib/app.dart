@@ -13705,6 +13705,7 @@ class _ParkingGuardManagementScreenState
   final Set<String> _selectedLotIds = {};
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
+  bool _isLoadingGuardContext = false;
   bool _isSavingGuard = false;
   String? _editingGuardId;
   String? _formError;
@@ -13726,21 +13727,7 @@ class _ParkingGuardManagementScreenState
     if (lots.isNotEmpty) {
       _selectedLotIds.add(lots.first.id);
     }
-    Future.microtask(() async {
-      final controller = ref.read(appControllerProvider.notifier);
-      await controller.loadParkingDataFromSupabase().catchError((_) {});
-      await controller.loadProviderGuardsFromSupabase().catchError((_) {});
-      if (!mounted) return;
-      final remoteLots = _providerSupabaseLots(ref.read(appControllerProvider));
-      setState(() {
-        _selectedLotIds.removeWhere(
-          (id) => !remoteLots.any((lot) => lot.id == id),
-        );
-        if (_selectedLotIds.isEmpty && remoteLots.isNotEmpty) {
-          _selectedLotIds.add(remoteLots.first.id);
-        }
-      });
-    });
+    Future.microtask(_reloadGuardContext);
   }
 
   @override
@@ -13820,6 +13807,29 @@ class _ParkingGuardManagementScreenState
     });
   }
 
+  Future<void> _reloadGuardContext() async {
+    if (_isLoadingGuardContext) {
+      return;
+    }
+    setState(() => _isLoadingGuardContext = true);
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadParkingDataFromSupabase().catchError((_) {});
+    await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+    final remoteLots = _providerSupabaseLots(ref.read(appControllerProvider));
+    setState(() {
+      _selectedLotIds.removeWhere(
+        (id) => !remoteLots.any((lot) => lot.id == id),
+      );
+      if (_selectedLotIds.isEmpty && remoteLots.isNotEmpty) {
+        _selectedLotIds.add(remoteLots.first.id);
+      }
+      _isLoadingGuardContext = false;
+    });
+  }
+
   String _assignedLotNames(ParkingGuardAccount guard, List<ParkingLot> lots) {
     final names = [
       for (final lot in lots)
@@ -13849,7 +13859,16 @@ class _ParkingGuardManagementScreenState
       return;
     }
 
-    final error = _guardFormError(lots);
+    var availableLots = lots;
+    if (availableLots.isEmpty) {
+      await _reloadGuardContext();
+      if (!mounted) {
+        return;
+      }
+      availableLots = _providerSupabaseLots(ref.read(appControllerProvider));
+    }
+
+    final error = _guardFormError(availableLots);
     if (error != null) {
       setState(() => _formError = error);
       ScaffoldMessenger.of(
@@ -13871,7 +13890,9 @@ class _ParkingGuardManagementScreenState
           email: _emailController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
           password: _passwordController.text,
-          assignedLotIds: _selectedLotIds.toList(),
+          assignedLotIds: _selectedLotIds
+              .where((id) => availableLots.any((lot) => lot.id == id))
+              .toList(),
           canScanQr: true,
           canConfirmCash: _canConfirmCash,
           canManageSlots: _canManageSlots,
@@ -13886,7 +13907,9 @@ class _ParkingGuardManagementScreenState
           name: _nameController.text.trim(),
           email: _emailController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
-          assignedLotIds: _selectedLotIds.toList(),
+          assignedLotIds: _selectedLotIds
+              .where((id) => availableLots.any((lot) => lot.id == id))
+              .toList(),
           canConfirmCash: _canConfirmCash,
           canManageSlots: _canManageSlots,
         );
@@ -13946,7 +13969,7 @@ class _ParkingGuardManagementScreenState
       return;
     }
     if (_editingGuardId == guard.id) {
-      _resetGuardForm(visibleLotsFor(ref.read(appControllerProvider)));
+      _resetGuardForm(_providerSupabaseLots(ref.read(appControllerProvider)));
     }
     messenger.showSnackBar(
       SnackBar(content: Text('Akun ${guard.name} berhasil dihapus.')),
@@ -14040,11 +14063,28 @@ class _ParkingGuardManagementScreenState
                 ),
                 const SizedBox(height: 8),
                 if (lots.isEmpty)
-                  const InlineNotice(
-                    icon: Icons.info_outline_rounded,
-                    accent: Color(0xFFD97706),
-                    message:
-                        'Belum ada lahan aktif. Tambahkan lahan parkir sebelum membuat akun penjaga.',
+                  Column(
+                    children: [
+                      InlineNotice(
+                        icon: _isLoadingGuardContext
+                            ? Icons.sync_rounded
+                            : Icons.info_outline_rounded,
+                        accent: const Color(0xFFD97706),
+                        message: _isLoadingGuardContext
+                            ? 'Memuat lahan parkir penyedia dari Supabase...'
+                            : 'Belum ada lahan aktif yang terbaca. Muat ulang lahan atau tambahkan lahan parkir sebelum membuat akun penjaga.',
+                      ),
+                      const SizedBox(height: 10),
+                      SecondaryButton(
+                        label: _isLoadingGuardContext
+                            ? 'Memuat lahan...'
+                            : 'Muat ulang lahan',
+                        icon: Icons.refresh_rounded,
+                        onPressed: _isLoadingGuardContext
+                            ? null
+                            : _reloadGuardContext,
+                      ),
+                    ],
                   )
                 else
                   for (final lot in lots)
@@ -14680,7 +14720,9 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Konfirmasi tunai ditolak: $error')),
+        SnackBar(
+          content: Text(_operatorActionError('Konfirmasi tunai', error)),
+        ),
       );
     }
   }
@@ -14700,7 +14742,9 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Verifikasi masuk ditolak: $error')),
+        SnackBar(
+          content: Text(_operatorActionError('Verifikasi masuk', error)),
+        ),
       );
       return;
     }
@@ -14743,7 +14787,9 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Konfirmasi keluar ditolak: $error')),
+        SnackBar(
+          content: Text(_operatorActionError('Konfirmasi keluar', error)),
+        ),
       );
       return;
     }
@@ -14773,6 +14819,27 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
         ),
       ),
     );
+  }
+
+  String _operatorActionError(String action, Object error) {
+    final raw = error.toString();
+    if (raw.contains('Guard is not allowed to scan tickets for this lot') ||
+        raw.contains('Guard is not allowed to confirm cash for this lot')) {
+      return '$action ditolak: penjaga belum ditugaskan ke lahan pada tiket ini. Buka akun penyedia > Akun penjaga, pilih lahan yang sama, lalu simpan ulang.';
+    }
+    if (raw.contains('An active guard is assigned to this parking lot')) {
+      return '$action ditolak: lahan ini sudah punya penjaga aktif, gunakan akun penjaga yang ditugaskan.';
+    }
+    if (raw.contains('Only paid bookings can check in')) {
+      return '$action ditolak: tiket belum lunas.';
+    }
+    if (raw.contains('Only active bookings can check out')) {
+      return '$action ditolak: kendaraan belum tercatat masuk.';
+    }
+    if (error is PostgrestException) {
+      return '$action ditolak: ${error.message}';
+    }
+    return '$action ditolak: $error';
   }
 
   @override
