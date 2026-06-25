@@ -9751,7 +9751,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     with WidgetsBindingObserver {
   PaymentMethod _method = PaymentMethod.qris;
   String _wallet = 'GoPay';
-  late final TextEditingController _walletPhoneController;
   String? _paymentError;
   bool _isStartingGateway = false;
   bool _isCheckingPayment = false;
@@ -9762,13 +9761,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _walletPhoneController = TextEditingController();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _walletPhoneController.dispose();
     super.dispose();
   }
 
@@ -10074,7 +10071,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                   method: _method,
                   booking: booking,
                   wallet: _wallet,
-                  walletPhoneController: _walletPhoneController,
                   onWalletChanged: (value) => setState(() => _wallet = value),
                 ),
                 if (_paymentError != null) ...[
@@ -10152,14 +10148,12 @@ class _PaymentInstructionCard extends StatelessWidget {
     required this.method,
     required this.booking,
     required this.wallet,
-    required this.walletPhoneController,
     required this.onWalletChanged,
   });
 
   final PaymentMethod method;
   final Booking booking;
   final String wallet;
-  final TextEditingController walletPhoneController;
   final ValueChanged<String> onWalletChanged;
 
   @override
@@ -10172,21 +10166,12 @@ class _PaymentInstructionCard extends StatelessWidget {
           icon: Icons.qr_code_2_rounded,
           title: 'QRIS Gateway',
           subtitle:
-              'Tekan tombol bayar untuk membuka halaman Midtrans. Status tiket aktif setelah webhook pembayaran diterima.',
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: QrImageView(
-                data:
-                    'DEMO-PARKIRCEPAT-PAY|${booking.ticketNumber}|${booking.estimatedCost}',
-                size: 150,
-                eyeStyle: const QrEyeStyle(color: AppTheme.blue),
-              ),
-            ),
+              'Tekan tombol Bayar melalui Midtrans. QRIS resmi akan muncul di halaman Midtrans, bukan di aplikasi ini.',
+          child: const InlineNotice(
+            icon: Icons.verified_user_rounded,
+            accent: AppTheme.blue,
+            message:
+                'Setelah pembayaran sandbox berhasil dan webhook diterima, tiket QR aktif otomatis untuk scan masuk dan keluar.',
           ),
         ),
         PaymentMethod.ewallet => _PaymentMethodBox(
@@ -10194,7 +10179,7 @@ class _PaymentInstructionCard extends StatelessWidget {
           icon: Icons.account_balance_wallet_rounded,
           title: 'E-Wallet Gateway',
           subtitle:
-              'Pilih dompet digital untuk catatan metode, lalu lanjutkan pembayaran di halaman Midtrans.',
+              'Pilih preferensi dompet digital, lalu selesaikan pembayaran di halaman Midtrans.',
           child: Column(
             children: [
               SegmentedChoice<String>(
@@ -10211,13 +10196,11 @@ class _PaymentInstructionCard extends StatelessWidget {
                 onChanged: onWalletChanged,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: walletPhoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Nomor HP demo $wallet',
-                  prefixIcon: const Icon(Icons.phone_iphone_rounded),
-                ),
+              const InlineNotice(
+                icon: Icons.open_in_new_rounded,
+                accent: AppTheme.blue,
+                message:
+                    'Nomor e-wallet diisi di halaman Midtrans jika dibutuhkan. Aplikasi hanya menyimpan metode pembayaran.',
               ),
             ],
           ),
