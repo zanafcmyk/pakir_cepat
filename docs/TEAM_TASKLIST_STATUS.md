@@ -321,6 +321,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [x] Payment online sudah diarahkan ke Midtrans dan Edge Function/webhook sudah terdeploy.
+- [x] Tombol simulasi pembayaran customer tersedia untuk demo/sandbox lewat `docs/supabase_simulate_customer_payment.sql`, langsung membuat tiket aktif, receipt, dan notifikasi.
 - [ ] Audit payment end-to-end, callback/deep link, idempotensi, dan kegagalan webhook sebelum production.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
 - [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus; menunggu patch SQL diterapkan di production.

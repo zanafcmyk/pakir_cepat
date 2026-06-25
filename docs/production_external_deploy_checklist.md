@@ -157,6 +157,20 @@ parkircepat://reset-password
 Link ini dipakai email reset password agar membuka halaman set password baru
 di aplikasi mobile.
 
+## Simulasi Pembayaran Customer
+
+Untuk demo/sandbox tanpa menunggu callback Midtrans, jalankan patch berikut di
+SQL Editor Supabase:
+
+```text
+docs/supabase_simulate_customer_payment.sql
+```
+
+Patch ini menambahkan RPC `app_simulate_customer_payment` yang hanya bisa
+melunasi booking milik customer yang sedang login dan masih `pending_payment`.
+Tombol aplikasi bertuliskan **Simulasi pembayaran berhasil** akan langsung
+mengaktifkan tiket, membuat payment, receipt, dan notifikasi in-app.
+
 Uji sandbox:
 
 1. Buat booking customer.

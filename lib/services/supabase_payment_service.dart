@@ -83,6 +83,16 @@ class SupabasePaymentService {
     }
   }
 
+  Future<void> simulateCurrentCustomerPayment(String ticketNumber) async {
+    final rows = await _client.rpc(
+      'app_simulate_customer_payment',
+      params: {'p_ticket_number': ticketNumber},
+    );
+    if (rows is! List || rows.isEmpty) {
+      throw StateError('RPC simulasi pembayaran tidak mengembalikan hasil.');
+    }
+  }
+
   Future<SupabaseReceiptRecord?> fetchReceipt({String? ticketNumber}) async {
     try {
       String? bookingId;

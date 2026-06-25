@@ -4513,6 +4513,44 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<Booking?> simulateCurrentCustomerPayment() async {
+    final booking = state.activeBooking;
+    if (booking == null) {
+      return null;
+    }
+
+    await _paymentService.simulateCurrentCustomerPayment(booking.ticketNumber);
+    await loadActiveBookingFromSupabase();
+    await loadCustomerHistoryFromSupabase().catchError((_) {});
+    await loadCurrentUserNotificationsFromSupabase().catchError((_) {});
+
+    final updatedBooking =
+        state.activeBooking ??
+        booking.copyWith(
+          paymentMethod: PaymentMethod.qris,
+          amountDue: 0,
+          status: BookingStatus.paid,
+        );
+    final notice = NoticeItem(
+      title: 'Pembayaran simulasi berhasil',
+      message: 'Tiket ${booking.ticketNumber} sudah aktif.',
+      timeLabel: 'Baru saja',
+      icon: Icons.verified_rounded,
+      accent: AppTheme.emerald,
+    );
+    state = state.copyWith(
+      activeBooking: updatedBooking,
+      reservationLockedUntil: null,
+      customerNotifications: [
+        notice,
+        ...state.customerNotifications.where(
+          (item) => item.message != notice.message,
+        ),
+      ],
+    );
+    return updatedBooking;
+  }
+
   Booking? bookingByTicketNumber(String ticketNumber) {
     final booking = state.activeBooking;
     if (booking != null && booking.ticketNumber == ticketNumber) {
@@ -9679,6 +9717,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
   String? _paymentError;
   bool _isStartingGateway = false;
   bool _isCheckingPayment = false;
+  bool _isSimulatingPayment = false;
   bool _gatewayOpened = false;
 
   @override
@@ -9819,6 +9858,42 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     } finally {
       if (mounted) {
         setState(() => _isStartingGateway = false);
+      }
+    }
+  }
+
+  Future<void> _simulatePaymentSuccess() async {
+    if (_isSimulatingPayment) {
+      return;
+    }
+
+    setState(() {
+      _isSimulatingPayment = true;
+      _paymentError = null;
+    });
+
+    try {
+      final booking = await ref
+          .read(appControllerProvider.notifier)
+          .simulateCurrentCustomerPayment();
+      if (!mounted || booking == null) {
+        return;
+      }
+      await _showPaymentSuccess(booking);
+      if (mounted) {
+        context.go('/customer/tickets');
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _paymentError =
+            'Simulasi pembayaran gagal. Jalankan docs/supabase_simulate_customer_payment.sql di SQL Editor Supabase. Detail: $error',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSimulatingPayment = false);
       }
     }
   }
@@ -9995,6 +10070,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                           setState(() => _paymentError = null);
                           _requestCashPaymentConfirmation();
                         }
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: _isSimulatingPayment
+                      ? 'Memproses simulasi...'
+                      : 'Simulasi pembayaran berhasil',
+                  icon: Icons.science_rounded,
+                  onPressed: isPayable && !_isSimulatingPayment
+                      ? _simulatePaymentSuccess
                       : null,
                 ),
                 if (_gatewayOpened && isPayable) ...[
