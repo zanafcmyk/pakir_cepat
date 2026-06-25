@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:app_links/app_links.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -462,11 +463,112 @@ String landingRouteForState(AppState value) {
   };
 }
 
-class ParkirCepatApp extends ConsumerWidget {
+class ParkirCepatApp extends ConsumerStatefulWidget {
   const ParkirCepatApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ParkirCepatApp> createState() => _ParkirCepatAppState();
+}
+
+class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _deepLinkSubscription;
+  Uri? _lastHandledDeepLink;
+
+  @override
+  void initState() {
+    super.initState();
+    _appLinks = AppLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_startDeepLinkHandling());
+    });
+  }
+
+  Future<void> _startDeepLinkHandling() async {
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        await _handleDeepLink(initialLink);
+      }
+    } catch (_) {
+      // Deep link bootstrap is best-effort; normal navigation still works.
+    }
+
+    _deepLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) => unawaited(_handleDeepLink(uri)),
+      onError: (_) {},
+    );
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    if (!mounted || _lastHandledDeepLink == uri) {
+      return;
+    }
+    _lastHandledDeepLink = uri;
+
+    final target = _deepLinkTarget(uri);
+    if (target == null) {
+      return;
+    }
+
+    if (target == _DeepLinkTarget.resetPassword) {
+      context.go('/reset-password');
+      return;
+    }
+
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.restoreRememberedSession();
+    if (!mounted) {
+      return;
+    }
+
+    final state = ref.read(appControllerProvider);
+    if (!state.isAuthenticated) {
+      context.go('/login');
+      return;
+    }
+
+    await controller.loadActiveBookingFromSupabase().catchError((_) {});
+    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+
+    final booking = ref.read(appControllerProvider).activeBooking;
+    context.go(
+      booking?.isPaid ?? false ? '/customer/tickets' : '/customer/payment',
+    );
+  }
+
+  _DeepLinkTarget? _deepLinkTarget(Uri uri) {
+    if (uri.scheme != 'parkircepat') {
+      return null;
+    }
+
+    final normalized = [
+      uri.host,
+      ...uri.pathSegments,
+    ].where((segment) => segment.isNotEmpty).join('/');
+
+    return switch (normalized) {
+      'reset-password' ||
+      'auth/reset-password' => _DeepLinkTarget.resetPassword,
+      'payment-finish' || 'payment/finish' => _DeepLinkTarget.paymentFinish,
+      _ => null,
+    };
+  }
+
+  @override
+  void dispose() {
+    final subscription = _deepLinkSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
@@ -476,6 +578,8 @@ class ParkirCepatApp extends ConsumerWidget {
     );
   }
 }
+
+enum _DeepLinkTarget { resetPassword, paymentFinish }
 
 class AppState {
   const AppState({
@@ -6540,7 +6644,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     try {
       await Supabase.instance.client.auth.resetPasswordForEmail(
         email,
-        redirectTo: Uri.base.resolve('/reset-password').toString(),
+        redirectTo: 'parkircepat://reset-password',
       );
       ref.read(appControllerProvider.notifier).requestPasswordReset();
 

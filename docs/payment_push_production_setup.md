@@ -15,7 +15,7 @@ Secret Supabase yang dibutuhkan:
 
 - `MIDTRANS_SERVER_KEY`
 - `MIDTRANS_IS_PRODUCTION`
-- `APP_PAYMENT_FINISH_URL` opsional
+- `APP_PAYMENT_FINISH_URL=parkircepat://payment-finish`
 - `SERVICE_ROLE_KEY`
 
 Function yang perlu dideploy:

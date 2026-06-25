@@ -130,7 +130,7 @@ Catatan:
 - `SERVICE_ROLE_KEY` berisi service role key Supabase dan jangan dimasukkan ke Flutter.
 - `MIDTRANS_IS_PRODUCTION=false` untuk sandbox.
 - `midtrans-webhook` perlu `--no-verify-jwt` agar Midtrans bisa memanggil webhook.
-- `APP_PAYMENT_FINISH_URL` boleh kosong jika belum punya deep link final.
+- `APP_PAYMENT_FINISH_URL=parkircepat://payment-finish` agar aplikasi terbuka kembali setelah pembayaran.
 
 ## Midtrans
 
@@ -139,6 +139,23 @@ Pasang webhook URL ini di dashboard Midtrans:
 ```text
 https://<project-ref>.supabase.co/functions/v1/midtrans-webhook
 ```
+
+Finish/callback URL untuk aplikasi mobile:
+
+```text
+parkircepat://payment-finish
+```
+
+## Supabase Auth Redirect
+
+Tambahkan redirect URL berikut di dashboard Supabase Auth:
+
+```text
+parkircepat://reset-password
+```
+
+Link ini dipakai email reset password agar membuka halaman set password baru
+di aplikasi mobile.
 
 Uji sandbox:
 
