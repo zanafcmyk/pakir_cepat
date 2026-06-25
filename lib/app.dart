@@ -9880,9 +9880,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         return;
       }
       await _showPaymentSuccess(booking);
-      if (mounted) {
-        context.go('/customer/tickets');
-      }
     } catch (error) {
       if (!mounted) {
         return;
