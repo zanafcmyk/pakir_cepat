@@ -4519,18 +4519,21 @@ class AppController extends StateNotifier<AppState> {
       return null;
     }
 
-    await _paymentService.simulateCurrentCustomerPayment(booking.ticketNumber);
-    await loadActiveBookingFromSupabase();
-    unawaited(loadCustomerHistoryFromSupabase().catchError((_) {}));
-    unawaited(loadCurrentUserNotificationsFromSupabase().catchError((_) {}));
+    final syncedToSupabase = await _paymentService
+        .simulateCurrentCustomerPayment(booking.ticketNumber);
+    if (syncedToSupabase) {
+      await loadActiveBookingFromSupabase().catchError((_) {});
+      unawaited(loadCustomerHistoryFromSupabase().catchError((_) {}));
+      unawaited(loadCurrentUserNotificationsFromSupabase().catchError((_) {}));
+    }
 
-    final updatedBooking =
-        state.activeBooking ??
-        booking.copyWith(
-          paymentMethod: PaymentMethod.qris,
-          amountDue: 0,
-          status: BookingStatus.paid,
-        );
+    final updatedBooking = (state.activeBooking?.isPaid ?? false)
+        ? state.activeBooking!
+        : booking.copyWith(
+            paymentMethod: PaymentMethod.qris,
+            amountDue: 0,
+            status: BookingStatus.paid,
+          );
     final notice = NoticeItem(
       title: 'Pembayaran simulasi berhasil',
       message: 'Tiket ${booking.ticketNumber} sudah aktif.',

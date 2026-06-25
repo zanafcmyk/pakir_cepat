@@ -46,13 +46,18 @@ class SupabasePaymentService {
     required Booking booking,
     required PaymentMethod method,
   }) async {
-    final response = await _client.functions.invoke(
-      'create-midtrans-payment',
-      body: {
-        'ticketNumber': booking.ticketNumber,
-        'method': _methodToDb(method),
-      },
-    );
+    final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'create-midtrans-payment',
+        body: {
+          'ticketNumber': booking.ticketNumber,
+          'method': _methodToDb(method),
+        },
+      );
+    } catch (_) {
+      return null;
+    }
 
     final data = response.data;
     if (data is! Map) {
@@ -83,13 +88,15 @@ class SupabasePaymentService {
     }
   }
 
-  Future<void> simulateCurrentCustomerPayment(String ticketNumber) async {
-    final rows = await _client.rpc(
-      'app_simulate_customer_payment',
-      params: {'p_ticket_number': ticketNumber},
-    );
-    if (rows is! List || rows.isEmpty) {
-      throw StateError('RPC simulasi pembayaran tidak mengembalikan hasil.');
+  Future<bool> simulateCurrentCustomerPayment(String ticketNumber) async {
+    try {
+      final rows = await _client.rpc(
+        'app_simulate_customer_payment',
+        params: {'p_ticket_number': ticketNumber},
+      );
+      return rows is List && rows.isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 
