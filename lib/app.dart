@@ -4521,8 +4521,8 @@ class AppController extends StateNotifier<AppState> {
 
     await _paymentService.simulateCurrentCustomerPayment(booking.ticketNumber);
     await loadActiveBookingFromSupabase();
-    await loadCustomerHistoryFromSupabase().catchError((_) {});
-    await loadCurrentUserNotificationsFromSupabase().catchError((_) {});
+    unawaited(loadCustomerHistoryFromSupabase().catchError((_) {}));
+    unawaited(loadCurrentUserNotificationsFromSupabase().catchError((_) {}));
 
     final updatedBooking =
         state.activeBooking ??
