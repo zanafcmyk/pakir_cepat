@@ -6,6 +6,7 @@ class SupabaseReceiptRecord {
   const SupabaseReceiptRecord({
     required this.receiptNumber,
     required this.ticketNumber,
+    this.qrPayload,
     required this.locationName,
     required this.plateNumber,
     required this.paymentStatus,
@@ -16,6 +17,7 @@ class SupabaseReceiptRecord {
 
   final String receiptNumber;
   final String ticketNumber;
+  final String? qrPayload;
   final String locationName;
   final String plateNumber;
   final String paymentStatus;
@@ -120,7 +122,7 @@ class SupabasePaymentService {
           .from('receipts')
           .select(
             'receipt_number, issued_at, '
-            'bookings(ticket_number, estimated_cost, final_cost, parking_lots(name), vehicles(plate_number)), '
+            'bookings(ticket_number, qr_payload, estimated_cost, final_cost, parking_lots(name), vehicles(plate_number)), '
             'payments(method, status, amount)',
           )
           .match(bookingId == null ? const {} : {'booking_id': bookingId})
@@ -156,6 +158,7 @@ class SupabasePaymentService {
     return SupabaseReceiptRecord(
       receiptNumber: row['receipt_number'] as String? ?? '-',
       ticketNumber: booking?['ticket_number'] as String? ?? '-',
+      qrPayload: booking?['qr_payload'] as String?,
       locationName: _nestedValue(booking, 'parking_lots', 'name') ?? '-',
       plateNumber: _nestedValue(booking, 'vehicles', 'plate_number') ?? '-',
       paymentStatus: _paymentStatusLabel(payment?['status'] as String?),

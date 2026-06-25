@@ -22,6 +22,23 @@ Patch ini wajib karena:
 Setelah berhasil, uji customer booking, pembayaran Midtrans, pembayaran tunai
 penjaga, scan masuk, scan keluar, receipt, dan laporan provider.
 
+## Secure QR Ticket
+
+Jalankan patch berikut satu kali di SQL Editor Supabase setelah patch booking
+dan payment security:
+
+```text
+docs/supabase_secure_ticket_qr.sql
+```
+
+Patch ini mengganti QR tiket dari nomor tiket polos menjadi token opaque di
+`bookings.qr_payload`, melakukan backfill booking lama, dan memperbarui RPC
+booking agar booking baru otomatis memakai token aman. Setelah berhasil, uji:
+
+- customer melihat QR tiket setelah pembayaran;
+- penjaga/operator bisa scan QR token baru untuk masuk dan keluar;
+- input manual nomor tiket `TKT-...` masih bisa dipakai untuk pengecekan.
+
 ## Perpanjangan Durasi Booking
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:

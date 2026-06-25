@@ -158,6 +158,7 @@ class Booking {
   const Booking({
     this.parkingLotId,
     required this.ticketNumber,
+    this.qrPayload,
     required this.slotCode,
     required this.locationName,
     required this.plateNumber,
@@ -172,6 +173,7 @@ class Booking {
 
   final String? parkingLotId;
   final String ticketNumber;
+  final String? qrPayload;
   final String slotCode;
   final String locationName;
   final String plateNumber;
@@ -194,6 +196,7 @@ class Booking {
   Booking copyWith({
     String? parkingLotId,
     String? ticketNumber,
+    String? qrPayload,
     String? slotCode,
     String? locationName,
     String? plateNumber,
@@ -208,6 +211,7 @@ class Booking {
     return Booking(
       parkingLotId: parkingLotId ?? this.parkingLotId,
       ticketNumber: ticketNumber ?? this.ticketNumber,
+      qrPayload: qrPayload ?? this.qrPayload,
       slotCode: slotCode ?? this.slotCode,
       locationName: locationName ?? this.locationName,
       plateNumber: plateNumber ?? this.plateNumber,

@@ -4598,6 +4598,16 @@ class AppController extends StateNotifier<AppState> {
         .firstOrNull;
   }
 
+  Booking? bookingByQrPayload(String qrPayload) {
+    final booking = state.activeBooking;
+    if (booking?.qrPayload == qrPayload) {
+      return booking;
+    }
+    return state.guardBookings
+        .where((item) => item.qrPayload == qrPayload)
+        .firstOrNull;
+  }
+
   Future<Booking?> loadBookingByTicketNumberFromSupabase(
     String ticketNumber,
   ) async {
@@ -4608,6 +4618,33 @@ class AppController extends StateNotifier<AppState> {
 
     final remoteBooking = await _bookingService.fetchBookingByTicketNumber(
       ticketNumber,
+    );
+    if (remoteBooking == null) {
+      return null;
+    }
+
+    state = state.copyWith(
+      activeBooking: remoteBooking.booking,
+      guardBookings: state.currentMode == AccountMode.parkingGuard
+          ? [
+              remoteBooking.booking,
+              for (final booking in state.guardBookings)
+                if (booking.ticketNumber != remoteBooking.booking.ticketNumber)
+                  booking,
+            ]
+          : state.guardBookings,
+    );
+    return remoteBooking.booking;
+  }
+
+  Future<Booking?> loadBookingByQrPayloadFromSupabase(String qrPayload) async {
+    final localBooking = bookingByQrPayload(qrPayload);
+    if (localBooking != null) {
+      return localBooking;
+    }
+
+    final remoteBooking = await _bookingService.fetchBookingByQrPayload(
+      qrPayload,
     );
     if (remoteBooking == null) {
       return null;
@@ -9524,7 +9561,7 @@ class CustomerTicketScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(28),
                     ),
                     child: QrImageView(
-                      data: _parkingTicketQrPayload(booking.ticketNumber),
+                      data: _parkingTicketQrPayload(booking),
                       size: 210,
                       eyeStyle: const QrEyeStyle(
                         eyeShape: QrEyeShape.square,
@@ -9785,6 +9822,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       barrierDismissible: false,
       builder: (dialogContext) => _PaymentSuccessDialog(
         ticketNumber: booking.ticketNumber,
+        qrPayload: booking.qrPayload,
         total: booking.estimatedCost,
         method: _method,
       ),
@@ -10281,11 +10319,13 @@ class _PaymentMethodBox extends StatelessWidget {
 class _PaymentSuccessDialog extends StatelessWidget {
   const _PaymentSuccessDialog({
     required this.ticketNumber,
+    this.qrPayload,
     required this.total,
     required this.method,
   });
 
   final String ticketNumber;
+  final String? qrPayload;
   final int total;
   final PaymentMethod method;
 
@@ -10329,7 +10369,10 @@ class _PaymentSuccessDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: QrImageView(
-              data: _parkingTicketQrPayload(ticketNumber),
+              data: _parkingTicketQrPayloadFromValues(
+                ticketNumber: ticketNumber,
+                qrPayload: qrPayload,
+              ),
               size: 150,
               eyeStyle: const QrEyeStyle(color: AppTheme.blue),
             ),
@@ -10371,8 +10414,22 @@ String _paymentMethodLabel(PaymentMethod method) => switch (method) {
   PaymentMethod.cash => 'Tunai',
 };
 
-String _parkingTicketQrPayload(String ticketNumber) =>
-    'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber';
+String _parkingTicketQrPayload(Booking booking) =>
+    _parkingTicketQrPayloadFromValues(
+      ticketNumber: booking.ticketNumber,
+      qrPayload: booking.qrPayload,
+    );
+
+String _parkingTicketQrPayloadFromValues({
+  required String ticketNumber,
+  String? qrPayload,
+}) {
+  final payload = qrPayload?.trim();
+  if (payload != null && payload.isNotEmpty) {
+    return payload;
+  }
+  return 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber';
+}
 
 class ParkingHistoryScreen extends ConsumerStatefulWidget {
   const ParkingHistoryScreen({super.key});
@@ -14381,19 +14438,17 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
   }
 
   Future<void> _handleDetectedCode(String rawCode) async {
-    final ticketNumber = _extractTicketNumber(rawCode);
+    final scanCode = _normalizeScanCode(rawCode);
     await _stopCamera();
     if (!mounted) {
       return;
     }
-    final booking = await ref
-        .read(appControllerProvider.notifier)
-        .loadBookingByTicketNumberFromSupabase(ticketNumber);
+    final booking = await _loadBookingFromScanCode(scanCode);
     if (!mounted) {
       return;
     }
     setState(() {
-      _lastScannedTicket = ticketNumber;
+      _lastScannedTicket = booking?.ticketNumber ?? scanCode;
       _lastScanTime = DateTime.now();
       _scannedBooking = booking;
       _lastScanStatus = booking == null
@@ -14409,7 +14464,7 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
             borderRadius: BorderRadius.circular(24),
           ),
           title: const Text('QR Ticket tidak ditemukan'),
-          content: Text('Kode "$ticketNumber" tidak cocok dengan tiket aktif.'),
+          content: Text('Kode "$scanCode" tidak cocok dengan tiket aktif.'),
           actions: [
             TextButton(
               onPressed: () {
@@ -14433,10 +14488,34 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     await _showScanResultDialog(booking);
   }
 
-  String _extractTicketNumber(String rawCode) {
+  String _normalizeScanCode(String rawCode) {
     final trimmed = rawCode.trim();
-    final match = RegExp(r'TKT-\d+').firstMatch(trimmed);
-    return match?.group(0) ?? trimmed;
+    final legacyMatch = RegExp(r'TKT-\d+').firstMatch(trimmed);
+    return legacyMatch?.group(0) ?? trimmed;
+  }
+
+  Future<Booking?> _loadBookingFromScanCode(String scanCode) async {
+    final controller = ref.read(appControllerProvider.notifier);
+    if (_looksLikeTicketNumber(scanCode)) {
+      return controller.loadBookingByTicketNumberFromSupabase(scanCode);
+    }
+
+    final booking = await controller.loadBookingByQrPayloadFromSupabase(
+      scanCode,
+    );
+    if (booking != null) {
+      return booking;
+    }
+
+    final legacyTicket = RegExp(r'TKT-\d+').firstMatch(scanCode)?.group(0);
+    if (legacyTicket != null) {
+      return controller.loadBookingByTicketNumberFromSupabase(legacyTicket);
+    }
+    return null;
+  }
+
+  bool _looksLikeTicketNumber(String value) {
+    return RegExp(r'^TKT-\d+$').hasMatch(value.trim());
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -14991,6 +15070,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
   Future<Uint8List> _buildReceiptPdf({
     required String receiptNumber,
     required String ticketNumber,
+    String? qrPayload,
     required String locationName,
     required String plateNumber,
     required String paymentStatus,
@@ -15031,7 +15111,10 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
               pw.Center(
                 child: pw.BarcodeWidget(
                   barcode: pw.Barcode.qrCode(),
-                  data: _parkingTicketQrPayload(ticketNumber),
+                  data: _parkingTicketQrPayloadFromValues(
+                    ticketNumber: ticketNumber,
+                    qrPayload: qrPayload,
+                  ),
                   width: 120,
                   height: 120,
                 ),
@@ -15101,6 +15184,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
           final receiptNumber =
               receipt?.receiptNumber ?? 'RCT-${fallbackTransaction!.id}';
           final ticketNumber = receipt?.ticketNumber ?? fallbackTransaction!.id;
+          final qrPayload = receipt?.qrPayload;
           final locationName =
               receipt?.locationName ?? fallbackTransaction!.locationName;
           final plateNumber =
@@ -15116,6 +15200,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
             return _buildReceiptPdf(
               receiptNumber: receiptNumber,
               ticketNumber: ticketNumber,
+              qrPayload: qrPayload,
               locationName: locationName,
               plateNumber: plateNumber,
               paymentStatus: paymentStatus,
@@ -15138,7 +15223,10 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                     ),
                     const SizedBox(height: 16),
                     QrImageView(
-                      data: _parkingTicketQrPayload(ticketNumber),
+                      data: _parkingTicketQrPayloadFromValues(
+                        ticketNumber: ticketNumber,
+                        qrPayload: qrPayload,
+                      ),
                       size: 150,
                       eyeStyle: const QrEyeStyle(color: AppTheme.emerald),
                     ),

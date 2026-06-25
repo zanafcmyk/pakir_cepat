@@ -17,8 +17,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 259.
-- Selesai: 244.
+- Total item terhitung: 260.
+- Selesai: 245.
 - Belum selesai: 15.
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
@@ -49,7 +49,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Tambahkan `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, dan `NSLocationWhenInUseUsageDescription` pada iOS.
 - [x] Tampilkan foto lahan dari `photo_url` pada kartu lokasi customer dan halaman detail; fallback tetap tersedia jika foto belum ada/gagal dimuat.
 - [x] Simpan dan tampilkan `duration_hours` dari booking. Halaman pembayaran memakai durasi dari Supabase, bukan menurunkan dari total biaya.
-- [ ] Ganti QR tiket polos dengan token bertanda tangan/opaque agar tidak mudah ditebak, dibagikan, atau dipakai ulang.
+- [x] Ganti QR tiket polos menjadi payload opaque dari `bookings.qr_payload`; patch SQL `docs/supabase_secure_ticket_qr.sql` menyiapkan token baru untuk booking lama dan booking baru.
 
 #### Masih Demo atau Estimasi
 
@@ -359,6 +359,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Item audit policy RLS dikonsolidasikan ke item audit SQL RLS/role-sync production utama.
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
+- [ ] Jalankan `docs/supabase_secure_ticket_qr.sql` di Supabase production, lalu uji scan QR token baru dan input manual nomor tiket.
 - [x] SQL realtime slot sudah dijalankan di Supabase production.
 - [x] SQL realtime lokasi/assignment penjaga/notifikasi sudah dijalankan di Supabase production.
 - [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
@@ -397,6 +398,6 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 5. Jalankan SQL repair slot, deploy ulang webhook Midtrans, lalu audit slot reserved/occupied lama yang pernah nyangkut.
 6. Jalankan SQL hapus/nonaktif lahan lalu uji lokasi tanpa riwayat dan lokasi dengan riwayat booking.
 7. Audit push notification live end-to-end dari event database sampai notifikasi muncul di HP.
-8. Ganti QR tiket polos dengan token bertanda tangan/opaque.
+8. Jalankan SQL secure QR ticket dan uji scan token baru.
 9. Edit ulang koordinat/alamat data lahan live lama yang masih memakai koordinat default.
 10. Tambah integration test multi-role/multi-device dan stabilkan build APK release.

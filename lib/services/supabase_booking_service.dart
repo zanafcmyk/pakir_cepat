@@ -116,7 +116,7 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
           'payments(method, status, amount, created_at)',
@@ -140,12 +140,39 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
           'payments(method, status, amount, created_at)',
         )
         .eq('ticket_number', ticketNumber)
+        .limit(1);
+
+    if (rows.isEmpty) {
+      return null;
+    }
+
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    return _activeBookingFromRow(row);
+  }
+
+  Future<SupabaseActiveBooking?> fetchBookingByQrPayload(
+    String qrPayload,
+  ) async {
+    final normalizedPayload = qrPayload.trim();
+    if (normalizedPayload.isEmpty) {
+      return null;
+    }
+
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
+          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind), '
+          'payments(method, status, amount, created_at)',
+        )
+        .eq('qr_payload', normalizedPayload)
         .limit(1);
 
     if (rows.isEmpty) {
@@ -166,7 +193,7 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
           'payments(method, status, amount, created_at)',
@@ -200,7 +227,7 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
           'payments(method, status, amount, created_at)',
@@ -356,6 +383,7 @@ class SupabaseBookingService {
       booking: Booking(
         parkingLotId: row['parking_lot_id'] as String?,
         ticketNumber: row['ticket_number'] as String? ?? '-',
+        qrPayload: row['qr_payload'] as String?,
         slotCode: _nestedValue(row, 'parking_slots', 'label') ?? '-',
         locationName: _nestedValue(row, 'parking_lots', 'name') ?? '-',
         plateNumber: _nestedValue(row, 'vehicles', 'plate_number') ?? '-',
