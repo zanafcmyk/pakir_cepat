@@ -2,7 +2,7 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, dan audit alur utama.
+Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, dan audit tasklist.
 
 ## Cara Pakai
 
@@ -14,6 +14,13 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - Jika ada kerusakan, kembali ke commit aman sebelum perubahan tersebut.
 
 ## Status Umum
+
+### Ringkasan Tasklist 26 Juni 2026
+
+- Total item terhitung: 259.
+- Selesai: 244.
+- Belum selesai: 15.
+- Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
 
@@ -39,7 +46,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
 - [x] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`; role/email terakhir disimpan di perangkat, dan logout membersihkan session.
 - [x] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran memakai scheme `parkircepat://`.
-- [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
+- [x] Tambahkan `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, dan `NSLocationWhenInUseUsageDescription` pada iOS.
 - [x] Tampilkan foto lahan dari `photo_url` pada kartu lokasi customer dan halaman detail; fallback tetap tersedia jika foto belum ada/gagal dimuat.
 - [x] Simpan dan tampilkan `duration_hours` dari booking. Halaman pembayaran memakai durasi dari Supabase, bukan menurunkan dari total biaya.
 - [ ] Ganti QR tiket polos dengan token bertanda tangan/opaque agar tidak mudah ditebak, dibagikan, atau dipakai ulang.
@@ -51,7 +58,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Input nomor e-wallet demo dihapus dari aplikasi; pilihan e-wallet hanya menjadi preferensi metode dan detail pembayaran diisi di Midtrans bila dibutuhkan.
 - [x] Pengeluaran laporan penyedia memakai gaji penjaga 15% dari revenue lahan yang punya penjaga; lahan tanpa penjaga tidak memotong gaji, dan satu lahan dengan beberapa penjaga dibagi rata.
 - [ ] Pilihan bahasa dan keamanan akun baru disimpan sebagai setting, belum mengubah bahasa atau mekanisme keamanan aplikasi.
-- [ ] Data seed lokasi, kendaraan, chat, notifikasi, dan laporan masih aktif pada build debug/profile; build release memakai state kosong.
+- [x] Data seed lokasi, kendaraan, chat, notifikasi, dan laporan dibatasi untuk debug/profile; build release memakai state kosong.
 
 #### Hasil Pemeriksaan Teknis
 
@@ -155,15 +162,13 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
 - [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
-- [ ] Push notification asli perlu Firebase project/file konfigurasi Android/iOS, secret FCM, dan pemicu server-side otomatis untuk event app.
+- [ ] Push notification asli perlu audit akhir: pastikan Firebase config/secret live, token device tersimpan, dan pemicu server-side otomatis mengirim event booking/payment/guard ke HP.
 - [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
-- [ ] SQL RLS patch `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan di Supabase production.
-- [ ] SQL booking RPC terbaru di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar error booking customer karena RLS hilang.
-- [ ] SQL tambah slot penyedia `app_provider_add_parking_slot` di `docs/supabase_role_sync_rls_patch.sql` perlu dijalankan ulang agar tombol tambah slot bisa melewati RLS.
+- [ ] SQL RLS/role-sync patch `docs/supabase_role_sync_rls_patch.sql` perlu diaudit ulang di Supabase production, termasuk RPC booking customer dan `app_provider_add_parking_slot`.
 - [x] Edge Function `admin-delete-user` sudah terdeploy dan merespons; pastikan `SERVICE_ROLE_KEY` tetap tersedia serta audit aksi hapus memakai akun super admin.
 
 #### Catatan audit baris 48-66
@@ -172,7 +177,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - Dashboard customer sudah refresh data utama dari Supabase saat dibuka: lokasi/slot, kendaraan, booking aktif, riwayat, favorit, dan notifikasi. Search/filter lokasi sekarang query Supabase.
 - Dashboard penyedia sudah memakai Supabase untuk kartu kendaraan masuk hari ini, pendapatan hari ini, slot tersedia, dan slot aktif.
 - Provider daily revenue detail sudah membaca transaksi, total, rata-rata, transaksi terbesar, dan metode pembayaran dari Supabase untuk hari ini.
-- Provider financial report sudah membaca transaksi bulan ini, total pendapatan, estimasi pengeluaran, dan laba estimasi dari Supabase.
+- Provider financial report sudah membaca transaksi bulan ini, total pendapatan, gaji penjaga 15% berbasis assignment lahan, dan laba estimasi dari Supabase.
 - Provider statistics dan grafik revenue sudah membaca pendapatan harian, bulanan, slot tersedia/penuh, dan chart 7 hari dari Supabase.
 - Data demo/seed sekarang hanya aktif di debug/profile. Build release mulai dari state kosong dan menunggu data Supabase.
 - Dashboard penjaga sudah memuat akun penjaga dan lokasi assignment dari Supabase saat dibuka; hitungan slot dashboard dibatasi ke lokasi assigned.
@@ -203,7 +208,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Search/filter lokasi sungguhan dari database.
 - [x] Laporan pendapatan utama dari query Supabase.
 - [x] Statistik utama dari query Supabase.
-- [ ] Push notification asli ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
+- [x] Item push notification production dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
 - [x] Role guard/route protection dasar.
 - [x] Middleware/auth redirect dasar.
 - [x] Realtime slot dari tabel `parking_slots` di aplikasi.
@@ -235,7 +240,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Role guard dasar dan redirect auth sudah tersedia.
 - [x] Audit role guard dan middleware auth dasar untuk deep link role.
 - [ ] Audit deep link production di perangkat asli sebelum release.
-- [ ] Push notification asli ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
+- [x] Item push notification production dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
 - [ ] Review final sebelum merge ke `development` atau `master`.
 
 ### maulana-bintang - Penyedia Parkir
@@ -262,7 +267,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Dashboard penyedia diaudit dan kartu utama membaca agregasi Supabase.
 - [x] Edge Function Midtrans dan webhook sudah terdeploy.
-- [ ] Audit settlement, idempotensi payment, dan rekonsiliasi pendapatan provider dengan transaksi Midtrans.
+- [x] Item audit settlement provider dikonsolidasikan ke item audit Midtrans end-to-end utama.
 
 #### Belum Ada/Belum Production
 
@@ -288,17 +293,17 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 #### Sudah Ada Tapi Masih Demo/Lokal
 
 - [x] Pembatasan route penjaga dasar sudah ada.
-- [ ] Pembatasan route penjaga perlu audit deep link production.
+- [x] Item audit deep link penjaga dikonsolidasikan ke item audit deep link production utama.
 - [x] Konfirmasi tunai sudah memakai RPC khusus dengan validasi izin dan assignment penjaga.
 - [ ] Jalankan patch SQL lalu audit kas/settlement payment tunai di production.
 - [x] Cek pembayaran dan daftar kendaraan aktif penjaga memakai query Supabase lintas booking yang dibatasi assignment lokasi.
-- [ ] Jalankan SQL publication booking/payment dan audit realtime penjaga di production.
+- [x] Item SQL publication booking/payment dikonsolidasikan ke item realtime operasional penjaga utama.
 
 #### Belum Ada/Belum Production
 
 - [x] Role guard khusus penjaga agar tidak bisa membuka halaman role lain.
 - [x] Realtime status slot/lokasi/assignment untuk penjaga.
-- [ ] Push notification tugas/booking untuk penjaga setelah Database Webhook/trigger event diaktifkan.
+- [x] Item push notification penjaga dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
 
 ### Customer Flow - Pelanggan Bersama
 
@@ -326,7 +331,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] Payment online sudah diarahkan ke Midtrans dan Edge Function/webhook sudah terdeploy.
 - [x] Tombol simulasi pembayaran customer tersedia untuk demo/sandbox lewat `docs/supabase_simulate_customer_payment.sql`, langsung membuat tiket aktif, receipt, dan notifikasi.
-- [ ] Audit payment end-to-end, callback/deep link, idempotensi, dan kegagalan webhook sebelum production.
+- [x] Item audit payment customer dikonsolidasikan ke item audit Midtrans end-to-end utama.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
 - [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus; menunggu patch SQL diterapkan di production.
 - [x] Perpanjang durasi dan biaya parkir customer tersimpan ke Supabase melalui RPC dan pembayaran tambahan memakai sisa tagihan.
@@ -336,7 +341,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Reset password Supabase punya halaman set password baru dari link email.
 - [x] Hapus akun sungguhan memakai Edge Function `delete-account`.
 - [x] Search/filter lokasi sungguhan dari database.
-- [ ] Push notification booking/payment ke HP setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
+- [x] Item push notification customer dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
 
 ### Backend/Supabase Bersama
 
@@ -352,7 +357,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 #### Sudah Ada Tapi Perlu Diperkuat
 
-- [ ] Policy RLS perlu dicek ulang per role sebelum production.
+- [x] Item audit policy RLS dikonsolidasikan ke item audit SQL RLS/role-sync production utama.
 - [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
 - [x] SQL realtime slot sudah dijalankan di Supabase production.
 - [x] SQL realtime lokasi/assignment penjaga/notifikasi sudah dijalankan di Supabase production.
@@ -362,7 +367,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Error handling koneksi Supabase dashboard utama sudah diperkuat.
 - [x] Error handling koneksi Supabase diaudit dan diperkuat di form/detail utama.
 - [x] Route protection dasar punya test deep link role.
-- [ ] Route protection perlu audit production lanjutan di perangkat asli setelah semua deep link final.
+- [x] Item route protection production dikonsolidasikan ke item audit deep link production utama.
 
 #### Belum Ada/Belum Production
 
@@ -380,8 +385,8 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Storage bucket dokumen identitas penyedia (SQL setup siap di `docs/supabase_storage_provider_identity_documents.sql`).
 - [x] Query agregasi laporan/statistik utama.
 - [x] Realtime lokasi/notifikasi in-app dasar.
-- [ ] Realtime production perlu audit perangkat setelah SQL publication dijalankan.
-- [ ] Push notification provider production setelah Firebase config/secret dipasang dan Database Webhook/trigger event diaktifkan.
+- [x] Item audit realtime production dikonsolidasikan ke item realtime operasional penjaga utama.
+- [x] Item push notification provider dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
 
 ## Prioritas Aman Berikutnya
 
@@ -391,7 +396,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 4. Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.
 5. Jalankan SQL repair slot, deploy ulang webhook Midtrans, lalu audit slot reserved/occupied lama yang pernah nyangkut.
 6. Jalankan SQL hapus/nonaktif lahan lalu uji lokasi tanpa riwayat dan lokasi dengan riwayat booking.
-7. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
-8. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
-9. Gunakan GPS untuk jarak/ETA dan edit ulang koordinat data lahan lama.
+7. Audit push notification live end-to-end dari event database sampai notifikasi muncul di HP.
+8. Ganti QR tiket polos dengan token bertanda tangan/opaque.
+9. Edit ulang koordinat/alamat data lahan live lama yang masih memakai koordinat default.
 10. Tambah integration test multi-role/multi-device dan stabilkan build APK release.
