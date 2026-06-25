@@ -18,7 +18,7 @@ class SupabaseVehicleService {
         .from('vehicles')
         .select('id, plate_number, kind')
         .eq('customer_id', customerId)
-        .order('created_at', ascending: false);
+        .order('plate_number');
 
     return [
       for (final row in rows)
@@ -56,11 +56,18 @@ class SupabaseVehicleService {
               'kind': _kindToDb(kind),
             },
         ], onConflict: 'customer_id,plate_number')
-        .select('id, plate_number, kind')
-        .order('created_at', ascending: false);
+        .select('id, plate_number, kind');
+    final rowByPlate = {
+      for (final row in rows)
+        (row['plate_number'] as String? ?? '').toUpperCase(): row,
+    };
+    final orderedRows = [
+      for (final plateNumber in normalizedPlates)
+        if (rowByPlate[plateNumber] != null) rowByPlate[plateNumber]!,
+    ];
 
     return [
-      for (final row in rows)
+      for (final row in orderedRows)
         Vehicle(
           id: row['id'] as String,
           plateNumber: row['plate_number'] as String? ?? '-',
