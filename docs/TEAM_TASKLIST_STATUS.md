@@ -36,7 +36,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
-- [ ] Tambahkan aksi nonaktif/hapus lahan dari aplikasi dengan penanganan booking historis dan foreign key yang aman.
+- [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
 - [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
 - [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
 - [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
@@ -385,7 +385,8 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 3. Jalankan SQL realtime operasional penjaga dan uji dengan akun customer serta penjaga.
 4. Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.
 5. Jalankan SQL repair slot, deploy ulang webhook Midtrans, lalu audit slot reserved/occupied lama yang pernah nyangkut.
-6. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
-7. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
-8. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
-9. Tambah integration test multi-role/multi-device dan stabilkan build APK release.
+6. Jalankan SQL hapus/nonaktif lahan lalu uji lokasi tanpa riwayat dan lokasi dengan riwayat booking.
+7. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
+8. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
+9. Gunakan GPS untuk jarak/ETA dan edit ulang koordinat data lahan lama.
+10. Tambah integration test multi-role/multi-device dan stabilkan build APK release.

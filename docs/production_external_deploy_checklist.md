@@ -73,6 +73,22 @@ Setelah patch berhasil, jalankan repair satu kali:
 select * from public.app_repair_parking_slot_statuses(null);
 ```
 
+## Nonaktifkan atau Hapus Lahan
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_provider_remove_parking_lot.sql
+```
+
+Patch ini menambahkan RPC `app_provider_remove_parking_lot` untuk tombol
+nonaktif/hapus lahan di aplikasi penyedia:
+
+- jika lahan belum memiliki booking historis, row `parking_lots` dihapus;
+- jika sudah ada riwayat booking, lahan diarsipkan dengan `is_active=false`;
+- jika masih ada booking `pending_payment`, `paid`, atau `active`, proses
+  ditolak sampai booking tersebut selesai/dibatalkan/expired.
+
 ## Realtime Operasional Penjaga
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:

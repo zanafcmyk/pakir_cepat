@@ -3929,6 +3929,41 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<String> removeLotFromApp(ParkingLot lot) async {
+    if (!_isSupabaseUuid(lot.id)) {
+      throw StateError(
+        'Lokasi ini masih data demo/lokal. Hapus hanya dapat dilakukan untuk lokasi Supabase.',
+      );
+    }
+
+    final rows = await Supabase.instance.client.rpc(
+      'app_provider_remove_parking_lot',
+      params: {'p_parking_lot_id': lot.id, 'p_delete_if_safe': true},
+    );
+    final row = rows is List && rows.isNotEmpty
+        ? Map<String, dynamic>.from(rows.first as Map)
+        : const <String, dynamic>{};
+    final action = row['action'] as String? ?? 'archived';
+    final remainingLots = state.lots
+        .where((item) => item.id != lot.id)
+        .toList();
+    final replacementLot = remainingLots.firstOrNull;
+
+    state = state.copyWith(
+      lots: remainingLots,
+      slots: state.slots.where((slot) => slot.lotId != lot.id).toList(),
+      selectedLot: state.selectedLot?.id == lot.id
+          ? replacementLot
+          : state.selectedLot,
+      clearSelectedLot:
+          state.selectedLot?.id == lot.id && replacementLot == null,
+    );
+
+    return action == 'deleted'
+        ? 'Lahan berhasil dihapus karena belum memiliki riwayat booking.'
+        : 'Lahan berhasil dinonaktifkan dan disembunyikan dari aplikasi.';
+  }
+
   String _tariffTypeToDb(ParkingTariffType type) => switch (type) {
     ParkingTariffType.hourly => 'hourly',
     ParkingTariffType.flat => 'flat',
@@ -12625,6 +12660,70 @@ class AdminMapScreen extends ConsumerWidget {
                       },
                       icon: const Icon(Icons.view_module_rounded),
                     ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Opsi lokasi',
+                      onSelected: (value) async {
+                        if (value != 'remove') {
+                          return;
+                        }
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Nonaktifkan atau hapus lahan?'),
+                            content: Text(
+                              'Lahan ${lot.name} akan dihapus jika belum memiliki riwayat booking. Jika sudah ada riwayat, lahan akan dinonaktifkan agar data transaksi tetap aman.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
+                                child: const Text('Batal'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
+                                child: const Text('Lanjutkan'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !context.mounted) {
+                          return;
+                        }
+                        try {
+                          final message = await ref
+                              .read(appControllerProvider.notifier)
+                              .removeLotFromApp(lot);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(message)));
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              duration: const Duration(seconds: 6),
+                              content: Text(_removeParkingLotError(error)),
+                            ),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: Color(0xFFDC2626),
+                              ),
+                              SizedBox(width: 10),
+                              Text('Nonaktifkan/hapus'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -12634,6 +12733,31 @@ class AdminMapScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _removeParkingLotError(Object error) {
+  if (error is PostgrestException) {
+    final lower = error.message.toLowerCase();
+    if (lower.contains('active bookings') ||
+        lower.contains('booking aktif') ||
+        lower.contains('still has active bookings')) {
+      return 'Lahan masih memiliki booking aktif. Selesaikan, batalkan, atau tunggu expired dulu.';
+    }
+    if (lower.contains('app_provider_remove_parking_lot')) {
+      return 'Function hapus/nonaktif lahan belum aktif. Jalankan docs/supabase_provider_remove_parking_lot.sql di SQL Editor Supabase.';
+    }
+    if (error.code == '42501' || lower.contains('row-level security')) {
+      return 'Akses ditolak Supabase. Pastikan login sebagai penyedia pemilik lahan.';
+    }
+    return error.message;
+  }
+  if (error is AuthException) {
+    return error.message;
+  }
+  if (error is StateError) {
+    return error.message;
+  }
+  return 'Gagal menonaktifkan/menghapus lahan: $error';
 }
 
 class AddParkingLotScreen extends ConsumerStatefulWidget {
