@@ -1442,6 +1442,24 @@ AccountStatus accountStatusFromDb(String? value) => switch (value) {
   _ => AccountStatus.pending,
 };
 
+AccountMode? accountModeFromDbRole(String? value) => switch (value) {
+  'super_admin' => AccountMode.superAdmin,
+  'provider' => AccountMode.provider,
+  'parking_guard' => AccountMode.parkingGuard,
+  'customer' => AccountMode.customer,
+  _ => null,
+};
+
+String accountModeToPreference(AccountMode mode) => switch (mode) {
+  AccountMode.superAdmin => 'super_admin',
+  AccountMode.provider => 'provider',
+  AccountMode.parkingGuard => 'parking_guard',
+  AccountMode.customer => 'customer',
+};
+
+AccountMode accountModeFromPreference(String? value) =>
+    accountModeFromDbRole(value) ?? AccountMode.customer;
+
 Future<AccountStatus> currentProviderStatusFromSupabase(
   String profileId, {
   String? profileStatus,
@@ -1554,9 +1572,14 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.initial()) {
     _loadOnboardingPreference();
+    _loadRememberedLoginPreference();
   }
 
   static const _onboardingDoneKey = 'parkir_cepat_onboarding_done';
+  static const _rememberMeKey = 'parkir_cepat_remember_me';
+  static const _lastModeKey = 'parkir_cepat_last_mode';
+  static const _lastEmailKey = 'parkir_cepat_last_email';
+  static const _lastPhoneKey = 'parkir_cepat_last_phone';
 
   final SupabaseChatService _chatService = SupabaseChatService();
   final SupabaseComplaintService _complaintService = SupabaseComplaintService();
@@ -1876,6 +1899,36 @@ class AppController extends StateNotifier<AppState> {
     final onboardingDone = preferences.getBool(_onboardingDoneKey) ?? false;
     if (onboardingDone) {
       state = state.copyWith(onboardingDone: true);
+    }
+  }
+
+  Future<void> _loadRememberedLoginPreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    final rememberMe = preferences.getBool(_rememberMeKey) ?? state.rememberMe;
+    final mode = accountModeFromPreference(preferences.getString(_lastModeKey));
+    state = state.copyWith(
+      rememberMe: rememberMe,
+      currentMode: mode,
+      email: preferences.getString(_lastEmailKey) ?? state.email,
+      phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
+    );
+  }
+
+  Future<void> _saveRememberedLoginPreference({
+    required AccountMode mode,
+    required String email,
+    required String phoneNumber,
+    required bool rememberMe,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_rememberMeKey, rememberMe);
+    await preferences.setString(_lastModeKey, accountModeToPreference(mode));
+    if (rememberMe) {
+      await preferences.setString(_lastEmailKey, email);
+      await preferences.setString(_lastPhoneKey, phoneNumber);
+    } else {
+      await preferences.remove(_lastEmailKey);
+      await preferences.remove(_lastPhoneKey);
     }
   }
 
@@ -2347,6 +2400,103 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(registrationRequests: requests);
   }
 
+  Future<bool> restoreRememberedSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    final rememberMe = preferences.getBool(_rememberMeKey) ?? (user != null);
+
+    if (!rememberMe) {
+      if (user != null) {
+        await supabase.auth.signOut();
+      }
+      state = state.copyWith(isAuthenticated: false, rememberMe: false);
+      return false;
+    }
+
+    if (user == null) {
+      state = state.copyWith(isAuthenticated: false, rememberMe: rememberMe);
+      return false;
+    }
+
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('email, phone_number, role, access_status, account_status')
+          .eq('id', user.id)
+          .single();
+      final mode = accountModeFromDbRole(profile['role'] as String?);
+      if (mode == null || profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        state = state.copyWith(isAuthenticated: false, rememberMe: false);
+        return false;
+      }
+
+      final email = (profile['email'] as String?) ?? user.email ?? state.email;
+      final phoneNumber =
+          (profile['phone_number'] as String?) ?? state.phoneNumber;
+      final providerApplication = mode == AccountMode.provider
+          ? await providerApplicationFromSupabase(user.id)
+          : null;
+      final accountStatus = mode == AccountMode.provider
+          ? await currentProviderStatusFromSupabase(
+              user.id,
+              profileStatus: profile['account_status'] as String?,
+            )
+          : AccountStatus.verified;
+
+      login(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: true,
+        accountStatusOverride: accountStatus,
+        providerApplication: providerApplication,
+        clearProviderApplication: providerApplication == null,
+      );
+      await _loadAuthenticatedRoleData(mode);
+      await _saveRememberedLoginPreference(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: true,
+      );
+      return true;
+    } catch (_) {
+      await supabase.auth.signOut();
+      state = state.copyWith(isAuthenticated: false, rememberMe: false);
+      return false;
+    }
+  }
+
+  Future<void> _loadAuthenticatedRoleData(AccountMode mode) async {
+    await loadCurrentUserAvatarFromSupabase(
+      forCustomer: mode == AccountMode.customer,
+    ).catchError((_) {});
+    await loadCurrentUserNotificationsFromSupabase().catchError((_) {});
+
+    switch (mode) {
+      case AccountMode.customer:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadCustomerVehiclesFromSupabase().catchError((_) {});
+        await loadActiveBookingFromSupabase().catchError((_) {});
+        await loadCustomerHistoryFromSupabase().catchError((_) {});
+        await loadCustomerFavoritesFromSupabase().catchError((_) {});
+        await loadCustomerSettingsFromSupabase().catchError((_) {});
+      case AccountMode.provider:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadProviderGuardsFromSupabase().catchError((_) {});
+      case AccountMode.parkingGuard:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadCurrentGuardFromSupabase().catchError((_) {});
+        await loadGuardBookingsFromSupabase().catchError((_) {});
+      case AccountMode.superAdmin:
+        await loadComplaintsFromSupabase().catchError((_) {});
+        await loadRegistrationRequestsFromSupabase().catchError((_) {});
+        await loadManagedUsersFromSupabase().catchError((_) {});
+    }
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -2356,6 +2506,14 @@ class AppController extends StateNotifier<AppState> {
     ProviderApplication? providerApplication,
     bool clearProviderApplication = false,
   }) {
+    unawaited(
+      _saveRememberedLoginPreference(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: rememberMe,
+      ),
+    );
     final accountStatus =
         accountStatusOverride ??
         (mode == AccountMode.provider
@@ -2450,9 +2608,14 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(passwordResetRequested: true);
   }
 
-  void logout() {
+  Future<void> logout() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_rememberMeKey, false);
+    await preferences.remove(_lastEmailKey);
+    await preferences.remove(_lastPhoneKey);
+    await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
-    state = state.copyWith(isAuthenticated: false);
+    state = state.copyWith(isAuthenticated: false, rememberMe: false);
   }
 
   Future<void> deleteAccount() async {
@@ -4748,30 +4911,36 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
-  Timer? _navigationTimer;
+  Timer? _restoreTimer;
 
   @override
   void initState() {
     super.initState();
-    _navigationTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) {
-        return;
-      }
-      final state = ref.read(appControllerProvider);
-      final controller = ref.read(appControllerProvider.notifier);
-      if (!state.onboardingDone) {
-        context.go('/onboarding');
-      } else if (!state.isAuthenticated) {
-        context.go('/login');
-      } else {
-        context.go(controller.landingRouteFor(state));
-      }
-    });
+    _restoreTimer = Timer(
+      const Duration(milliseconds: 900),
+      () => unawaited(_restoreAndNavigate()),
+    );
+  }
+
+  Future<void> _restoreAndNavigate() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.restoreRememberedSession();
+    if (!mounted) {
+      return;
+    }
+    final state = ref.read(appControllerProvider);
+    if (!state.onboardingDone) {
+      context.go('/onboarding');
+    } else if (!state.isAuthenticated) {
+      context.go('/login');
+    } else {
+      context.go(controller.landingRouteFor(state));
+    }
   }
 
   @override
   void dispose() {
-    _navigationTimer?.cancel();
+    _restoreTimer?.cancel();
     super.dispose();
   }
 
@@ -5457,6 +5626,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _emailController = TextEditingController(text: state.email);
     _phoneController = TextEditingController(text: state.phoneNumber);
     _passwordController = TextEditingController();
+    _rememberMe = state.rememberMe;
+    _mode = state.currentMode;
+    unawaited(_loadSavedLoginForm());
+  }
+
+  Future<void> _loadSavedLoginForm() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    final rememberMe = preferences.getBool(AppController._rememberMeKey);
+    final savedMode = preferences.getString(AppController._lastModeKey);
+    final savedEmail = preferences.getString(AppController._lastEmailKey);
+    final savedPhone = preferences.getString(AppController._lastPhoneKey);
+    setState(() {
+      _rememberMe = rememberMe ?? _rememberMe;
+      if (savedMode != null) {
+        _mode = accountModeFromPreference(savedMode);
+      }
+      if (savedEmail != null) {
+        _emailController.text = savedEmail;
+      }
+      if (savedPhone != null) {
+        _phoneController.text = savedPhone;
+      }
+    });
   }
 
   @override
@@ -5518,7 +5713,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 activeThumbColor: AppTheme.blue,
                 onChanged: (value) => setState(() => _rememberMe = value),
               ),
-              const Text('Remember me'),
+              const Text('Ingat saya'),
               const Spacer(),
               TextButton(
                 onPressed: () => context.push('/forgot-password'),
@@ -11481,8 +11676,9 @@ class CustomerProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -15507,8 +15703,9 @@ class AdminProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -15594,8 +15791,9 @@ class SuperAdminProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -17704,8 +17902,9 @@ class GuardProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),

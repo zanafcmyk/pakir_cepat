@@ -37,7 +37,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
 - [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
-- [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
+- [x] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`; role/email terakhir disimpan di perangkat, dan logout membersihkan session.
 - [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
 - [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
 - [x] Tampilkan foto lahan dari `photo_url` pada kartu lokasi customer dan halaman detail; fallback tetap tersedia jika foto belum ada/gagal dimuat.
