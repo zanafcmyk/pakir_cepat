@@ -4055,7 +4055,9 @@ class AppController extends StateNotifier<AppState> {
       plateNumber: vehicle.plateNumber,
       vehicleLabel: bookingVehicle.label,
       entryTime: entryTime,
+      durationHours: remoteBooking.durationHours,
       estimatedCost: remoteBooking.estimatedCost,
+      amountDue: remoteBooking.estimatedCost,
       paymentMethod: PaymentMethod.qris,
       status: BookingStatus.pendingPayment,
     );
@@ -4128,6 +4130,7 @@ class AppController extends StateNotifier<AppState> {
     );
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
+      amountDue: 0,
       status: BookingStatus.paid,
     );
     final transaction = TransactionRecord(
@@ -4257,6 +4260,7 @@ class AppController extends StateNotifier<AppState> {
     );
     final updatedBooking = booking.copyWith(
       paymentMethod: PaymentMethod.cash,
+      amountDue: 0,
       status: BookingStatus.paid,
     );
     state = state.copyWith(
@@ -4502,36 +4506,42 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
-  void extendParkingTime(int additionalHours) {
-    final vehicle = state.selectedVehicle;
+  Future<void> extendParkingTime(int additionalHours) async {
     final booking = state.activeBooking;
-    if (vehicle == null || booking == null) {
+    if (booking == null) {
       return;
+    }
+    if (additionalHours <= 0) {
+      throw StateError('Tambahan durasi harus lebih dari 0 jam.');
     }
 
-    final updatedVehicle = vehicle.copyWith(
-      durationHours: vehicle.durationHours + additionalHours,
+    final extension = await _bookingService.extendCurrentCustomerBooking(
+      ticketNumber: booking.ticketNumber,
+      additionalHours: additionalHours,
     );
-    final updatedVehicles = [
-      for (final item in state.vehicles)
-        if (item.id == vehicle.id) updatedVehicle else item,
-    ];
-    final lot = state.selectedLot ?? state.lots.firstOrNull;
-    if (lot == null) {
-      return;
-    }
-    final currentCost = calculateParkingCost(lot, vehicle);
-    final updatedCost = calculateParkingCost(lot, updatedVehicle);
+    final selectedVehicle = state.selectedVehicle;
+    final updatedVehicle = selectedVehicle?.copyWith(
+      durationHours: extension.durationHours,
+    );
     state = state.copyWith(
-      vehicles: updatedVehicles,
-      selectedVehicle: updatedVehicle,
+      vehicles: updatedVehicle == null
+          ? state.vehicles
+          : [
+              for (final item in state.vehicles)
+                if (item.id == updatedVehicle.id) updatedVehicle else item,
+            ],
+      selectedVehicle: updatedVehicle ?? state.selectedVehicle,
       activeBooking: booking.copyWith(
-        estimatedCost: booking.estimatedCost + (updatedCost - currentCost),
+        durationHours: extension.durationHours,
+        estimatedCost: extension.estimatedCost,
+        amountDue: extension.amountDue,
       ),
       customerNotifications: [
         NoticeItem(
           title: 'Durasi parkir diperpanjang',
-          message: 'Tambahan $additionalHours jam berhasil diterapkan.',
+          message: extension.amountDue > 0
+              ? 'Tambahan $additionalHours jam berhasil diterapkan. Sisa tagihan ${formatCurrency(extension.amountDue)}.'
+              : 'Tambahan $additionalHours jam berhasil diterapkan.',
           timeLabel: 'Baru saja',
           icon: Icons.more_time_rounded,
           accent: AppTheme.emerald,
@@ -9169,9 +9179,37 @@ class CustomerTicketScreen extends ConsumerWidget {
                         child: SecondaryButton(
                           label: 'Extend 1 jam',
                           icon: Icons.more_time_rounded,
-                          onPressed: () => ref
-                              .read(appControllerProvider.notifier)
-                              .extendParkingTime(1),
+                          onPressed: () async {
+                            try {
+                              await ref
+                                  .read(appControllerProvider.notifier)
+                                  .extendParkingTime(1);
+                              if (context.mounted) {
+                                final updatedBooking = ref
+                                    .read(appControllerProvider)
+                                    .activeBooking;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      (updatedBooking?.amountDue ?? 0) > 0
+                                          ? 'Durasi diperpanjang. Selesaikan sisa pembayaran ${formatCurrency(updatedBooking!.amountDue)}.'
+                                          : 'Durasi parkir berhasil diperpanjang.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            } catch (error) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Gagal memperpanjang durasi: $error',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -9462,7 +9500,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
         body: Center(child: Text('Tidak ada booking aktif.')),
       );
     }
-    final isPayable = booking.status == BookingStatus.pendingPayment;
+    final amountDue = booking.amountDue > 0
+        ? booking.amountDue
+        : (booking.status == BookingStatus.pendingPayment
+              ? booking.estimatedCost
+              : 0);
+    final isPayable = amountDue > 0;
     return Scaffold(
       appBar: AppBar(title: const Text('Pembayaran parkir')),
       body: ListView(
@@ -9518,12 +9561,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                 ),
                 SummaryRow(
                   label: 'Durasi',
-                  value: '${_durationHoursFor(state, booking)} jam',
+                  value: '${booking.durationHours} jam',
                 ),
                 SummaryRow(
-                  label: 'Total pembayaran',
+                  label: 'Total biaya',
                   value: formatCurrency(booking.estimatedCost),
                   valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Sisa pembayaran',
+                  value: formatCurrency(amountDue),
+                  valueColor: amountDue > 0 ? AppTheme.blue : AppTheme.emerald,
                 ),
               ],
             ),
@@ -9592,7 +9640,7 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                 SummaryRow(label: 'Nomor tiket', value: booking.ticketNumber),
                 SummaryRow(
                   label: 'Total pembayaran',
-                  value: formatCurrency(booking.estimatedCost),
+                  value: formatCurrency(amountDue),
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
@@ -9634,20 +9682,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       ),
     );
   }
-}
-
-int _hourlyRateFor(AppState state, Booking booking) {
-  for (final lot in state.lots) {
-    if (lot.name == booking.locationName) {
-      return lot.pricePerHour;
-    }
-  }
-  return state.selectedLot?.pricePerHour ?? booking.estimatedCost;
-}
-
-int _durationHoursFor(AppState state, Booking booking) {
-  final rate = math.max(1, _hourlyRateFor(state, booking));
-  return math.max(1, booking.estimatedCost ~/ rate);
 }
 
 class _PaymentInstructionCard extends StatelessWidget {

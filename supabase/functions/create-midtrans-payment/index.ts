@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     const { data: booking, error: bookingError } = await adminClient
       .from("bookings")
       .select(
-        "id, ticket_number, customer_id, estimated_cost, status, created_at",
+        "id, ticket_number, customer_id, estimated_cost, status, created_at, payments(amount, status)",
       )
       .eq("ticket_number", ticketNumber)
       .eq("customer_id", customer.id)
@@ -76,16 +76,22 @@ Deno.serve(async (req) => {
       return json({ error: "Booking was not found." }, 404);
     }
 
-    if (booking.status !== "pending_payment") {
-      return json({ error: "Booking is not waiting for payment." }, 400);
+    if (!["pending_payment", "paid", "active"].includes(booking.status)) {
+      return json({ error: "Booking is not payable." }, 400);
     }
 
     const expiresAt = new Date(booking.created_at).getTime() + 15 * 60 * 1000;
-    if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) {
+    if (
+      booking.status === "pending_payment" &&
+      (!Number.isFinite(expiresAt) || Date.now() >= expiresAt)
+    ) {
       return json({ error: "Booking reservation has expired." }, 410);
     }
 
-    const amount = Number(booking.estimated_cost ?? 0);
+    const amount = Math.max(
+      0,
+      Number(booking.estimated_cost ?? 0) - paidAmount(booking.payments),
+    );
     if (!Number.isFinite(amount) || amount <= 0) {
       return json({ error: "Invalid payment amount." }, 400);
     }
@@ -182,6 +188,21 @@ function map(value: unknown) {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function paidAmount(value: unknown) {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+
+  return value.reduce((total, item) => {
+    const payment = map(item);
+    if (payment.status !== "paid") {
+      return total;
+    }
+    const amount = Number(payment.amount ?? 0);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
 }
 
 function json(body: Record<string, unknown>, status = 200) {

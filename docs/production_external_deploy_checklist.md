@@ -22,6 +22,19 @@ Patch ini wajib karena:
 Setelah berhasil, uji customer booking, pembayaran Midtrans, pembayaran tunai
 penjaga, scan masuk, scan keluar, receipt, dan laporan provider.
 
+## Perpanjangan Durasi Booking
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_booking_extension_patch.sql
+```
+
+Patch ini menambahkan RPC `app_extend_customer_booking` agar tambahan durasi,
+tarif efektif, biaya total, dan sisa pembayaran dihitung di Supabase. Setelah
+patch ini, deploy ulang `create-midtrans-payment` dan `midtrans-webhook` supaya
+pembayaran tambahan hanya menagih sisa biaya yang belum lunas.
+
 ## Kedaluwarsa Reservasi
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:

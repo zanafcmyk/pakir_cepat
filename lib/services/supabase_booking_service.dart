@@ -25,6 +25,22 @@ class SupabaseActiveBooking {
   final String? slotId;
 }
 
+class SupabaseBookingExtensionResult {
+  const SupabaseBookingExtensionResult({
+    required this.durationHours,
+    required this.effectiveRate,
+    required this.estimatedCost,
+    required this.amountDue,
+    required this.additionalCost,
+  });
+
+  final int durationHours;
+  final int effectiveRate;
+  final int estimatedCost;
+  final int amountDue;
+  final int additionalCost;
+}
+
 class SupabaseBookingService {
   SupabaseBookingService({SupabaseClient? client})
     : _client = client ?? Supabase.instance.client;
@@ -100,9 +116,10 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, estimated_cost, status, '
-          'parking_slot_id, parking_slots(label), '
-          'parking_lots(name), vehicles(plate_number, kind)',
+          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind), '
+          'payments(method, status, amount, created_at)',
         )
         .eq('customer_id', customerId)
         .inFilter('status', ['pending_payment', 'paid', 'active'])
@@ -123,9 +140,10 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, estimated_cost, status, '
-          'parking_slot_id, parking_slots(label), '
-          'parking_lots(name), vehicles(plate_number, kind)',
+          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
+          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'parking_lots(name), vehicles(plate_number, kind), '
+          'payments(method, status, amount, created_at)',
         )
         .eq('ticket_number', ticketNumber)
         .limit(1);
@@ -148,10 +166,10 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, estimated_cost, status, '
+          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
-          'payments(method, status, created_at)',
+          'payments(method, status, amount, created_at)',
         )
         .inFilter('parking_lot_id', assignedLotIds)
         .inFilter('status', ['pending_payment', 'paid', 'active'])
@@ -182,10 +200,10 @@ class SupabaseBookingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'id, ticket_number, entry_time, estimated_cost, status, '
+          'id, ticket_number, entry_time, duration_hours, estimated_cost, status, '
           'parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
-          'payments(method, status, created_at)',
+          'payments(method, status, amount, created_at)',
         )
         .inFilter('parking_lot_id', assignedLotIds)
         .order('created_at', ascending: false)
@@ -238,6 +256,30 @@ class SupabaseBookingService {
 
   Future<void> checkOutBooking(String ticketNumber) async {
     await _processOperatorTicket(ticketNumber, 'check_out');
+  }
+
+  Future<SupabaseBookingExtensionResult> extendCurrentCustomerBooking({
+    required String ticketNumber,
+    required int additionalHours,
+  }) async {
+    final rows = await _client.rpc(
+      'app_extend_customer_booking',
+      params: {
+        'p_ticket_number': ticketNumber,
+        'p_additional_hours': additionalHours,
+      },
+    );
+    if (rows is! List || rows.isEmpty) {
+      throw StateError('RPC perpanjang durasi tidak mengembalikan hasil.');
+    }
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    return SupabaseBookingExtensionResult(
+      durationHours: (row['duration_hours'] as num?)?.toInt() ?? 0,
+      effectiveRate: (row['effective_rate'] as num?)?.toInt() ?? 0,
+      estimatedCost: (row['estimated_cost'] as num?)?.toInt() ?? 0,
+      amountDue: (row['amount_due'] as num?)?.toInt() ?? 0,
+      additionalCost: (row['additional_cost'] as num?)?.toInt() ?? 0,
+    );
   }
 
   Future<String> _currentCustomerId(String profileId) async {
@@ -308,6 +350,7 @@ class SupabaseBookingService {
     Map<String, dynamic> row,
   ) async {
     final paymentMethod = await _paymentMethodFromBookingRow(row);
+    final estimatedCost = (row['estimated_cost'] as num?)?.toInt() ?? 0;
 
     return SupabaseActiveBooking(
       booking: Booking(
@@ -320,7 +363,9 @@ class SupabaseBookingService {
         entryTime:
             DateTime.tryParse(row['entry_time'] as String? ?? '') ??
             DateTime.now(),
-        estimatedCost: (row['estimated_cost'] as num?)?.toInt() ?? 0,
+        durationHours: (row['duration_hours'] as num?)?.toInt() ?? 1,
+        estimatedCost: estimatedCost,
+        amountDue: _amountDue(row, estimatedCost),
         paymentMethod: paymentMethod,
         status: _bookingStatusFromDb(row['status'] as String?),
       ),
@@ -345,6 +390,22 @@ class SupabaseBookingService {
       return _paymentMethodFromDb(payments.first['method'] as String?);
     }
     return _latestPaymentMethod(row['id'] as String);
+  }
+
+  int _amountDue(Map<String, dynamic> row, int estimatedCost) {
+    final payments = row['payments'];
+    if (payments is! List) {
+      return estimatedCost;
+    }
+    var paidTotal = 0;
+    for (final value in payments) {
+      final payment = Map<String, dynamic>.from(value as Map);
+      if (payment['status'] == 'paid') {
+        paidTotal += (payment['amount'] as num?)?.toInt() ?? 0;
+      }
+    }
+    final due = estimatedCost - paidTotal;
+    return due > 0 ? due : 0;
   }
 
   String _normalizePlate(String value) =>

@@ -103,9 +103,13 @@ Deno.serve(async (req) => {
     }
 
     if (status === "paid") {
+      const paidTotal = await totalPaidForBooking(
+        adminClient,
+        payment.booking_id,
+      );
       const { data: paidBooking, error: paidBookingError } = await adminClient
         .from("bookings")
-        .update({ status: "paid", final_cost: payment.amount })
+        .update({ status: "paid", final_cost: paidTotal })
         .eq("id", payment.booking_id)
         .eq("status", "pending_payment")
         .select("id")
@@ -156,7 +160,11 @@ Deno.serve(async (req) => {
           });
         }
 
-        // A repeated callback still repairs a receipt missing from an earlier run.
+        await adminClient
+          .from("bookings")
+          .update({ final_cost: paidTotal })
+          .eq("id", payment.booking_id);
+        // A repeated callback or extension callback still repairs a receipt missing from an earlier run.
       }
 
       const ticketNumber = text(booking?.ticket_number);
@@ -215,6 +223,26 @@ async function sha512(value: string) {
   return Array.from(new Uint8Array(hash))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function totalPaidForBooking(
+  adminClient: ReturnType<typeof createClient>,
+  bookingId: string,
+) {
+  const { data } = await adminClient
+    .from("payments")
+    .select("amount")
+    .eq("booking_id", bookingId)
+    .eq("status", "paid");
+
+  if (!Array.isArray(data)) {
+    return 0;
+  }
+
+  return data.reduce((total, item) => {
+    const amount = Number(item.amount ?? 0);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
 }
 
 function json(body: Record<string, unknown>, status = 200) {

@@ -34,14 +34,14 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Daftar kendaraan aktif penjaga membaca seluruh booking operasional pada lokasi assignment, mendukung filter lokasi, muat ulang, dan konfirmasi tunai per tiket.
 - [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
 - [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
-- [ ] Perpanjang durasi parkir harus memperbarui booking, biaya, dan pembayaran di Supabase; saat ini hanya mengubah state lokal.
+- [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [ ] Perubahan status slot harus menampilkan kegagalan Supabase dan melakukan rollback state; error saat ini masih dapat disembunyikan.
 - [ ] Tambahkan aksi nonaktif/hapus lahan dari aplikasi dengan penanganan booking historis dan foreign key yang aman.
 - [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
 - [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
 - [ ] Tambahkan `NSCameraUsageDescription` dan `NSPhotoLibraryUsageDescription` pada iOS.
 - [ ] Tampilkan foto lahan dari `photo_url` pada halaman customer; upload sudah berjalan tetapi foto belum digunakan di katalog/detail.
-- [ ] Simpan dan tampilkan `duration_hours` dari booking. Durasi halaman pembayaran saat ini diturunkan dari total biaya dan dapat salah untuk tarif flat/harian.
+- [x] Simpan dan tampilkan `duration_hours` dari booking. Halaman pembayaran memakai durasi dari Supabase, bukan menurunkan dari total biaya.
 - [ ] Ganti QR tiket polos dengan token bertanda tangan/opaque agar tidak mudah ditebak, dibagikan, atau dipakai ulang.
 
 #### Masih Demo atau Estimasi
@@ -324,7 +324,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Audit payment end-to-end, callback/deep link, idempotensi, dan kegagalan webhook sebelum production.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
 - [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus; menunggu patch SQL diterapkan di production.
-- [ ] Perpanjang durasi dan biaya parkir customer masih lokal, belum tersimpan ke Supabase.
+- [x] Perpanjang durasi dan biaya parkir customer tersimpan ke Supabase melalui RPC dan pembayaran tambahan memakai sisa tagihan.
 
 #### Belum Ada/Belum Production
 
@@ -383,7 +383,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 1. Uji ulang booking, Midtrans, tunai, masuk, serta keluar setelah patch keamanan production.
 2. Jalankan dan uji expiry reservasi server-side di Supabase production.
 3. Jalankan SQL realtime operasional penjaga dan uji dengan akun customer serta penjaga.
-4. Simpan perpanjangan durasi/biaya ke Supabase dan perbaiki pembacaan `duration_hours`.
+4. Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.
 5. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
 6. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
 7. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.

@@ -163,7 +163,9 @@ class Booking {
     required this.plateNumber,
     required this.vehicleLabel,
     required this.entryTime,
+    required this.durationHours,
     required this.estimatedCost,
+    this.amountDue = 0,
     required this.paymentMethod,
     required this.status,
   });
@@ -175,7 +177,9 @@ class Booking {
   final String plateNumber;
   final String vehicleLabel;
   final DateTime entryTime;
+  final int durationHours;
   final int estimatedCost;
+  final int amountDue;
   final PaymentMethod paymentMethod;
   final BookingStatus status;
 
@@ -195,7 +199,9 @@ class Booking {
     String? plateNumber,
     String? vehicleLabel,
     DateTime? entryTime,
+    int? durationHours,
     int? estimatedCost,
+    int? amountDue,
     PaymentMethod? paymentMethod,
     BookingStatus? status,
   }) {
@@ -207,7 +213,9 @@ class Booking {
       plateNumber: plateNumber ?? this.plateNumber,
       vehicleLabel: vehicleLabel ?? this.vehicleLabel,
       entryTime: entryTime ?? this.entryTime,
+      durationHours: durationHours ?? this.durationHours,
       estimatedCost: estimatedCost ?? this.estimatedCost,
+      amountDue: amountDue ?? this.amountDue,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       status: status ?? this.status,
     );
