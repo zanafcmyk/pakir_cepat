@@ -23,6 +23,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/app_models.dart';
+import 'services/customer_location_service.dart';
 import 'services/firebase_push_notification_service.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
@@ -1704,6 +1705,8 @@ class AppController extends StateNotifier<AppState> {
   final SupabaseReviewService _reviewService = SupabaseReviewService();
   final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
+  final CustomerLocationService _customerLocationService =
+      const CustomerLocationService();
   final FirebasePushNotificationService _pushNotificationService =
       FirebasePushNotificationService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
@@ -2050,6 +2053,7 @@ class AppController extends StateNotifier<AppState> {
     final data = await _parkingService.fetchParkingData(
       currentProviderOnly: providerOnly,
     );
+    final lots = await _applyCustomerTravelEstimates(data.lots);
     if (data.lots.isEmpty) {
       if (providerOnly) {
         state = state.copyWith(
@@ -2062,13 +2066,13 @@ class AppController extends StateNotifier<AppState> {
       return;
     }
 
-    final selectedLot = data.lots.firstWhere(
+    final selectedLot = lots.firstWhere(
       (lot) => lot.id == state.selectedLot?.id,
-      orElse: () => data.lots.first,
+      orElse: () => lots.first,
     );
 
     state = state.copyWith(
-      lots: data.lots,
+      lots: lots,
       selectedLot: selectedLot,
       slots: data.slots.isEmpty ? state.slots : data.slots,
       isUsingDemoData: false,
@@ -2144,17 +2148,18 @@ class AppController extends StateNotifier<AppState> {
       final data = await _parkingService.fetchParkingData(
         currentProviderOnly: providerOnly,
       );
+      final lots = await _applyCustomerTravelEstimates(data.lots);
       if (!mounted || data.lots.isEmpty) {
         return;
       }
 
-      final selectedLot = data.lots.firstWhere(
+      final selectedLot = lots.firstWhere(
         (lot) => lot.id == state.selectedLot?.id,
-        orElse: () => data.lots.first,
+        orElse: () => lots.first,
       );
 
       state = state.copyWith(
-        lots: data.lots,
+        lots: lots,
         selectedLot: selectedLot,
         slots: data.slots.isEmpty ? state.slots : data.slots,
         isUsingDemoData: false,
@@ -2203,12 +2208,27 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> searchParkingLotsFromSupabase(String query) async {
     final data = await _parkingService.fetchParkingData(searchQuery: query);
+    final lots = await _applyCustomerTravelEstimates(data.lots);
     state = state.copyWith(
-      lots: data.lots,
-      selectedLot: data.lots.isEmpty ? state.selectedLot : data.lots.first,
+      lots: lots,
+      selectedLot: lots.isEmpty ? state.selectedLot : lots.first,
       slots: data.slots.isEmpty ? state.slots : data.slots,
-      isUsingDemoData: data.lots.isEmpty ? state.isUsingDemoData : false,
+      isUsingDemoData: lots.isEmpty ? state.isUsingDemoData : false,
     );
+  }
+
+  Future<List<ParkingLot>> _applyCustomerTravelEstimates(
+    List<ParkingLot> lots,
+  ) async {
+    if (state.currentMode != AccountMode.customer) {
+      return lots;
+    }
+
+    try {
+      return await _customerLocationService.withTravelEstimates(lots);
+    } catch (_) {
+      return lots;
+    }
   }
 
   Future<void> loadCustomerVehiclesFromSupabase() async {

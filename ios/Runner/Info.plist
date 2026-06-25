@@ -41,6 +41,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Parkir Cepat memakai kamera untuk scan QR tiket masuk dan keluar.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Parkir Cepat memakai lokasi perangkat untuk menghitung jarak dan estimasi waktu ke lahan parkir.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Parkir Cepat memakai galeri untuk memilih foto profil, foto lahan, dan dokumen pendukung.</string>
 	<key>UIApplicationSceneManifest</key>

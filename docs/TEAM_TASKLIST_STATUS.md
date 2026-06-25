@@ -46,7 +46,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 #### Masih Demo atau Estimasi
 
-- [ ] Jarak dan ETA lokasi masih bernilai tetap `0.8 km / 3 menit`; belum memakai posisi customer/GPS dan perhitungan rute.
+- [x] Jarak dan ETA lokasi customer memakai GPS perangkat saat izin lokasi aktif; fallback data lama tetap dipakai bila GPS mati/ditolak. ETA masih estimasi garis lurus, belum rute/traffic maps.
 - [ ] QR pembayaran sebelum membuka Midtrans masih berlabel demo.
 - [ ] Input nomor e-wallet masih UI demo; transaksi sebenarnya tetap diteruskan ke Midtrans.
 - [ ] Pengeluaran laporan penyedia masih estimasi tetap 30% dari pendapatan.
