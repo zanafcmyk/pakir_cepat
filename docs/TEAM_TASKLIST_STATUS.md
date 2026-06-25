@@ -49,7 +49,7 @@ Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Jarak dan ETA lokasi customer memakai GPS perangkat saat izin lokasi aktif; fallback data lama tetap dipakai bila GPS mati/ditolak. ETA masih estimasi garis lurus, belum rute/traffic maps.
 - [x] QR pembayaran demo sebelum Midtrans dihapus; QRIS resmi hanya ditampilkan oleh halaman Midtrans, sedangkan aplikasi menampilkan QR tiket setelah pembayaran berhasil.
 - [x] Input nomor e-wallet demo dihapus dari aplikasi; pilihan e-wallet hanya menjadi preferensi metode dan detail pembayaran diisi di Midtrans bila dibutuhkan.
-- [ ] Pengeluaran laporan penyedia masih estimasi tetap 30% dari pendapatan.
+- [x] Pengeluaran laporan penyedia memakai gaji penjaga 15% dari revenue lahan yang punya penjaga; lahan tanpa penjaga tidak memotong gaji, dan satu lahan dengan beberapa penjaga dibagi rata.
 - [ ] Pilihan bahasa dan keamanan akun baru disimpan sebagai setting, belum mengubah bahasa atau mekanisme keamanan aplikasi.
 - [ ] Data seed lokasi, kendaraan, chat, notifikasi, dan laporan masih aktif pada build debug/profile; build release memakai state kosong.
 

@@ -15224,6 +15224,7 @@ class _ProviderFinancialReportScreenState
                 availableSlots: 0,
                 occupiedSlots: 0,
                 chartPoints: [],
+                guardSalaryShares: [],
               );
           final recentTransactions = report.transactions.take(5).toList();
 
@@ -15246,7 +15247,7 @@ class _ProviderFinancialReportScreenState
                       valueColor: AppTheme.emerald,
                     ),
                     SummaryRow(
-                      label: 'Estimasi pengeluaran',
+                      label: 'Gaji penjaga bulan ini',
                       value: formatCurrency(report.estimatedExpense),
                       valueColor: const Color(0xFFDC2626),
                     ),
@@ -15271,6 +15272,81 @@ class _ProviderFinancialReportScreenState
                         );
                       },
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Gaji penjaga',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const InlineNotice(
+                      icon: Icons.percent_rounded,
+                      accent: AppTheme.emerald,
+                      message:
+                          'Gaji dihitung 15% dari pendapatan lahan yang punya penjaga. Jika satu lahan punya beberapa penjaga, bagian 15% dibagi rata.',
+                    ),
+                    const SizedBox(height: 14),
+                    SummaryRow(
+                      label: 'Gaji hari ini',
+                      value: formatCurrency(report.guardSalaryDailyTotal),
+                    ),
+                    SummaryRow(
+                      label: 'Gaji bulan ini',
+                      value: formatCurrency(report.guardSalaryMonthlyTotal),
+                      valueColor: const Color(0xFFDC2626),
+                    ),
+                    if (report.guardSalaryShares.isEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Belum ada penjaga yang ditugaskan ke lahan penyedia.',
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 14),
+                      ...report.guardSalaryShares.map(
+                        (share) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppTheme.blueSoft,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  share.guardName,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 6),
+                                SummaryRow(
+                                  label: 'Lahan tugas',
+                                  value: share.assignedLotNames.join(', '),
+                                ),
+                                SummaryRow(
+                                  label: 'Revenue bagian bulan ini',
+                                  value: formatCurrency(share.monthlyRevenue),
+                                ),
+                                SummaryRow(
+                                  label: 'Gaji 15% bulan ini',
+                                  value: formatCurrency(share.monthlySalary),
+                                  valueColor: AppTheme.emerald,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -15452,6 +15528,7 @@ class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
                 availableSlots: 0,
                 occupiedSlots: 0,
                 chartPoints: [],
+                guardSalaryShares: [],
               );
           return ProviderStatisticsContent(report: report);
         },
