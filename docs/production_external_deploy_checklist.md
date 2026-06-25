@@ -73,6 +73,18 @@ Setelah patch berhasil, jalankan repair satu kali:
 select * from public.app_repair_parking_slot_statuses(null);
 ```
 
+## Patch Tabel Kendaraan Lama
+
+Jalankan patch berikut satu kali di SQL Editor Supabase jika saat menyimpan
+kendaraan muncul error `column vehicles.created_at does not exist`:
+
+```text
+docs/supabase_vehicles_created_at_patch.sql
+```
+
+Patch ini menambahkan kolom `created_at` dan `updated_at` ke tabel `vehicles`
+yang sudah terlanjur dibuat dari schema lama.
+
 ## Nonaktifkan atau Hapus Lahan
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:
