@@ -2,7 +2,7 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, dan percobaan build release.
+Terakhir diperbarui: 25 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, dan audit alur utama.
 
 ## Cara Pakai
 
@@ -57,6 +57,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 - [x] `flutter analyze --no-pub` lulus tanpa issue.
 - [x] Seluruh 6 test saat ini lulus.
+- [x] Audit alur utama end-to-end terbaru dicatat di `docs/e2e_main_flow_audit_2026-06-25.md`.
 - [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
 - [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
