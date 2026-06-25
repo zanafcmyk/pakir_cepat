@@ -35,7 +35,7 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
 - [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
-- [ ] Perubahan status slot harus menampilkan kegagalan Supabase dan melakukan rollback state; error saat ini masih dapat disembunyikan.
+- [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
 - [ ] Tambahkan aksi nonaktif/hapus lahan dari aplikasi dengan penanganan booking historis dan foreign key yang aman.
 - [ ] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`.
 - [ ] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran.
@@ -384,7 +384,8 @@ Terakhir diperbarui: 22 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 2. Jalankan dan uji expiry reservasi server-side di Supabase production.
 3. Jalankan SQL realtime operasional penjaga dan uji dengan akun customer serta penjaga.
 4. Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.
-5. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
-6. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
-7. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
-8. Tambah integration test multi-role/multi-device dan stabilkan build APK release.
+5. Jalankan SQL repair slot, deploy ulang webhook Midtrans, lalu audit slot reserved/occupied lama yang pernah nyangkut.
+6. Pasang Firebase config, registrasi token FCM, dan wajibkan `PUSH_FUNCTION_SECRET`.
+7. Tambahkan deep link Android/iOS serta izin kamera/galeri iOS.
+8. Tampilkan foto lahan, gunakan GPS untuk jarak/ETA, dan edit ulang koordinat data lahan lama.
+9. Tambah integration test multi-role/multi-device dan stabilkan build APK release.

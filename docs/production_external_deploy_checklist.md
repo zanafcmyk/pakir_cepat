@@ -51,6 +51,28 @@ notifikasi in-app.
 Setelah menunggu satu menit, jalankan query verifikasi yang tersedia pada bagian
 bawah file SQL. Pastikan job aktif dan eksekusi terakhir berstatus `succeeded`.
 
+## Repair Status Slot
+
+Jalankan patch berikut satu kali di SQL Editor Supabase:
+
+```text
+docs/supabase_slot_status_repair.sql
+```
+
+Patch ini menambahkan RPC admin `app_repair_parking_slot_statuses` untuk
+menyelaraskan status slot dari booking live:
+
+- booking `active` membuat slot `occupied`;
+- booking `pending_payment` atau `paid` membuat slot `reserved`;
+- slot `reserved`/`occupied` tanpa booking live dikembalikan ke `available`;
+- slot `blocked` tidak disentuh.
+
+Setelah patch berhasil, jalankan repair satu kali:
+
+```sql
+select * from public.app_repair_parking_slot_statuses(null);
+```
+
 ## Realtime Operasional Penjaga
 
 Jalankan patch berikut satu kali di SQL Editor Supabase:

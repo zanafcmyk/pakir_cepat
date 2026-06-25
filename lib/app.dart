@@ -4482,8 +4482,9 @@ class AppController extends StateNotifier<AppState> {
     ).hasMatch(value);
   }
 
-  void toggleSlot(String id) {
+  Future<void> toggleSlot(String id) async {
     ParkingSlot? changedSlot;
+    final previousSlots = state.slots;
     final updated = [
       for (final slot in state.slots)
         if (slot.id == id)
@@ -4494,15 +4495,17 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(slots: updated);
 
     if (changedSlot != null) {
-      unawaited(
-        Supabase.instance.client
+      try {
+        await Supabase.instance.client
             .from('parking_slots')
             .update({
               'status': changedSlot.isAvailable ? 'available' : 'occupied',
             })
-            .eq('id', changedSlot.id)
-            .catchError((_) {}),
-      );
+            .eq('id', changedSlot.id);
+      } catch (error) {
+        state = state.copyWith(slots: previousSlots);
+        throw StateError('Gagal memperbarui status slot di Supabase: $error');
+      }
     }
   }
 
@@ -15223,9 +15226,18 @@ class _ManageSlotsScreenState extends ConsumerState<ManageSlotsScreen> {
                     Switch(
                       value: slot.isAvailable,
                       activeThumbColor: AppTheme.emerald,
-                      onChanged: (_) => ref
-                          .read(appControllerProvider.notifier)
-                          .toggleSlot(slot.id),
+                      onChanged: (_) async {
+                        try {
+                          await ref
+                              .read(appControllerProvider.notifier)
+                              .toggleSlot(slot.id);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error.toString())),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),
