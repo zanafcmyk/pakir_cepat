@@ -1721,10 +1721,13 @@ class AppController extends StateNotifier<AppState> {
   RealtimeChannel? _parkingGuardRealtimeChannel;
   RealtimeChannel? _guardOperationsRealtimeChannel;
   RealtimeChannel? _notificationRealtimeChannel;
+  RealtimeChannel? _chatRoomsRealtimeChannel;
   Timer? _parkingSlotRealtimeDebounce;
   Timer? _guardOperationsRealtimeDebounce;
   Timer? _notificationRealtimeDebounce;
+  Timer? _chatRoomsRealtimeDebounce;
   String? _notificationRealtimeProfileId;
+  String? _chatRoomsRealtimeProfileId;
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1906,6 +1909,7 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadChatRoomsFromSupabase(AccountMode mode) async {
     final rooms = await _chatService.fetchRoomsForCurrentUser(mode: mode);
     if (rooms.isEmpty) {
+      startChatRoomsRealtime(mode);
       return;
     }
 
@@ -1929,6 +1933,63 @@ class AppController extends StateNotifier<AppState> {
             rooms,
           ),
         );
+    }
+    startChatRoomsRealtime(mode);
+  }
+
+  void startChatRoomsRealtime(AccountMode mode) {
+    final profileId = Supabase.instance.client.auth.currentUser?.id;
+    if (profileId == null) {
+      return;
+    }
+    final channelKey = '$profileId:${mode.name}';
+    if (_chatRoomsRealtimeChannel != null &&
+        _chatRoomsRealtimeProfileId == channelKey) {
+      return;
+    }
+
+    final oldChannel = _chatRoomsRealtimeChannel;
+    if (oldChannel != null) {
+      unawaited(Supabase.instance.client.removeChannel(oldChannel));
+    }
+
+    _chatRoomsRealtimeProfileId = channelKey;
+    _chatRoomsRealtimeChannel = Supabase.instance.client
+        .channel('public:chat-rooms:$channelKey')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_messages',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_room_members',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_rooms',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .subscribe();
+  }
+
+  void _scheduleChatRoomsRealtimeRefresh(AccountMode mode) {
+    _chatRoomsRealtimeDebounce?.cancel();
+    _chatRoomsRealtimeDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () => unawaited(_refreshChatRoomsFromRealtime(mode)),
+    );
+  }
+
+  Future<void> _refreshChatRoomsFromRealtime(AccountMode mode) async {
+    try {
+      await loadChatRoomsFromSupabase(mode);
+    } catch (_) {
+      // Realtime refresh is best-effort; opening the chat page reloads it.
     }
   }
 
@@ -5097,6 +5158,7 @@ class AppController extends StateNotifier<AppState> {
     _parkingSlotRealtimeDebounce?.cancel();
     _guardOperationsRealtimeDebounce?.cancel();
     _notificationRealtimeDebounce?.cancel();
+    _chatRoomsRealtimeDebounce?.cancel();
 
     final channels = [
       _parkingSlotRealtimeChannel,
@@ -5104,6 +5166,7 @@ class AppController extends StateNotifier<AppState> {
       _parkingGuardRealtimeChannel,
       _guardOperationsRealtimeChannel,
       _notificationRealtimeChannel,
+      _chatRoomsRealtimeChannel,
     ];
     for (final channel in channels) {
       if (channel != null) {
@@ -5116,7 +5179,9 @@ class AppController extends StateNotifier<AppState> {
     _parkingGuardRealtimeChannel = null;
     _guardOperationsRealtimeChannel = null;
     _notificationRealtimeChannel = null;
+    _chatRoomsRealtimeChannel = null;
     _notificationRealtimeProfileId = null;
+    _chatRoomsRealtimeProfileId = null;
   }
 }
 
@@ -10803,6 +10868,7 @@ class _CustomerChatListScreenState
         return;
       }
       final controller = ref.read(appControllerProvider.notifier);
+      controller.startChatRoomsRealtime(AccountMode.customer);
       unawaited(controller.loadChatRoomsFromSupabase(AccountMode.customer));
       unawaited(controller.loadCurrentUserComplaintsFromSupabase());
     });
@@ -11152,6 +11218,9 @@ class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
             .read(appControllerProvider.notifier)
             .loadChatRoomsFromSupabase(widget.mode),
       );
+      ref
+          .read(appControllerProvider.notifier)
+          .startChatRoomsRealtime(widget.mode);
     });
   }
 
@@ -17813,6 +17882,7 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
         return;
       }
       final controller = ref.read(appControllerProvider.notifier);
+      controller.startChatRoomsRealtime(AccountMode.parkingGuard);
       unawaited(controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard));
       unawaited(controller.loadCurrentUserComplaintsFromSupabase());
     });
