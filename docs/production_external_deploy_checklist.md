@@ -3,6 +3,9 @@
 Dokumen ini untuk langkah yang tidak bisa diselesaikan hanya dari kode Flutter,
 karena membutuhkan secret, dashboard Supabase, dashboard Midtrans, atau Firebase.
 
+Untuk urutan uji production yang menggabungkan SQL, Midtrans, expiry reservasi,
+dan scan penjaga, ikuti juga `docs/production_midtrans_expiry_scan_runbook.md`.
+
 ## Booking dan Payment Security
 
 Jalankan patch berikut di SQL Editor Supabase setelah schema dan patch role sync:

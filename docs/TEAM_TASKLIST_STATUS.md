@@ -2,7 +2,7 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, dan audit tasklist.
+Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, dan runbook SQL/Midtrans/expiry/scan.
 
 ## Cara Pakai
 
@@ -17,8 +17,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 262.
-- Selesai: 245.
+- Total item terhitung: 263.
+- Selesai: 246.
 - Belum selesai: 17.
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
@@ -66,6 +66,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] `flutter analyze --no-pub` lulus tanpa issue.
 - [x] Seluruh 6 test saat ini lulus.
 - [x] Audit alur utama end-to-end terbaru dicatat di `docs/e2e_main_flow_audit_2026-06-25.md`.
+- [x] Runbook uji production SQL, Midtrans, expiry reservasi, dan scan penjaga dicatat di `docs/production_midtrans_expiry_scan_runbook.md`.
 - [x] Verifikasi SQL production terbaru via `docs/supabase_production_sql_verification.sql` lulus: tabel, kolom, RPC, RLS, policy, trigger, realtime publication, storage bucket, dan cron expiry semuanya `OK`.
 - [x] Audit kode dan deploy webhook Midtrans terbaru dicatat di `docs/midtrans_audit_2026-06-25.md`; webhook production aktif version 10 dan sudah diberi guard idempotensi agar payment `paid` tidak downgrade.
 - [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
