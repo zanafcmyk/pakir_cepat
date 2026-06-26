@@ -17,9 +17,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 271.
-- Selesai: 258 (95.2%).
-- Belum selesai: 13 (4.8%).
+- Total item terhitung: 272.
+- Selesai: 258 (94.9%).
+- Belum selesai: 14 (5.1%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -76,6 +76,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
 - [ ] Build APK release belum berhasil diverifikasi. Flutter berhasil sampai tahap kompilasi/tree-shaking, lalu JVM Gradle crash; turunkan konfigurasi heap `-Xmx8G` dan ulangi build pada mesin yang cukup stabil.
+- [ ] Tambahkan strategi auto update aplikasi nanti sebelum release, misalnya lewat Play Store/App Store update atau pemeriksaan versi minimum dari server.
 - [ ] Edit ulang data lahan live lama dengan alamat lengkap. Dua lahan yang diaudit masih memakai koordinat default yang sama `-6.2087145, 106.8224854`.
 - [x] `send-push-notification` sekarang mewajibkan `PUSH_FUNCTION_SECRET`; function sudah dideploy ulang sebagai version 6.
 
