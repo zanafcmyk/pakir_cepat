@@ -17,9 +17,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 263.
-- Selesai: 246.
-- Belum selesai: 17.
+- Total item terhitung: 266.
+- Selesai: 249 (93.6%).
+- Belum selesai: 17 (6.4%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
