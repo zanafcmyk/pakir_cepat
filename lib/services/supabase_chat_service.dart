@@ -86,6 +86,27 @@ class SupabaseChatService {
     ];
   }
 
+  Future<void> markRoomAsRead({required String localRoomId}) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return;
+    }
+
+    final roomId = await _roomIdForLocalRoom(localRoomId);
+    if (roomId == null) {
+      return;
+    }
+
+    await _client
+        .from('chat_room_members')
+        .update({
+          'unread_count': 0,
+          'last_read_at': DateTime.now().toIso8601String(),
+        })
+        .eq('room_id', roomId)
+        .eq('profile_id', user.id);
+  }
+
   Future<Stream<List<ChatMessage>>> watchMessages({
     required String localRoomId,
   }) async {

@@ -400,6 +400,18 @@ bool _isDemoChatRoomId(String roomId) {
       roomId.endsWith('-app');
 }
 
+int unreadChatCountFor(AppState state, AccountMode mode) {
+  final rooms = switch (mode) {
+    AccountMode.customer => state.customerChatRooms,
+    AccountMode.provider => state.providerChatRooms,
+    AccountMode.parkingGuard => state.guardChatRooms,
+    AccountMode.superAdmin => state.superAdminChatRooms,
+  };
+  return rooms
+      .where((room) => !_isDemoChatRoomId(room.id))
+      .fold<int>(0, (total, room) => total + room.unreadCount);
+}
+
 String? guardedRedirect(String location, AppState Function() readState) {
   const publicRoutes = {
     '/',
@@ -2014,6 +2026,15 @@ class AppController extends StateNotifier<AppState> {
     _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
   }
 
+  void _markChatRoomAsReadInSupabase(String roomId, AccountMode mode) {
+    unawaited(
+      _chatService
+          .markRoomAsRead(localRoomId: roomId)
+          .then((_) => loadChatRoomsFromSupabase(mode))
+          .catchError((_) {}),
+    );
+  }
+
   Future<Stream<List<ChatMessage>>> watchChatMessagesFromSupabase({
     required String roomId,
   }) {
@@ -3572,6 +3593,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markCustomerChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.customer);
     state = state.copyWith(
       customerChatRooms: [
         for (final room in state.customerChatRooms)
@@ -3800,6 +3822,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.parkingGuard);
     state = state.copyWith(
       guardChatRooms: [
         for (final room in state.guardChatRooms)
@@ -3912,6 +3935,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markProviderChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.provider);
     state = state.copyWith(
       providerChatRooms: [
         for (final room in state.providerChatRooms)
@@ -4030,6 +4054,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markSuperAdminChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.superAdmin);
     state = state.copyWith(
       superAdminChatRooms: [
         for (final room in state.superAdminChatRooms)
@@ -18686,7 +18711,7 @@ class GuardProfileScreen extends ConsumerWidget {
   }
 }
 
-class CustomerShell extends StatelessWidget {
+class CustomerShell extends ConsumerWidget {
   const CustomerShell({
     super.key,
     required this.currentIndex,
@@ -18699,22 +18724,26 @@ class CustomerShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.customer,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.home_rounded,
           route: '/customer/home',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Map',
           icon: Icons.map_rounded,
           route: '/customer/map',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Tiket',
           icon: Icons.confirmation_num_rounded,
           route: '/customer/tickets',
@@ -18723,8 +18752,9 @@ class CustomerShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/customer/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/customer/profile',
@@ -18735,7 +18765,7 @@ class CustomerShell extends StatelessWidget {
   }
 }
 
-class AdminShell extends StatelessWidget {
+class AdminShell extends ConsumerWidget {
   const AdminShell({
     super.key,
     required this.currentIndex,
@@ -18748,22 +18778,26 @@ class AdminShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.provider,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.space_dashboard_rounded,
           route: '/provider/dashboard',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Map',
           icon: Icons.map_rounded,
           route: '/provider/map',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Monitor',
           icon: Icons.radar_rounded,
           route: '/provider/monitoring',
@@ -18772,8 +18806,9 @@ class AdminShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/provider/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/provider/profile',
@@ -18803,6 +18838,7 @@ class SuperAdminShell extends ConsumerWidget {
     final waitingComplaints = state.complaints
         .where((complaint) => complaint.status == ComplaintStatus.waiting)
         .length;
+    final chatUnread = unreadChatCountFor(state, AccountMode.superAdmin);
     return AppShell(
       currentIndex: currentIndex,
       destinations: [
@@ -18828,10 +18864,11 @@ class SuperAdminShell extends ConsumerWidget {
           route: '/super-admin/complaints',
           badgeCount: waitingComplaints,
         ),
-        const ShellDestination(
+        ShellDestination(
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/super-admin/chat',
+          badgeCount: chatUnread,
         ),
         const ShellDestination(
           label: 'Profil',
@@ -18844,7 +18881,7 @@ class SuperAdminShell extends ConsumerWidget {
   }
 }
 
-class GuardShell extends StatelessWidget {
+class GuardShell extends ConsumerWidget {
   const GuardShell({
     super.key,
     required this.currentIndex,
@@ -18857,22 +18894,26 @@ class GuardShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.parkingGuard,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.space_dashboard_rounded,
           route: '/guard/dashboard',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Scan',
           icon: Icons.qr_code_scanner_rounded,
           route: '/guard/scan-qr',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Kendaraan',
           icon: Icons.directions_car_rounded,
           route: '/guard/vehicles',
@@ -18881,8 +18922,9 @@ class GuardShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/guard/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/guard/profile',

@@ -10,6 +10,7 @@ alter table public.chat_rooms
 alter table public.chat_room_members
   add column if not exists member_role public.account_role,
   add column if not exists display_name text,
+  add column if not exists unread_count integer not null default 0 check (unread_count >= 0),
   add column if not exists last_read_at timestamptz;
 
 alter table public.chat_messages
