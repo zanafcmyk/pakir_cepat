@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class MapEmbedView extends StatelessWidget {
   const MapEmbedView({
@@ -20,91 +22,111 @@ class MapEmbedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F7FB),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Stack(
-        children: [
-          const Positioned.fill(child: _InlineMapPreviewPainter()),
-          const Center(
-            child: Icon(
-              Icons.location_on_rounded,
-              color: Color(0xFF10B981),
-              size: 58,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0F172A).withValues(alpha: 0.08),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+    final center = LatLng(latitude, longitude);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: center,
+                initialZoom: 15,
+                interactionOptions: const InteractionOptions(
+                  flags:
+                      InteractiveFlag.drag |
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom,
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.location_on_rounded,
-                          color: Color(0xFF1F6BFF),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _fallbackLocationText,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF64748B),
-                        height: 1.35,
-                      ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.parkircepat.parkir_cepat',
+                  retinaMode: RetinaMode.isHighDensity(context),
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: center,
+                      width: 56,
+                      height: 56,
+                      child: const _MapPin(),
                     ),
                   ],
                 ),
+              ],
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_rounded,
+                            color: Color(0xFF1F6BFF),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _locationText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  String get _fallbackLocationText {
+  String get _locationText {
     final query = _mapSearchQuery;
     if (query != null && query.isNotEmpty) {
       return query;
     }
-    return 'Latitude: $latitude\nLongitude: $longitude';
+    return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
   }
 
   String? get _mapSearchQuery {
@@ -121,84 +143,30 @@ class MapEmbedView extends StatelessWidget {
   }
 }
 
-class _InlineMapPreviewPainter extends StatelessWidget {
-  const _InlineMapPreviewPainter();
+class _MapPin extends StatelessWidget {
+  const _MapPin();
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(painter: _InlineMapPainter());
-  }
-}
-
-class _InlineMapPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final background = Paint()..color = const Color(0xFFEFF6FF);
-    canvas.drawRect(Offset.zero & size, background);
-
-    final parkPaint = Paint()..color = const Color(0xFFDDF7EE);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.58,
-          -20,
-          size.width * 0.28,
-          size.height * 0.62,
-        ),
-        const Radius.circular(36),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      parkPaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          -20,
-          size.height * 0.2,
-          size.width * 0.34,
-          size.height * 0.5,
+      child: const Center(
+        child: Icon(
+          Icons.location_on_rounded,
+          color: Color(0xFF10B981),
+          size: 34,
         ),
-        const Radius.circular(34),
       ),
-      Paint()..color = const Color(0xFFE4ECFB),
-    );
-
-    final roadPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.88)
-      ..strokeWidth = 18
-      ..strokeCap = StrokeCap.round;
-    final smallRoadPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.7)
-      ..strokeWidth = 10
-      ..strokeCap = StrokeCap.round;
-
-    final mainPath = Path()
-      ..moveTo(-20, size.height * 0.82)
-      ..quadraticBezierTo(
-        size.width * 0.28,
-        size.height * 0.55,
-        size.width * 0.54,
-        size.height * 0.62,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.78,
-        size.height * 0.68,
-        size.width + 20,
-        size.height * 0.36,
-      );
-    canvas.drawPath(mainPath, roadPaint);
-
-    canvas.drawLine(
-      Offset(size.width * 0.14, -10),
-      Offset(size.width * 0.38, size.height + 10),
-      smallRoadPaint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.72, -10),
-      Offset(size.width * 0.44, size.height + 10),
-      smallRoadPaint,
     );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
