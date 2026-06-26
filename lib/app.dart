@@ -9979,6 +9979,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
     context.go('/customer/tickets');
   }
 
+  String get _simulationButtonLabel {
+    if (_isSimulatingPayment) {
+      return 'Memproses simulasi...';
+    }
+    return switch (_method) {
+      PaymentMethod.qris => 'Simulasi QRIS sandbox berhasil',
+      PaymentMethod.ewallet => 'Simulasi e-wallet sandbox berhasil',
+      PaymentMethod.cash => 'Simulasi pembayaran berhasil',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
@@ -10143,6 +10154,16 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                 ),
                 const SizedBox(height: 12),
                 SecondaryButton(
+                  label: _simulationButtonLabel,
+                  icon: _method == PaymentMethod.qris
+                      ? Icons.qr_code_scanner_rounded
+                      : Icons.science_rounded,
+                  onPressed: isPayable && !_isSimulatingPayment
+                      ? _simulatePaymentSuccess
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
                   label: 'Bayar langsung di lokasi',
                   icon: Icons.payments_rounded,
                   onPressed: isPayable
@@ -10150,16 +10171,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
                           setState(() => _paymentError = null);
                           _requestCashPaymentConfirmation();
                         }
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                SecondaryButton(
-                  label: _isSimulatingPayment
-                      ? 'Memproses simulasi...'
-                      : 'Simulasi pembayaran berhasil',
-                  icon: Icons.science_rounded,
-                  onPressed: isPayable && !_isSimulatingPayment
-                      ? _simulatePaymentSuccess
                       : null,
                 ),
                 if (_gatewayOpened && isPayable) ...[
@@ -10205,11 +10216,22 @@ class _PaymentInstructionCard extends StatelessWidget {
           title: 'QRIS Gateway',
           subtitle:
               'Tekan tombol Bayar melalui Midtrans. QRIS resmi akan muncul di halaman Midtrans, bukan di aplikasi ini.',
-          child: const InlineNotice(
-            icon: Icons.verified_user_rounded,
-            accent: AppTheme.blue,
-            message:
-                'Setelah pembayaran sandbox berhasil dan webhook diterima, tiket QR aktif otomatis untuk scan masuk dan keluar.',
+          child: const Column(
+            children: [
+              InlineNotice(
+                icon: Icons.qr_code_scanner_rounded,
+                accent: Color(0xFFD97706),
+                message:
+                    'QRIS sandbox Midtrans tidak bisa dibayar memakai kamera dompet/bank asli. Untuk demo, gunakan tombol simulasi QRIS sandbox di bawah.',
+              ),
+              SizedBox(height: 12),
+              InlineNotice(
+                icon: Icons.verified_user_rounded,
+                accent: AppTheme.blue,
+                message:
+                    'Setelah pembayaran sandbox berhasil dan webhook diterima, tiket QR aktif otomatis untuk scan masuk dan keluar.',
+              ),
+            ],
           ),
         ),
         PaymentMethod.ewallet => _PaymentMethodBox(

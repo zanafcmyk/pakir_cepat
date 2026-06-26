@@ -97,6 +97,11 @@ Deno.serve(async (req) => {
     }
 
     const orderId = `PC-${booking.ticket_number}-${Date.now()}`;
+    const finishCallbackUrl = paymentFinishUrl(finishUrl, {
+      ticket: booking.ticket_number,
+      order_id: orderId,
+      method,
+    });
     const { data: payment, error: paymentError } = await adminClient
       .from("payments")
       .insert({
@@ -143,7 +148,9 @@ Deno.serve(async (req) => {
           email: profile.email ?? user.email,
           phone: profile.phone_number ?? undefined,
         },
-        callbacks: finishUrl ? { finish: finishUrl } : undefined,
+        callbacks: finishCallbackUrl
+          ? { finish: finishCallbackUrl }
+          : undefined,
       }),
     });
 
@@ -203,6 +210,30 @@ function paidAmount(value: unknown) {
     const amount = Number(payment.amount ?? 0);
     return Number.isFinite(amount) ? total + amount : total;
   }, 0);
+}
+
+function paymentFinishUrl(
+  baseUrl: string,
+  params: Record<string, string>,
+) {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const url = new URL(trimmed);
+    for (const [key, value] of Object.entries(params)) {
+      if (value) {
+        url.searchParams.set(key, value);
+      }
+    }
+    return url.toString();
+  } catch {
+    const separator = trimmed.includes("?") ? "&" : "?";
+    const query = new URLSearchParams(params).toString();
+    return `${trimmed}${separator}${query}`;
+  }
 }
 
 function json(body: Record<string, unknown>, status = 200) {
