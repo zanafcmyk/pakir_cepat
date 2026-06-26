@@ -544,6 +544,35 @@ class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
     }
 
     final controller = ref.read(appControllerProvider.notifier);
+    if (target == _DeepLinkTarget.authCallback) {
+      try {
+        await Supabase.instance.client.auth.getSessionFromUrl(uri);
+      } catch (_) {
+        // Supabase also observes auth links internally; this keeps manual
+        // handling from blocking navigation if the session was already set.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        await controller.ensureCurrentCustomerAccount(rememberMe: true);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          ),
+        );
+        context.go('/login');
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+      return;
+    }
+
     var sessionRestored = ref.read(appControllerProvider).isAuthenticated;
     if (!sessionRestored) {
       sessionRestored = await controller.restoreRememberedSession();
@@ -590,6 +619,7 @@ class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
     return switch (normalized) {
       'reset-password' ||
       'auth/reset-password' => _DeepLinkTarget.resetPassword,
+      'auth' || 'auth/callback' => _DeepLinkTarget.authCallback,
       'payment-finish' || 'payment/finish' => _DeepLinkTarget.paymentFinish,
       _ => null,
     };
@@ -616,7 +646,7 @@ class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
   }
 }
 
-enum _DeepLinkTarget { resetPassword, paymentFinish }
+enum _DeepLinkTarget { resetPassword, paymentFinish, authCallback }
 
 class AppState {
   const AppState({
@@ -2443,6 +2473,90 @@ class AppController extends StateNotifier<AppState> {
         await loadRegistrationRequestsFromSupabase().catchError((_) {});
         await loadManagedUsersFromSupabase().catchError((_) {});
     }
+  }
+
+  Future<void> ensureCurrentCustomerAccount({
+    String? phoneNumber,
+    bool rememberMe = true,
+  }) async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw StateError('Session login belum aktif.');
+    }
+
+    final existingRows = await supabase
+        .from('profiles')
+        .select('id, email, phone_number, role, access_status')
+        .eq('id', user.id)
+        .limit(1);
+    final existingProfile = existingRows.isEmpty ? null : existingRows.first;
+    if (existingProfile != null) {
+      if (existingProfile['role'] != 'customer') {
+        await supabase.auth.signOut();
+        throw StateError('Akun ini bukan akun customer.');
+      }
+      if (existingProfile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        throw StateError('Akun customer sedang dinonaktifkan.');
+      }
+    }
+
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
+    final resolvedPhone =
+        phoneNumber ??
+        user.phone ??
+        existingProfile?['phone_number'] as String? ??
+        state.phoneNumber;
+    final resolvedEmail =
+        user.email ??
+        metadata['email'] as String? ??
+        existingProfile?['email'] as String? ??
+        _syntheticEmailForPhone(resolvedPhone, user.id);
+    final fullName =
+        metadata['full_name'] as String? ??
+        metadata['name'] as String? ??
+        resolvedEmail.split('@').first.replaceAll('.', ' ');
+
+    if (existingProfile == null) {
+      await supabase.from('profiles').insert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': resolvedEmail,
+        'phone_number': resolvedPhone.isEmpty ? null : resolvedPhone,
+        'role': 'customer',
+        'account_status': 'verified',
+        'access_status': 'active',
+        'verified_at': DateTime.now().toIso8601String(),
+      });
+    } else {
+      await supabase
+          .from('profiles')
+          .update({
+            'email': resolvedEmail,
+            'phone_number': resolvedPhone.isEmpty ? null : resolvedPhone,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', user.id);
+    }
+
+    await supabase.from('customers').upsert({
+      'profile_id': user.id,
+    }, onConflict: 'profile_id');
+
+    login(
+      mode: AccountMode.customer,
+      email: resolvedEmail,
+      phoneNumber: resolvedPhone,
+      rememberMe: rememberMe,
+    );
+    await _loadAuthenticatedRoleData(AccountMode.customer);
+  }
+
+  String _syntheticEmailForPhone(String phoneNumber, String userId) {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    final suffix = digits.isEmpty ? userId.replaceAll('-', '') : digits;
+    return 'phone-$suffix@parkircepat.local';
   }
 
   void login({
@@ -5635,6 +5749,197 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _submitGoogleLogin() async {
+    if (_isLoading) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final opened = await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'parkircepat://auth/callback',
+      );
+      if (!opened) {
+        _showLoginMessage('Google login belum bisa dibuka.');
+      }
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage(
+        'Tidak bisa membuka Google login. Cek konfigurasi OAuth Supabase.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _showPhoneOtpLoginDialog() async {
+    if (_isLoading) {
+      return;
+    }
+
+    final phoneController = TextEditingController(text: _phoneController.text);
+    final otpController = TextEditingController();
+    var otpSent = false;
+    var dialogLoading = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (builderContext, setDialogState) {
+            Future<void> handleSubmit() async {
+              final normalizedPhone = _normalizePhoneForAuth(
+                phoneController.text,
+              );
+              if (normalizedPhone.isEmpty) {
+                _showLoginMessage('Nomor HP wajib diisi.');
+                return;
+              }
+              if (!normalizedPhone.startsWith('+')) {
+                _showLoginMessage(
+                  'Nomor HP harus memakai kode negara, contoh +628123456789.',
+                );
+                return;
+              }
+
+              setDialogState(() => dialogLoading = true);
+              try {
+                if (!otpSent) {
+                  await Supabase.instance.client.auth.signInWithOtp(
+                    phone: normalizedPhone,
+                    shouldCreateUser: true,
+                    data: {'full_name': 'Customer Parkir', 'role': 'customer'},
+                  );
+                  _phoneController.text = normalizedPhone;
+                  setDialogState(() => otpSent = true);
+                  _showLoginMessage('Kode OTP sudah dikirim.');
+                  return;
+                }
+
+                final token = otpController.text.trim();
+                if (token.isEmpty) {
+                  _showLoginMessage('Kode OTP wajib diisi.');
+                  return;
+                }
+
+                final authResponse = await Supabase.instance.client.auth
+                    .verifyOTP(
+                      phone: normalizedPhone,
+                      token: token,
+                      type: OtpType.sms,
+                    );
+                if (authResponse.user == null) {
+                  _showLoginMessage('Kode OTP belum valid.');
+                  return;
+                }
+
+                final controller = ref.read(appControllerProvider.notifier);
+                await controller.ensureCurrentCustomerAccount(
+                  phoneNumber: normalizedPhone,
+                  rememberMe: _rememberMe,
+                );
+
+                if (!mounted || !dialogContext.mounted) {
+                  return;
+                }
+                Navigator.of(dialogContext).pop();
+                context.go(
+                  controller.landingRouteFor(ref.read(appControllerProvider)),
+                );
+              } on AuthException catch (error) {
+                _showLoginMessage(error.message);
+              } catch (error) {
+                _showLoginMessage(
+                  error.toString().replaceFirst('Bad state: ', ''),
+                );
+              } finally {
+                if (builderContext.mounted) {
+                  setDialogState(() => dialogLoading = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: Text(otpSent ? 'Masukkan kode OTP' : 'Login nomor HP'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: phoneController,
+                    enabled: !otpSent && !dialogLoading,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor HP',
+                      hintText: '+628123456789',
+                      prefixIcon: Icon(Icons.phone_iphone_rounded),
+                    ),
+                  ),
+                  if (otpSent) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: otpController,
+                      enabled: !dialogLoading,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Kode OTP',
+                        prefixIcon: Icon(Icons.password_rounded),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: dialogLoading
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Batal'),
+                ),
+                FilledButton.icon(
+                  onPressed: dialogLoading ? null : handleSubmit,
+                  icon: Icon(
+                    otpSent ? Icons.verified_rounded : Icons.sms_rounded,
+                  ),
+                  label: Text(
+                    dialogLoading
+                        ? 'Memproses...'
+                        : otpSent
+                        ? 'Verifikasi'
+                        : 'Kirim OTP',
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    phoneController.dispose();
+    otpController.dispose();
+  }
+
+  String _normalizePhoneForAuth(String value) {
+    final compact = value.trim().replaceAll(RegExp(r'[\s\-().]'), '');
+    if (compact.isEmpty) {
+      return '';
+    }
+    if (compact.startsWith('+')) {
+      return compact;
+    }
+    if (compact.startsWith('0')) {
+      return '+62${compact.substring(1)}';
+    }
+    if (compact.startsWith('62')) {
+      return '+$compact';
+    }
+    return compact;
+  }
+
   void _showLoginMessage(String message) {
     if (!mounted) {
       return;
@@ -5837,13 +6142,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SecondaryButton(
             label: 'Masuk dengan Google',
             icon: Icons.g_mobiledata_rounded,
-            onPressed: _submitLogin,
+            onPressed: _isLoading ? null : _submitGoogleLogin,
           ),
           const SizedBox(height: 12),
           SecondaryButton(
             label: 'Login nomor HP',
             icon: Icons.sms_rounded,
-            onPressed: _submitLogin,
+            onPressed: _isLoading ? null : _showPhoneOtpLoginDialog,
           ),
           const SizedBox(height: 18),
           Row(
