@@ -3725,6 +3725,19 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  String createGuardProviderChatRoom() {
+    final guard = activeGuard(state);
+    final contextId = guard?.id ?? 'penjaga';
+    return createGuardChatRoom(
+      id: 'guard-provider-$contextId',
+      title: 'Penyedia Parkir',
+      participantRole: 'Penyedia Parkir',
+      participantName: 'Penyedia lahan tugas',
+      initialMessage:
+          'Percakapan operasional antara penjaga dan penyedia parkir.',
+    );
+  }
+
   void markChatAsRead(String roomId) {
     state = state.copyWith(
       guardChatRooms: [
@@ -3741,7 +3754,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendGuardMessage({required String roomId, required String message}) {
+  Future<void> sendGuardMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3767,16 +3783,14 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    unawaited(
-      _syncChatMessage(
-        localRoomId: roomId,
-        title: room.title,
-        senderMode: AccountMode.parkingGuard,
-        senderName: guard?.name ?? 'Penjaga Parkir',
-        participantRole: room.participantRole,
-        participantName: room.participantName,
-        message: trimmed,
-      ).catchError((_) {}),
+    await _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.parkingGuard,
+      senderName: guard?.name ?? 'Penjaga Parkir',
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.parkingGuard, roomId);
     state = state.copyWith(
@@ -11273,7 +11287,10 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
             message: text,
           );
         case AccountMode.parkingGuard:
-          controller.sendGuardMessage(roomId: widget.roomId, message: text);
+          await controller.sendGuardMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
       }
     } catch (error) {
       if (!mounted) {
@@ -17836,6 +17853,17 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
               ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
+            onPressed: () {
+              final roomId = ref
+                  .read(appControllerProvider.notifier)
+                  .createGuardProviderChatRoom();
+              context.push('/guard/chat-room?roomId=$roomId');
+            },
+            icon: const Icon(Icons.apartment_rounded),
+            label: const Text('Chat / Komplain Penyedia'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
             onPressed: () => context.push('/guard/complaint'),
             icon: const Icon(Icons.report_problem_rounded),
             label: const Text('Buat Komplain ke Admin Aplikasi'),
@@ -17944,15 +17972,25 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .sendGuardMessage(roomId: widget.roomId, message: text);
     _messageController.clear();
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .sendGuardMessage(roomId: widget.roomId, message: text);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -18069,7 +18107,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -18081,7 +18119,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
                   width: 52,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _sendMessage,
+                    onPressed: () => unawaited(_sendMessage()),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.zero,
                       backgroundColor: AppTheme.blue,
