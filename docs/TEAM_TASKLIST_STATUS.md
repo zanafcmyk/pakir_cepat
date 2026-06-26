@@ -17,9 +17,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 266.
-- Selesai: 249 (93.6%).
-- Belum selesai: 17 (6.4%).
+- Total item terhitung: 270.
+- Selesai: 256 (94.8%).
+- Belum selesai: 14 (5.2%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -33,15 +33,17 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Scan masuk/keluar dipindahkan ke RPC atomik yang memvalidasi assignment penjaga, status sebelumnya, update slot, waktu scan, dan activity log.
 - [x] Penyedia dapat menjadi operator scan/tunai untuk lokasi miliknya ketika tidak ada penjaga aktif yang ditugaskan; validasi kepemilikan dan ketiadaan penjaga dilakukan server-side.
 - [x] Proses kedaluwarsa reservasi server-side tersedia di `docs/supabase_booking_expiry.sql`: booking lewat 30 menit dibatalkan, slot dilepas, payment pending dibatalkan, customer diberi notifikasi, dan proses dijadwalkan tiap menit dengan `pg_cron`.
-- [ ] Jalankan `docs/supabase_booking_expiry.sql` di Supabase production, deploy ulang Edge Function Midtrans, lalu uji expiry dan callback terlambat.
+- [x] `docs/supabase_booking_expiry.sql` sudah dijalankan di Supabase production berdasarkan konfirmasi owner.
+- [ ] Deploy ulang Edge Function Midtrans, lalu uji expiry 30 menit dan callback terlambat.
 
 #### Belum Berjalan Penuh
 
 - [x] Cek pembayaran penjaga mencari nomor tiket/plat dari booking Supabase dan membatasi hasil ke lokasi assignment penjaga.
 - [x] Daftar kendaraan aktif penjaga membaca seluruh booking operasional pada lokasi assignment, mendukung filter lokasi, muat ulang, dan konfirmasi tunai per tiket.
 - [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
-- [ ] Jalankan `docs/supabase_realtime_guard_operations.sql` di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
-- [ ] Jalankan `docs/supabase_guard_assignment_validation.sql`, simpan ulang assignment penjaga dari akun penyedia, lalu uji scan tiket di lahan yang sama.
+- [x] `docs/supabase_realtime_guard_operations.sql` sudah dijalankan di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
+- [x] `docs/supabase_guard_assignment_validation.sql` sudah dijalankan di production berdasarkan konfirmasi owner.
+- [ ] Simpan ulang assignment penjaga dari akun penyedia, lalu uji scan tiket di lahan yang sama.
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
 - [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
@@ -97,7 +99,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Form tambah kendaraan membuat satu input plat untuk setiap jumlah kendaraan dan menyimpan setiap plat sebagai kendaraan terpisah.
 - [x] Halaman booking menyediakan pilihan kendaraan dan input waktu masuk manual dengan validasi format tanggal/jam.
 - [x] Booking parkir memakai RPC untuk reserve slot, menghitung tarif server, dan membuat booking secara bersamaan; patch SQL masih harus diterapkan di production.
-- [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga sudah dipindahkan ke RPC aman dan menunggu penerapan SQL live.
+- [x] Payment online Midtrans memiliki jalur penyimpanan Supabase dan webhook; payment tunai penjaga sudah dipindahkan ke RPC aman dan SQL production sudah aman.
 - [x] Halaman pembayaran menyediakan dua aksi jelas: bayar melalui Midtrans atau bayar langsung/tunai di lokasi yang tetap membutuhkan konfirmasi penjaga/operator.
 - [x] Metode debit/kredit dihapus dari aplikasi; metode tersisa scan QR/QRIS, e-wallet, dan tunai.
 - [x] Payment gateway hanya memakai booking yang berhasil tersimpan di Supabase; fallback booking lokal/demo dihapus.
@@ -157,7 +159,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Audit RLS sinkron antar-role dibuat dan kode memakai RPC optional untuk chat/notifikasi.
 - [x] Super admin hapus akun Auth sungguhan siap lewat Edge Function `admin-delete-user`.
 - [x] Audit route guard/deep link dasar dengan test role route.
-- [x] UI payment tunai dan service sudah memakai RPC khusus penjaga; penerapan SQL production serta uji perangkat masih diperlukan.
+- [x] UI payment tunai dan service sudah memakai RPC khusus penjaga; SQL production sudah aman dan uji perangkat masih diperlukan.
 - [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
 - [x] Error handling dashboard penyedia, penjaga, dan super admin menampilkan kegagalan data Supabase.
 - [x] Data demo/lokal mulai dipisah dengan flag `isUsingDemoData` dan notice dashboard.
@@ -174,7 +176,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
 - [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
-- [ ] SQL RLS/role-sync patch `docs/supabase_role_sync_rls_patch.sql` perlu diaudit ulang di Supabase production, termasuk RPC booking customer dan `app_provider_add_parking_slot`.
+- [x] SQL RLS/role-sync patch `docs/supabase_role_sync_rls_patch.sql` sudah diaudit ulang di Supabase production, termasuk RPC booking customer dan `app_provider_add_parking_slot`.
 - [x] Edge Function `admin-delete-user` sudah terdeploy dan merespons; pastikan `SERVICE_ROLE_KEY` tetap tersedia serta audit aksi hapus memakai akun super admin.
 
 #### Catatan audit baris 48-66
@@ -301,7 +303,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Pembatasan route penjaga dasar sudah ada.
 - [x] Item audit deep link penjaga dikonsolidasikan ke item audit deep link production utama.
 - [x] Konfirmasi tunai sudah memakai RPC khusus dengan validasi izin dan assignment penjaga.
-- [ ] Jalankan patch SQL lalu audit kas/settlement payment tunai di production.
+- [x] Patch SQL kas/settlement payment tunai sudah dijalankan di production berdasarkan konfirmasi owner.
+- [ ] Audit kas/settlement payment tunai di production memakai booking nyata.
 - [x] Cek pembayaran dan daftar kendaraan aktif penjaga memakai query Supabase lintas booking yang dibatasi assignment lokasi.
 - [x] Item SQL publication booking/payment dikonsolidasikan ke item realtime operasional penjaga utama.
 
@@ -339,7 +342,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Tombol simulasi pembayaran customer tersedia untuk demo/sandbox lewat `docs/supabase_simulate_customer_payment.sql`, langsung membuat tiket aktif, receipt, dan notifikasi.
 - [x] Item audit payment customer dikonsolidasikan ke item audit Midtrans end-to-end utama.
 - [x] Payment tunai/manual diarahkan ke penjaga dan customer tidak bisa melunasi sendiri.
-- [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus; menunggu patch SQL diterapkan di production.
+- [x] Penyimpanan payment tunai penjaga sudah diarahkan ke RPC khusus dan patch SQL production sudah aman.
 - [x] Perpanjang durasi dan biaya parkir customer tersimpan ke Supabase melalui RPC dan pembayaran tambahan memakai sisa tagihan.
 
 #### Belum Ada/Belum Production
@@ -364,8 +367,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 #### Sudah Ada Tapi Perlu Diperkuat
 
 - [x] Item audit policy RLS dikonsolidasikan ke item audit SQL RLS/role-sync production utama.
-- [ ] SQL trigger perlu dipastikan sudah dijalankan di Supabase production.
-- [ ] Jalankan `docs/supabase_secure_ticket_qr.sql` di Supabase production, lalu uji scan QR token baru dan input manual nomor tiket.
+- [x] SQL trigger sudah dipastikan berjalan di Supabase production berdasarkan konfirmasi owner.
+- [x] `docs/supabase_secure_ticket_qr.sql` sudah dijalankan di Supabase production.
+- [ ] Uji scan QR token baru dan input manual nomor tiket.
 - [x] SQL realtime slot sudah dijalankan di Supabase production.
 - [x] SQL realtime lokasi/assignment penjaga/notifikasi sudah dijalankan di Supabase production.
 - [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
