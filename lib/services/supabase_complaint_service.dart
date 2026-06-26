@@ -54,7 +54,7 @@ class SupabaseComplaintService {
     final rows = await _client
         .from('complaints')
         .select(
-          'id, sender_profile_id, sender_role, title, description, status, reply, created_at, profiles(full_name)',
+          'id, sender_profile_id, sender_role, title, category, description, status, reply, created_at, profiles(full_name)',
         )
         .order('created_at', ascending: false);
 
@@ -107,15 +107,19 @@ class SupabaseComplaintService {
     final createdAt =
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
     final profile = row['profiles'];
+    final senderRole = _roleFromDb(row['sender_role'] as String?);
+    final senderName = _displaySenderName(profile, senderRole);
 
     return ComplaintItem(
       id: row['id'] as String,
       senderProfileId: row['sender_profile_id'] as String?,
-      senderName: profile is Map
-          ? profile['full_name'] as String? ?? 'Pengguna'
-          : 'Pengguna',
-      senderRole: _roleFromDb(row['sender_role'] as String?),
-      subject: row['title'] as String? ?? '-',
+      senderName: senderName,
+      senderRole: senderRole,
+      subject: _displayComplaintTitle(
+        row['title'] as String?,
+        row['category'] as String?,
+        senderName,
+      ),
       message: row['description'] as String? ?? '-',
       timeLabel: _formatDateTime(createdAt),
       status: _statusFromDb(row['status'] as String?),
@@ -128,14 +132,17 @@ class SupabaseComplaintService {
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
     final profile = row['profiles'];
     final senderRole = _roleFromDb(row['sender_role'] as String?);
+    final senderName = _displaySenderName(profile, senderRole);
 
     return Complaint(
       id: row['id'] as String,
       senderRole: _roleLabel(senderRole),
-      senderName: profile is Map
-          ? profile['full_name'] as String? ?? 'Pengguna'
-          : 'Pengguna',
-      title: row['title'] as String? ?? '-',
+      senderName: senderName,
+      title: _displayComplaintTitle(
+        row['title'] as String?,
+        row['category'] as String?,
+        senderName,
+      ),
       category: row['category'] as String? ?? '-',
       description: row['description'] as String? ?? '-',
       priority: _priorityText(row['priority'] as String?),
@@ -179,6 +186,42 @@ class SupabaseComplaintService {
     'urgent' => 'Urgent',
     _ => 'Sedang',
   };
+
+  String _displaySenderName(Object? profile, AccountMode senderRole) {
+    final name = profile is Map ? profile['full_name'] as String? : null;
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isNotEmpty && trimmed.toLowerCase() != 'pengguna') {
+      return trimmed;
+    }
+    return switch (senderRole) {
+      AccountMode.customer => 'Customer Parkir',
+      AccountMode.provider => 'Penyedia Parkir',
+      AccountMode.parkingGuard => 'Penjaga Parkir',
+      AccountMode.superAdmin => 'Admin Aplikasi',
+    };
+  }
+
+  String _displayComplaintTitle(
+    String? title,
+    String? category,
+    String senderName,
+  ) {
+    final trimmed = title?.trim() ?? '';
+    final normalized = trimmed.toLowerCase();
+    final looksLikeSystemCode =
+        trimmed.isEmpty ||
+        normalized.startsWith('cmp-') ||
+        normalized.startsWith('cus-cmp-') ||
+        RegExp(r'^[0-9a-f]{8}-[0-9a-f-]{27,}$').hasMatch(normalized);
+    if (!looksLikeSystemCode) {
+      return trimmed;
+    }
+
+    final label = (category?.trim().isNotEmpty ?? false)
+        ? category!.trim()
+        : 'kendala aplikasi';
+    return label;
+  }
 
   ComplaintStatus _statusFromDb(String? status) => switch (status) {
     'answered' => ComplaintStatus.answered,

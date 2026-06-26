@@ -3659,8 +3659,8 @@ class AppController extends StateNotifier<AppState> {
     );
     _syncRoleNotification(
       role: AccountMode.superAdmin,
-      title: 'Komplain customer baru',
-      message: '$title - $category dari ${state.customerName}.',
+      title: 'Komplain dari ${state.customerName}',
+      message: '$category: $title',
       type: 'complaint',
     );
   }
@@ -4097,8 +4097,8 @@ class AppController extends StateNotifier<AppState> {
     );
     _syncRoleNotification(
       role: AccountMode.superAdmin,
-      title: 'Komplain penjaga baru',
-      message: '$title - $category dari ${guard?.name ?? 'Penjaga Parkir'}.',
+      title: 'Komplain dari $guardName',
+      message: '$category: $title',
       type: 'complaint',
     );
   }
@@ -8176,14 +8176,14 @@ class ComplaintCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      complaint.subject,
+                      '${complaint.senderName} melaporkan ${complaint.subject}',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${complaint.senderName} - ${roleLabel(complaint.senderRole)} - ${complaint.timeLabel}',
+                      '${roleLabel(complaint.senderRole)} - ${complaint.timeLabel}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.slate,
                         height: 1.4,
@@ -10842,7 +10842,7 @@ class _CustomerChatListScreenState
                             children: [
                               Expanded(
                                 child: Text(
-                                  complaint.title,
+                                  'Laporan kamu: ${complaint.category}',
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
@@ -10855,7 +10855,7 @@ class _CustomerChatListScreenState
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            '${complaint.title} - Prioritas ${complaint.priority}',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
@@ -17819,7 +17819,7 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  complaint.title,
+                                  'Laporan penjaga: ${complaint.category}',
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
@@ -17832,7 +17832,7 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            '${complaint.title} - Prioritas ${complaint.priority}',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
