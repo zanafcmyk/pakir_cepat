@@ -65,7 +65,11 @@ begin
   )
   on conflict (room_key) where room_key is not null do update
   set
-    title = excluded.title,
+    title = case
+      when excluded.title is not null and btrim(excluded.title) <> ''
+        then excluded.title
+      else public.chat_rooms.title
+    end,
     last_message = excluded.last_message,
     last_message_at = excluded.last_message_at,
     updated_at = now()

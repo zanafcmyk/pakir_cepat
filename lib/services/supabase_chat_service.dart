@@ -229,10 +229,17 @@ class SupabaseChatService {
         DateTime.tryParse(row['last_message_at'] as String? ?? '') ??
         DateTime.tryParse(row['created_at'] as String? ?? '') ??
         DateTime.now();
+    final rawTitle = row['title'] as String? ?? 'Chat';
 
     return ChatRoom(
       id: localRoomId,
-      title: row['title'] as String? ?? 'Chat',
+      title: _displayTitleForRoom(
+        rawTitle: rawTitle,
+        roomKey: roomKey,
+        mode: mode,
+        participantRole: participantRole,
+        participantName: participantName,
+      ),
       participantRole: participantRole,
       participantName: participantName,
       lastMessage:
@@ -746,6 +753,50 @@ class SupabaseChatService {
     if (roomKey.startsWith('provider_admin:')) return 'provider_admin';
     if (roomKey.startsWith('guard_admin:')) return 'guard_admin';
     return 'group';
+  }
+
+  String _displayTitleForRoom({
+    required String rawTitle,
+    required String roomKey,
+    required AccountMode mode,
+    required String participantRole,
+    required String participantName,
+  }) {
+    final normalizedTitle = rawTitle.trim();
+    final looksLikeTicketTitle =
+        normalizedTitle.contains(RegExp(r'TKT-\d+', caseSensitive: false)) ||
+        normalizedTitle.toLowerCase().startsWith('chat customer -') ||
+        normalizedTitle.toLowerCase().startsWith('chat penjaga -');
+    if (!looksLikeTicketTitle) {
+      return normalizedTitle.isEmpty ? 'Percakapan' : normalizedTitle;
+    }
+
+    if (roomKey.startsWith('customer_guard:')) {
+      if (mode == AccountMode.customer) {
+        return participantName.toLowerCase().contains('penjaga')
+            ? participantName
+            : 'Penjaga Parkir';
+      }
+      if (mode == AccountMode.parkingGuard) {
+        return participantName.toLowerCase().contains('customer')
+            ? 'Customer Parkir'
+            : participantName;
+      }
+    }
+
+    if (roomKey.startsWith('customer_provider:')) {
+      return mode == AccountMode.customer ? participantName : 'Customer Parkir';
+    }
+
+    if (roomKey.startsWith('customer_admin:')) {
+      return mode == AccountMode.customer ? 'Admin Aplikasi' : participantName;
+    }
+
+    if (roomKey.startsWith('provider_guard:')) {
+      return participantName;
+    }
+
+    return participantRole;
   }
 
   String _canonicalRoomKey(String localRoomId) {

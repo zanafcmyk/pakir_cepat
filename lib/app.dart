@@ -3458,6 +3458,22 @@ class AppController extends StateNotifier<AppState> {
   }) {
     for (final room in state.customerChatRooms) {
       if (room.id == id) {
+        state = state.copyWith(
+          customerChatRooms: [
+            for (final item in state.customerChatRooms)
+              if (item.id == id)
+                item.copyWith(
+                  title: title,
+                  participantRole: participantRole,
+                  participantName: participantName,
+                  lastMessage: item.lastMessage == 'Room chat siap digunakan.'
+                      ? initialMessage
+                      : item.lastMessage,
+                )
+              else
+                item,
+          ],
+        );
         return room.id;
       }
     }
@@ -3480,19 +3496,20 @@ class AppController extends StateNotifier<AppState> {
   String createCustomerGuardChatRoomForBooking(Booking booking) {
     return createCustomerChatRoom(
       id: 'customer-guard-${booking.ticketNumber.toLowerCase()}',
-      title: 'Chat Penjaga - ${booking.ticketNumber}',
+      title: 'Penjaga di ${booking.locationName}',
       participantRole: 'Penjaga Parkir',
-      participantName: 'Penjaga Parkir - ${booking.locationName}',
-      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+      participantName: 'Tim penjaga ${booking.locationName}',
+      initialMessage:
+          'Percakapan parkir ${booking.vehicleLabel} ${booking.plateNumber}. Tiket ${booking.ticketNumber}.',
     );
   }
 
   String createCustomerProviderChatRoomForLot(ParkingLot lot) {
     return createCustomerChatRoom(
       id: 'customer-provider-${lot.id}',
-      title: 'Chat Penyedia - ${lot.name}',
+      title: 'Penyedia ${lot.name}',
       participantRole: 'Penyedia Parkir',
-      participantName: 'Penyedia - ${lot.name}',
+      participantName: 'Penyedia ${lot.name}',
       initialMessage: 'Chat terkait lokasi ${lot.name}.',
     );
   }
@@ -3665,6 +3682,22 @@ class AppController extends StateNotifier<AppState> {
   }) {
     for (final room in state.guardChatRooms) {
       if (room.id == id) {
+        state = state.copyWith(
+          guardChatRooms: [
+            for (final item in state.guardChatRooms)
+              if (item.id == id)
+                item.copyWith(
+                  title: title,
+                  participantRole: participantRole,
+                  participantName: participantName,
+                  lastMessage: item.lastMessage == 'Room chat siap digunakan.'
+                      ? initialMessage
+                      : item.lastMessage,
+                )
+              else
+                item,
+          ],
+        );
         return room.id;
       }
     }
@@ -3685,10 +3718,11 @@ class AppController extends StateNotifier<AppState> {
   String createCustomerChatRoomForBooking(Booking booking) {
     return createGuardChatRoom(
       id: 'guard-customer-${booking.ticketNumber.toLowerCase()}',
-      title: 'Chat Customer - ${booking.ticketNumber}',
+      title: 'Customer ${booking.plateNumber}',
       participantRole: 'Customer',
-      participantName: 'Customer ${booking.ticketNumber}',
-      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+      participantName: '${booking.vehicleLabel} ${booking.plateNumber}',
+      initialMessage:
+          'Percakapan parkir ${booking.vehicleLabel} ${booking.plateNumber}. Tiket ${booking.ticketNumber}.',
     );
   }
 
