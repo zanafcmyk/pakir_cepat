@@ -393,6 +393,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
+bool _isDemoChatRoomId(String roomId) {
+  return roomId.endsWith('tkt-1002') ||
+      roomId.endsWith('lot-1') ||
+      roomId.endsWith('-main') ||
+      roomId.endsWith('-app');
+}
+
 String? guardedRedirect(String location, AppState Function() readState) {
   const publicRoutes = {
     '/',
@@ -1765,6 +1772,7 @@ class AppController extends StateNotifier<AppState> {
             participantName: participantName,
             message: message,
           )
+          .then((_) => loadChatRoomsFromSupabase(senderMode))
           .catchError((_) {}),
     );
   }
@@ -2020,7 +2028,7 @@ class AppController extends StateNotifier<AppState> {
     return [
       ...remote,
       for (final room in current)
-        if (!remoteIds.contains(room.id)) room,
+        if (!remoteIds.contains(room.id) && !_isDemoChatRoomId(room.id)) room,
     ]..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
   }
 
@@ -10747,6 +10755,7 @@ class _CustomerChatListScreenState
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final rooms = [...state.customerChatRooms]
+      ..removeWhere((room) => _isDemoChatRoomId(room.id))
       ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return CustomerShell(
       currentIndex: 3,
@@ -11082,12 +11091,14 @@ class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final rooms = switch (widget.mode) {
-      AccountMode.provider => state.providerChatRooms,
-      AccountMode.superAdmin => state.superAdminChatRooms,
-      AccountMode.customer => state.customerChatRooms,
-      AccountMode.parkingGuard => state.guardChatRooms,
-    };
+    final rooms =
+        switch (widget.mode) {
+            AccountMode.provider => state.providerChatRooms,
+            AccountMode.superAdmin => state.superAdminChatRooms,
+            AccountMode.customer => state.customerChatRooms,
+            AccountMode.parkingGuard => state.guardChatRooms,
+          }.where((room) => !_isDemoChatRoomId(room.id)).toList()
+          ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     final routePrefix = switch (widget.mode) {
       AccountMode.provider => '/provider',
       AccountMode.superAdmin => '/super-admin',
@@ -17722,6 +17733,7 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final rooms = [...state.guardChatRooms]
+      ..removeWhere((room) => _isDemoChatRoomId(room.id))
       ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return GuardShell(
       currentIndex: 3,

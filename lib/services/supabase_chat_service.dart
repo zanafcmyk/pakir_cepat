@@ -287,7 +287,11 @@ class SupabaseChatService {
     if (roomKey.startsWith('customer_guard:')) {
       final ticketNumber = _contextId(roomKey);
       if (targetRole == AccountMode.parkingGuard) {
-        return _guardProfilesForTicket(ticketNumber);
+        final guards = await _guardProfilesForTicket(ticketNumber);
+        if (guards.isNotEmpty) {
+          return guards;
+        }
+        return _profilesByRole(AccountMode.parkingGuard);
       }
       if (targetRole == AccountMode.customer) {
         return _customerProfileForTicket(ticketNumber);
