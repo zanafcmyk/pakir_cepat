@@ -55,7 +55,7 @@ class SupabaseComplaintService {
     final rows = await _client
         .from('complaints')
         .select(
-          'id, sender_profile_id, sender_role, title, category, description, status, reply, created_at, profiles(full_name)',
+          'id, sender_profile_id, sender_role, title, category, description, status, reply, created_at, profiles!complaints_sender_profile_id_fkey(full_name)',
         )
         .order('created_at', ascending: false);
 
@@ -74,7 +74,7 @@ class SupabaseComplaintService {
     final rows = await _client
         .from('complaints')
         .select(
-          'id, sender_role, title, category, description, priority, status, reply, created_at, profiles(full_name)',
+          'id, sender_role, title, category, description, priority, status, reply, created_at, profiles!complaints_sender_profile_id_fkey(full_name)',
         )
         .eq('sender_profile_id', user.id)
         .order('created_at', ascending: false);
