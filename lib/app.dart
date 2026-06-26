@@ -9508,7 +9508,9 @@ class CustomerTicketScreen extends ConsumerWidget {
                 'Gunakan QR ini untuk masuk, bayar, dan verifikasi cepat.',
           ),
           const SizedBox(height: 18),
-          if (booking == null || !booking.canShowTicket)
+          if (booking == null ||
+              booking.status == BookingStatus.cancelled ||
+              booking.status == BookingStatus.completed)
             EmptyStateCard(
               title: 'Belum ada tiket aktif',
               body:
@@ -9521,21 +9523,50 @@ class CustomerTicketScreen extends ConsumerWidget {
               accent: AppTheme.blueSoft,
               child: Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: QrImageView(
-                      data: _parkingTicketQrPayload(booking),
-                      size: 210,
-                      eyeStyle: const QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: AppTheme.blue,
+                  if (booking.canShowTicket)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: QrImageView(
+                        data: _parkingTicketQrPayload(booking),
+                        size: 210,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: AppTheme.blue,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.payments_rounded,
+                            color: AppTheme.blue,
+                            size: 52,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Pembayaran belum selesai',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppTheme.ink,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
                   const SizedBox(height: 18),
                   Text(
                     booking.ticketNumber,
@@ -9573,6 +9604,15 @@ class CustomerTicketScreen extends ConsumerWidget {
                         ? AppTheme.emerald
                         : AppTheme.blue,
                   ),
+                  if (booking.status == BookingStatus.pendingPayment) ...[
+                    const SizedBox(height: 12),
+                    const InlineNotice(
+                      icon: Icons.schedule_rounded,
+                      accent: AppTheme.blue,
+                      message:
+                          'Reservasi masih menunggu pembayaran. Lanjutkan pembayaran sebelum 30 menit agar slot tidak dilepas.',
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   PrimaryButton(
                     label: 'Chat Penjaga',
@@ -9591,37 +9631,43 @@ class CustomerTicketScreen extends ConsumerWidget {
                         child: SecondaryButton(
                           label: 'Extend 1 jam',
                           icon: Icons.more_time_rounded,
-                          onPressed: () async {
-                            try {
-                              await ref
-                                  .read(appControllerProvider.notifier)
-                                  .extendParkingTime(1);
-                              if (context.mounted) {
-                                final updatedBooking = ref
-                                    .read(appControllerProvider)
-                                    .activeBooking;
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      (updatedBooking?.amountDue ?? 0) > 0
-                                          ? 'Durasi diperpanjang. Selesaikan sisa pembayaran ${formatCurrency(updatedBooking!.amountDue)}.'
-                                          : 'Durasi parkir berhasil diperpanjang.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            } catch (error) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Gagal memperpanjang durasi: $error',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          },
+                          onPressed: booking.isPaid
+                              ? () async {
+                                  try {
+                                    await ref
+                                        .read(appControllerProvider.notifier)
+                                        .extendParkingTime(1);
+                                    if (context.mounted) {
+                                      final updatedBooking = ref
+                                          .read(appControllerProvider)
+                                          .activeBooking;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            (updatedBooking?.amountDue ?? 0) > 0
+                                                ? 'Durasi diperpanjang. Selesaikan sisa pembayaran ${formatCurrency(updatedBooking!.amountDue)}.'
+                                                : 'Durasi parkir berhasil diperpanjang.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Gagal memperpanjang durasi: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              : null,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -9640,15 +9686,15 @@ class CustomerTicketScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   PrimaryButton(
-                    label: booking.isPaid
-                        ? 'QR sudah aktif'
-                        : 'Scan pembayaran',
-                    icon: booking.isPaid
-                        ? Icons.verified_rounded
-                        : Icons.qr_code_scanner_rounded,
-                    onPressed: booking.isPaid
-                        ? null
-                        : () => context.push('/customer/payment'),
+                    label: booking.status == BookingStatus.pendingPayment
+                        ? 'Lanjutkan pembayaran'
+                        : 'QR sudah aktif',
+                    icon: booking.status == BookingStatus.pendingPayment
+                        ? Icons.open_in_new_rounded
+                        : Icons.verified_rounded,
+                    onPressed: booking.status == BookingStatus.pendingPayment
+                        ? () => context.push('/customer/payment')
+                        : null,
                   ),
                 ],
               ),
