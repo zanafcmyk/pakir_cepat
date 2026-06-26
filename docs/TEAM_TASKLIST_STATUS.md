@@ -17,8 +17,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ### Ringkasan Tasklist 26 Juni 2026
 
-- Total item terhitung: 270.
-- Selesai: 257 (95.2%).
+- Total item terhitung: 271.
+- Selesai: 258 (95.2%).
 - Belum selesai: 13 (4.8%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
@@ -50,6 +50,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Pulihkan sesi Supabase saat aplikasi dibuka ulang dan fungsikan pilihan `Ingat saya`; role/email terakhir disimpan di perangkat, dan logout membersihkan session.
 - [x] Daftarkan deep link Android/iOS untuk reset password dan callback selesai pembayaran memakai scheme `parkircepat://`.
 - [x] Tambahkan `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`, dan `NSLocationWhenInUseUsageDescription` pada iOS.
+- [x] Izin perangkat untuk notifikasi, maps/lokasi, dan kamera sudah muncul serta diterima di perangkat berdasarkan konfirmasi owner.
 - [x] Tampilkan foto lahan dari `photo_url` pada kartu lokasi customer dan halaman detail; fallback tetap tersedia jika foto belum ada/gagal dimuat.
 - [x] Simpan dan tampilkan `duration_hours` dari booking. Halaman pembayaran memakai durasi dari Supabase, bukan menurunkan dari total biaya.
 - [x] Ganti QR tiket polos menjadi payload opaque dari `bookings.qr_payload`; patch SQL `docs/supabase_secure_ticket_qr.sql` menyiapkan token baru untuk booking lama dan booking baru.
