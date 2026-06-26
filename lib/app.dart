@@ -2348,14 +2348,6 @@ class AppController extends StateNotifier<AppState> {
     final user = supabase.auth.currentUser;
     final rememberMe = preferences.getBool(_rememberMeKey) ?? (user != null);
 
-    if (!rememberMe) {
-      if (user != null) {
-        await supabase.auth.signOut();
-      }
-      state = state.copyWith(isAuthenticated: false, rememberMe: false);
-      return false;
-    }
-
     if (user == null) {
       state = state.copyWith(isAuthenticated: false, rememberMe: rememberMe);
       return false;
@@ -2405,9 +2397,17 @@ class AppController extends StateNotifier<AppState> {
       );
       return true;
     } catch (_) {
-      await supabase.auth.signOut();
-      state = state.copyWith(isAuthenticated: false, rememberMe: false);
-      return false;
+      final mode = accountModeFromPreference(
+        preferences.getString(_lastModeKey),
+      );
+      state = state.copyWith(
+        isAuthenticated: true,
+        currentMode: mode,
+        email: user.email,
+        phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
+        rememberMe: rememberMe,
+      );
+      return true;
     }
   }
 
