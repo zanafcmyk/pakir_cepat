@@ -127,6 +127,16 @@ begin
               where booking.ticket_number = upper(trim(v_context_id))
                 and guard.profile_id = target.id
             )
+            or exists (
+              select 1
+              from public.bookings booking
+              join public.parking_lots lot
+                on lot.id = booking.parking_lot_id
+              join public.parking_guards guard
+                on guard.provider_id = lot.provider_id
+              where booking.ticket_number = upper(trim(v_context_id))
+                and guard.profile_id = target.id
+            )
             or not exists (
               select 1
               from public.bookings booking

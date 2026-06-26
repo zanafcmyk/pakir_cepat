@@ -1752,7 +1752,7 @@ class AppController extends StateNotifier<AppState> {
     return message.copyWith(roomId: roomId, isRead: false);
   }
 
-  void _syncChatMessage({
+  Future<void> _syncChatMessage({
     required String localRoomId,
     required String title,
     required AccountMode senderMode,
@@ -1760,21 +1760,17 @@ class AppController extends StateNotifier<AppState> {
     required String participantRole,
     required String participantName,
     required String message,
-  }) {
-    unawaited(
-      _chatService
-          .sendMessage(
-            localRoomId: localRoomId,
-            title: title,
-            senderMode: senderMode,
-            senderName: senderName,
-            participantRole: participantRole,
-            participantName: participantName,
-            message: message,
-          )
-          .then((_) => loadChatRoomsFromSupabase(senderMode))
-          .catchError((_) {}),
+  }) async {
+    await _chatService.sendMessage(
+      localRoomId: localRoomId,
+      title: title,
+      senderMode: senderMode,
+      senderName: senderName,
+      participantRole: participantRole,
+      participantName: participantName,
+      message: message,
     );
+    await loadChatRoomsFromSupabase(senderMode);
   }
 
   void _syncCurrentUserNotification(NoticeItem notice, {String type = 'info'}) {
@@ -3530,7 +3526,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendCustomerMessage({required String roomId, required String message}) {
+  Future<void> sendCustomerMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3555,7 +3554,7 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
+    await _syncChatMessage(
       localRoomId: roomId,
       title: room.title,
       senderMode: AccountMode.customer,
@@ -3768,14 +3767,16 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
-      localRoomId: roomId,
-      title: room.title,
-      senderMode: AccountMode.parkingGuard,
-      senderName: guard?.name ?? 'Penjaga Parkir',
-      participantRole: room.participantRole,
-      participantName: room.participantName,
-      message: trimmed,
+    unawaited(
+      _syncChatMessage(
+        localRoomId: roomId,
+        title: room.title,
+        senderMode: AccountMode.parkingGuard,
+        senderName: guard?.name ?? 'Penjaga Parkir',
+        participantRole: room.participantRole,
+        participantName: room.participantName,
+        message: trimmed,
+      ).catchError((_) {}),
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.parkingGuard, roomId);
     state = state.copyWith(
@@ -3876,14 +3877,16 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
-      localRoomId: roomId,
-      title: room.title,
-      senderMode: AccountMode.provider,
-      senderName: 'Penyedia - Parkir Plaza Sudirman',
-      participantRole: room.participantRole,
-      participantName: room.participantName,
-      message: trimmed,
+    unawaited(
+      _syncChatMessage(
+        localRoomId: roomId,
+        title: room.title,
+        senderMode: AccountMode.provider,
+        senderName: 'Penyedia - Parkir Plaza Sudirman',
+        participantRole: room.participantRole,
+        participantName: room.participantName,
+        message: trimmed,
+      ).catchError((_) {}),
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.provider, roomId);
     state = state.copyWith(
@@ -3991,14 +3994,16 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
-      localRoomId: roomId,
-      title: room.title,
-      senderMode: AccountMode.superAdmin,
-      senderName: 'Admin Super Parkir Cepat',
-      participantRole: room.participantRole,
-      participantName: room.participantName,
-      message: trimmed,
+    unawaited(
+      _syncChatMessage(
+        localRoomId: roomId,
+        title: room.title,
+        senderMode: AccountMode.superAdmin,
+        senderName: 'Admin Super Parkir Cepat',
+        participantRole: room.participantRole,
+        participantName: room.participantName,
+        message: trimmed,
+      ).catchError((_) {}),
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.superAdmin, roomId);
     state = state.copyWith(
@@ -10932,15 +10937,25 @@ class _CustomerChatRoomScreenState
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .sendCustomerMessage(roomId: widget.roomId, message: text);
     _messageController.clear();
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .sendCustomerMessage(roomId: widget.roomId, message: text);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -11057,7 +11072,7 @@ class _CustomerChatRoomScreenState
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -11069,7 +11084,7 @@ class _CustomerChatRoomScreenState
                   width: 52,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _sendMessage,
+                    onPressed: () => unawaited(_sendMessage()),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.zero,
                       backgroundColor: AppTheme.blue,
@@ -11229,23 +11244,39 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
     final controller = ref.read(appControllerProvider.notifier);
-    switch (widget.mode) {
-      case AccountMode.provider:
-        controller.sendProviderMessage(roomId: widget.roomId, message: text);
-      case AccountMode.superAdmin:
-        controller.sendSuperAdminMessage(roomId: widget.roomId, message: text);
-      case AccountMode.customer:
-        controller.sendCustomerMessage(roomId: widget.roomId, message: text);
-      case AccountMode.parkingGuard:
-        controller.sendGuardMessage(roomId: widget.roomId, message: text);
-    }
     _messageController.clear();
+    try {
+      switch (widget.mode) {
+        case AccountMode.provider:
+          controller.sendProviderMessage(roomId: widget.roomId, message: text);
+        case AccountMode.superAdmin:
+          controller.sendSuperAdminMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+        case AccountMode.customer:
+          await controller.sendCustomerMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+        case AccountMode.parkingGuard:
+          controller.sendGuardMessage(roomId: widget.roomId, message: text);
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -11340,7 +11371,7 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -11349,7 +11380,7 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(
-                  onPressed: _sendMessage,
+                  onPressed: () => unawaited(_sendMessage()),
                   icon: const Icon(Icons.send_rounded),
                 ),
               ],

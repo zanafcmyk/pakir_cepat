@@ -431,7 +431,36 @@ class SupabaseChatService {
         .select('parking_guards(profiles(id, full_name, role, access_status))')
         .eq('parking_lot_id', lotId);
 
-    return _profilesFromGuardRows(rows);
+    final assignedGuards = _profilesFromGuardRows(rows);
+    if (assignedGuards.isNotEmpty) {
+      return assignedGuards;
+    }
+    return _providerGuardProfilesForLot(lotId);
+  }
+
+  Future<List<Map<String, dynamic>>> _providerGuardProfilesForLot(
+    String lotId,
+  ) async {
+    final lotRows = await _client
+        .from('parking_lots')
+        .select('provider_id')
+        .eq('id', lotId)
+        .limit(1);
+    if (lotRows.isEmpty) {
+      return const [];
+    }
+
+    final providerId = (lotRows.first as Map)['provider_id'] as String?;
+    if (providerId == null) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('parking_guards')
+        .select('profiles(id, full_name, role, access_status)')
+        .eq('provider_id', providerId);
+
+    return _profilesFromDirectRows(rows);
   }
 
   Future<List<Map<String, dynamic>>> _customerProfileForTicket(
