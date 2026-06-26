@@ -109,7 +109,7 @@ Hasil yang benar:
 - `bookings.qr_payload` bukan nomor tiket polos.
 - Aplikasi kembali ke layar tiket atau bisa dibuka ulang dan tiket tetap muncul.
 
-## 5. Uji Expiry Reservasi 15 Menit
+## 5. Uji Expiry Reservasi 30 Menit
 
 Buat booking baru, jangan dibayar.
 
@@ -121,7 +121,7 @@ from public.bookings
 where ticket_number = '<TKT-...>';
 ```
 
-2. Setelah lebih dari 15 menit, cron harus menjalankan:
+2. Setelah lebih dari 30 menit, cron harus menjalankan:
 
 ```sql
 select public.app_expire_stale_bookings(200);
@@ -224,9 +224,8 @@ Isi tabel ini setiap kali selesai uji.
 | Alur | Akun | Tiket | Order ID | Hasil DB | Hasil App | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | Midtrans sukses | customer@example.com | TKT- | PC- | paid/paid/receipt ada | tiket tampil | OK/Gagal |
-| Expiry 15 menit | customer@example.com | TKT- | PC- | cancelled/cancelled/slot available | notifikasi muncul | OK/Gagal |
+| Expiry 30 menit | customer@example.com | TKT- | PC- | cancelled/cancelled/slot available | notifikasi muncul | OK/Gagal |
 | Callback terlambat | customer@example.com | TKT- | PC- | booking tetap cancelled | late payment notif | OK/Gagal |
 | Scan masuk | guard@example.com | TKT- | - | active/occupied | berhasil masuk | OK/Gagal |
 | Scan keluar | guard@example.com | TKT- | - | completed/available | berhasil keluar | OK/Gagal |
 | Tunai | guard/provider | TKT- | - | paid/cash/receipt ada | tiket tampil | OK/Gagal |
-

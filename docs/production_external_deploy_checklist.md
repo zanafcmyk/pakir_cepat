@@ -77,7 +77,7 @@ docs/supabase_booking_expiry.sql
 ```
 
 Patch ini membuat job `pg_cron` setiap menit. Booking `pending_payment` yang
-berumur lebih dari 15 menit akan menjadi `cancelled`, payment `pending` menjadi
+berumur lebih dari 30 menit akan menjadi `cancelled`, payment `pending` menjadi
 `cancelled`, slot `reserved` kembali `available`, dan customer menerima
 notifikasi in-app.
 

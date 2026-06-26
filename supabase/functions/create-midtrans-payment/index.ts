@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       return json({ error: "Booking is not payable." }, 400);
     }
 
-    const expiresAt = new Date(booking.created_at).getTime() + 15 * 60 * 1000;
+    const expiresAt = new Date(booking.created_at).getTime() + 30 * 60 * 1000;
     if (
       booking.status === "pending_payment" &&
       (!Number.isFinite(expiresAt) || Date.now() >= expiresAt)

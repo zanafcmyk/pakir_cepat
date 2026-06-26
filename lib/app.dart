@@ -4276,7 +4276,7 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(
       activeBooking: booking,
       selectedVehicle: bookingVehicle,
-      reservationLockedUntil: DateTime.now().add(const Duration(minutes: 15)),
+      reservationLockedUntil: DateTime.now().add(const Duration(minutes: 30)),
       slots: updatedSlots,
       customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
@@ -9138,7 +9138,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
       text: (vehicle?.durationHours ?? 2).toString(),
     );
     _entryTimeController = TextEditingController(
-      text: formatDateTime(DateTime.now().add(const Duration(minutes: 15))),
+      text: formatDateTime(DateTime.now().add(const Duration(minutes: 30))),
     );
   }
 
@@ -9271,7 +9271,7 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   icon: Icons.lock_clock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'Reservasi slot akan dikunci sementara selama 15 menit setelah booking dikonfirmasi.',
+                      'Reservasi slot akan dikunci sementara selama 30 menit setelah booking dikonfirmasi.',
                 ),
                 const SizedBox(height: 18),
                 Text(

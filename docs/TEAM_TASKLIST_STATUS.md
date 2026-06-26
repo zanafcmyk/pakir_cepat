@@ -32,7 +32,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Konfirmasi pembayaran tunai penjaga dipindahkan dari service customer ke RPC khusus yang memvalidasi izin, assignment, status booking, nominal server, payment, receipt, dan activity log.
 - [x] Scan masuk/keluar dipindahkan ke RPC atomik yang memvalidasi assignment penjaga, status sebelumnya, update slot, waktu scan, dan activity log.
 - [x] Penyedia dapat menjadi operator scan/tunai untuk lokasi miliknya ketika tidak ada penjaga aktif yang ditugaskan; validasi kepemilikan dan ketiadaan penjaga dilakukan server-side.
-- [x] Proses kedaluwarsa reservasi server-side tersedia di `docs/supabase_booking_expiry.sql`: booking lewat 15 menit dibatalkan, slot dilepas, payment pending dibatalkan, customer diberi notifikasi, dan proses dijadwalkan tiap menit dengan `pg_cron`.
+- [x] Proses kedaluwarsa reservasi server-side tersedia di `docs/supabase_booking_expiry.sql`: booking lewat 30 menit dibatalkan, slot dilepas, payment pending dibatalkan, customer diberi notifikasi, dan proses dijadwalkan tiap menit dengan `pg_cron`.
 - [ ] Jalankan `docs/supabase_booking_expiry.sql` di Supabase production, deploy ulang Edge Function Midtrans, lalu uji expiry dan callback terlambat.
 
 #### Belum Berjalan Penuh

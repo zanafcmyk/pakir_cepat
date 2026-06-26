@@ -1,4 +1,4 @@
--- Automatically cancel unpaid parking reservations after 15 minutes.
+-- Automatically cancel unpaid parking reservations after 30 minutes.
 -- Run this file once in the Supabase SQL Editor after the booking security patch.
 
 begin;
@@ -30,7 +30,7 @@ begin
     from public.bookings booking
     join public.customers customer on customer.id = booking.customer_id
     where booking.status = 'pending_payment'
-      and booking.created_at <= now() - interval '15 minutes'
+      and booking.created_at <= now() - interval '30 minutes'
     order by booking.created_at
     for update of booking skip locked
     limit greatest(1, least(coalesce(p_limit, 200), 1000))
@@ -78,8 +78,8 @@ begin
       v_booking.parking_lot_id,
       v_booking.parking_slot_id,
       'booking_cancelled',
-      'Reservasi otomatis dibatalkan karena pembayaran tidak selesai dalam 15 menit.',
-      jsonb_build_object('reason', 'payment_timeout', 'timeout_minutes', 15)
+      'Reservasi otomatis dibatalkan karena pembayaran tidak selesai dalam 30 menit.',
+      jsonb_build_object('reason', 'payment_timeout', 'timeout_minutes', 30)
     );
 
     insert into public.notifications (
@@ -93,7 +93,7 @@ begin
       v_booking.profile_id,
       'Reservasi berakhir',
       'Reservasi ' || v_booking.ticket_number ||
-        ' dibatalkan karena belum dibayar dalam 15 menit. Slot telah tersedia kembali.',
+        ' dibatalkan karena belum dibayar dalam 30 menit. Slot telah tersedia kembali.',
       'booking_expired',
       jsonb_build_object(
         'booking_id', v_booking.id,

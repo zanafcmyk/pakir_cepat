@@ -18,7 +18,7 @@ Audit ini mencakup alur Midtrans sandbox/production untuk Parkir Cepat.
 - Memvalidasi Authorization Supabase user sebelum membuat payment.
 - Memastikan user adalah customer pemilik booking.
 - Menolak booking yang bukan `pending_payment`, `paid`, atau `active`.
-- Menolak booking `pending_payment` yang sudah melewati 15 menit.
+- Menolak booking `pending_payment` yang sudah melewati 30 menit.
 - Menghitung nominal dari `estimated_cost - paid_amount`, bukan dari Flutter.
 - Membuat row `payments` status `pending` dengan `provider_reference = orderId`.
 - Mengirim transaksi ke Snap sandbox/production berdasarkan `MIDTRANS_IS_PRODUCTION`.
