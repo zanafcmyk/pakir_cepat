@@ -18,8 +18,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 26 Juni 2026
 
 - Total item terhitung: 270.
-- Selesai: 256 (94.8%).
-- Belum selesai: 14 (5.2%).
+- Selesai: 257 (95.2%).
+- Belum selesai: 13 (4.8%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -175,7 +175,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
 - [x] Realtime lokasi/assignment penjaga/notifikasi SQL `docs/supabase_realtime_location_notifications.sql` sudah dijalankan di Supabase production.
-- [ ] Chat target spesifik perlu uji perangkat dengan banyak penyedia/penjaga untuk memastikan RLS dan member room sesuai.
+- [x] Chat target spesifik sudah diuji perangkat dengan banyak penyedia/penjaga dan member room sesuai berdasarkan konfirmasi owner.
 - [x] SQL RLS/role-sync patch `docs/supabase_role_sync_rls_patch.sql` sudah diaudit ulang di Supabase production, termasuk RPC booking customer dan `app_provider_add_parking_slot`.
 - [x] Edge Function `admin-delete-user` sudah terdeploy dan merespons; pastikan `SERVICE_ROLE_KEY` tetap tersedia serta audit aksi hapus memakai akun super admin.
 
