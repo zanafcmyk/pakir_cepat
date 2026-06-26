@@ -20,6 +20,7 @@ import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'models/app_models.dart';
@@ -9950,9 +9951,24 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       }
 
       setState(() => _gatewayOpened = true);
-      await context.push(
-        '/customer/payment-webview?url=${Uri.encodeQueryComponent(redirectUrl)}',
-      );
+      if (_supportsPaymentWebView) {
+        await context.push(
+          '/customer/payment-webview?url=${Uri.encodeQueryComponent(redirectUrl)}',
+        );
+      } else {
+        final opened = await launchUrl(
+          Uri.parse(redirectUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened && mounted) {
+          setState(() {
+            _gatewayOpened = false;
+            _paymentError =
+                'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.';
+          });
+          return;
+        }
+      }
       if (mounted) {
         await _checkPaymentStatus();
       }
@@ -10236,6 +10252,20 @@ class PaymentWebViewScreen extends ConsumerStatefulWidget {
       _PaymentWebViewScreenState();
 }
 
+bool get _supportsPaymentWebView {
+  if (kIsWeb) {
+    return false;
+  }
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android ||
+    TargetPlatform.iOS ||
+    TargetPlatform.macOS => true,
+    TargetPlatform.fuchsia ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => false,
+  };
+}
+
 class _PaymentWebViewScreenState extends ConsumerState<PaymentWebViewScreen> {
   late final WebViewController _webViewController;
   int _progress = 0;
@@ -10244,6 +10274,11 @@ class _PaymentWebViewScreenState extends ConsumerState<PaymentWebViewScreen> {
   @override
   void initState() {
     super.initState();
+    if (!_supportsPaymentWebView) {
+      _error =
+          'WebView pembayaran belum didukung di platform ini. Jalankan di HP Android/iOS untuk pembayaran di dalam aplikasi.';
+      return;
+    }
     final initialUri = Uri.tryParse(widget.url);
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
