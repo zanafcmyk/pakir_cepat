@@ -116,8 +116,17 @@ begin
   end if;
 
   return query
-  select *
-  from public.list_current_provider_guards() listed
+  select
+    listed.id,
+    listed.provider_id,
+    listed.name,
+    listed.email,
+    listed.phone_number,
+    listed.assigned_lot_ids,
+    listed.can_scan_qr,
+    listed.can_confirm_cash,
+    listed.can_manage_slots
+  from public.list_current_provider_guards() as listed
   where listed.id = v_guard_id;
 end;
 $$;

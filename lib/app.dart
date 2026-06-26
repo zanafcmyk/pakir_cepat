@@ -13703,6 +13703,7 @@ class _ParkingGuardManagementScreenState
   late final TextEditingController _phoneController;
   late final TextEditingController _passwordController;
   final Set<String> _selectedLotIds = {};
+  bool _usesGuards = true;
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
   bool _isLoadingGuardContext = false;
@@ -13753,6 +13754,9 @@ class _ParkingGuardManagementScreenState
     if (_editingGuardId == null && _passwordController.text.length < 6) {
       return 'Password awal penjaga minimal 6 karakter.';
     }
+    if (!_usesGuards) {
+      return 'Aktifkan opsi pakai penjaga dulu untuk membuat akun penjaga.';
+    }
     if (lots.isEmpty) {
       return 'Tambahkan lahan parkir terlebih dahulu.';
     }
@@ -13801,6 +13805,7 @@ class _ParkingGuardManagementScreenState
       _selectedLotIds
         ..clear()
         ..addAll(lots.isEmpty ? const [] : [lots.first.id]);
+      _usesGuards = true;
       _canConfirmCash = true;
       _canManageSlots = true;
       _formError = null;
@@ -13845,6 +13850,7 @@ class _ParkingGuardManagementScreenState
     _phoneController.text = guard.phoneNumber;
     setState(() {
       _editingGuardId = guard.id;
+      _usesGuards = true;
       _selectedLotIds
         ..clear()
         ..addAll(guard.assignedLotIds);
@@ -14000,7 +14006,7 @@ class _ParkingGuardManagementScreenState
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _editingGuardId == null
-                        ? 'Hubungkan akun penjaga'
+                        ? 'Buat akun penjaga'
                         : 'Edit akun penjaga',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -14008,134 +14014,163 @@ class _ParkingGuardManagementScreenState
                   ),
                 ),
                 const SizedBox(height: 14),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama penjaga',
-                    prefixIcon: Icon(Icons.badge_outlined),
+                SwitchListTile(
+                  value: _usesGuards,
+                  title: const Text('Pakai penjaga parkir'),
+                  subtitle: const Text(
+                    'Matikan jika lahan dioperasikan sendiri oleh penyedia.',
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email login penjaga',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
+                  onChanged: _editingGuardId == null
+                      ? (value) {
+                          setState(() {
+                            _usesGuards = value;
+                            _formError = null;
+                          });
+                        }
+                      : null,
                 ),
                 const SizedBox(height: 10),
-                const InlineNotice(
-                  icon: Icons.info_outline_rounded,
-                  accent: Color(0xFFD97706),
-                  message:
-                      'Penyedia bisa membuat akun login penjaga langsung, lalu memberikan email dan password awal ke penjaga.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Nomor HP',
-                    prefixIcon: Icon(Icons.phone_iphone_rounded),
+                if (!_usesGuards) ...[
+                  const InlineNotice(
+                    icon: Icons.storefront_rounded,
+                    accent: AppTheme.emerald,
+                    message:
+                        'Tidak wajib membuat penjaga. Untuk lahan tanpa penjaga aktif, penyedia bisa memakai mode operator untuk scan QR dan konfirmasi tunai.',
                   ),
-                ),
-                if (_editingGuardId == null) ...[
+                  const SizedBox(height: 16),
+                ],
+                if (_usesGuards) ...[
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama penjaga',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: _passwordController,
-                    obscureText: true,
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
-                      labelText: 'Password awal penjaga',
-                      prefixIcon: Icon(Icons.lock_outline_rounded),
+                      labelText: 'Email akun penjaga baru',
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                ],
-                const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Lokasi yang boleh diakses',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (lots.isEmpty)
-                  Column(
-                    children: [
-                      InlineNotice(
-                        icon: _isLoadingGuardContext
-                            ? Icons.sync_rounded
-                            : Icons.info_outline_rounded,
-                        accent: const Color(0xFFD97706),
-                        message: _isLoadingGuardContext
-                            ? 'Memuat lahan parkir penyedia dari Supabase...'
-                            : 'Belum ada lahan aktif yang terbaca. Muat ulang lahan atau tambahkan lahan parkir sebelum membuat akun penjaga.',
-                      ),
-                      const SizedBox(height: 10),
-                      SecondaryButton(
-                        label: _isLoadingGuardContext
-                            ? 'Memuat lahan...'
-                            : 'Muat ulang lahan',
-                        icon: Icons.refresh_rounded,
-                        onPressed: _isLoadingGuardContext
-                            ? null
-                            : _reloadGuardContext,
-                      ),
-                    ],
-                  )
-                else
-                  for (final lot in lots)
-                    CheckboxListTile(
-                      value: _selectedLotIds.contains(lot.id),
-                      title: Text(lot.name),
-                      subtitle: Text(lot.address),
-                      activeColor: AppTheme.emerald,
-                      onChanged: (value) {
-                        setState(() {
-                          if (value ?? false) {
-                            _selectedLotIds.add(lot.id);
-                          } else {
-                            _selectedLotIds.remove(lot.id);
-                          }
-                        });
-                      },
-                    ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  value: _canConfirmCash,
-                  title: const Text('Konfirmasi pembayaran tunai'),
-                  onChanged: (value) => setState(() => _canConfirmCash = value),
-                ),
-                SwitchListTile(
-                  value: _canManageSlots,
-                  title: const Text('Update status slot parkir'),
-                  onChanged: (value) => setState(() => _canManageSlots = value),
-                ),
-                const SizedBox(height: 18),
-                PrimaryButton(
-                  label: _isSavingGuard
-                      ? 'Menyimpan...'
-                      : _editingGuardId == null
-                      ? 'Hubungkan akun penjaga'
-                      : 'Simpan perubahan',
-                  icon: _editingGuardId == null
-                      ? Icons.person_add_alt_1_rounded
-                      : Icons.save_rounded,
-                  onPressed: _isSavingGuard ? null : () => _saveGuard(lots),
-                ),
-                if (_editingGuardId != null) ...[
                   const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _resetGuardForm(lots),
-                      icon: const Icon(Icons.close_rounded),
-                      label: const Text('Batal edit'),
+                  const InlineNotice(
+                    icon: Icons.info_outline_rounded,
+                    accent: Color(0xFFD97706),
+                    message:
+                        'Penyedia membuat akun login baru untuk penjaga, lalu memberikan email dan password awal ke penjaga.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor HP',
+                      prefixIcon: Icon(Icons.phone_iphone_rounded),
                     ),
                   ),
+                  if (_editingGuardId == null) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password awal penjaga',
+                        prefixIcon: Icon(Icons.lock_outline_rounded),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Lokasi yang boleh diakses',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (lots.isEmpty)
+                    Column(
+                      children: [
+                        InlineNotice(
+                          icon: _isLoadingGuardContext
+                              ? Icons.sync_rounded
+                              : Icons.info_outline_rounded,
+                          accent: const Color(0xFFD97706),
+                          message: _isLoadingGuardContext
+                              ? 'Memuat lahan parkir penyedia dari Supabase...'
+                              : 'Belum ada lahan aktif yang terbaca. Muat ulang lahan atau tambahkan lahan parkir sebelum membuat akun penjaga.',
+                        ),
+                        const SizedBox(height: 10),
+                        SecondaryButton(
+                          label: _isLoadingGuardContext
+                              ? 'Memuat lahan...'
+                              : 'Muat ulang lahan',
+                          icon: Icons.refresh_rounded,
+                          onPressed: _isLoadingGuardContext
+                              ? null
+                              : _reloadGuardContext,
+                        ),
+                      ],
+                    )
+                  else
+                    for (final lot in lots)
+                      CheckboxListTile(
+                        value: _selectedLotIds.contains(lot.id),
+                        title: Text(lot.name),
+                        subtitle: Text(lot.address),
+                        activeColor: AppTheme.emerald,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value ?? false) {
+                              _selectedLotIds.add(lot.id);
+                            } else {
+                              _selectedLotIds.remove(lot.id);
+                            }
+                          });
+                        },
+                      ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    value: _canConfirmCash,
+                    title: const Text('Konfirmasi pembayaran tunai'),
+                    onChanged: (value) =>
+                        setState(() => _canConfirmCash = value),
+                  ),
+                  SwitchListTile(
+                    value: _canManageSlots,
+                    title: const Text('Update status slot parkir'),
+                    onChanged: (value) =>
+                        setState(() => _canManageSlots = value),
+                  ),
+                  const SizedBox(height: 18),
+                  PrimaryButton(
+                    label: _isSavingGuard
+                        ? 'Menyimpan...'
+                        : _editingGuardId == null
+                        ? 'Buat akun penjaga'
+                        : 'Simpan perubahan',
+                    icon: _editingGuardId == null
+                        ? Icons.person_add_alt_1_rounded
+                        : Icons.save_rounded,
+                    onPressed: _isSavingGuard ? null : () => _saveGuard(lots),
+                  ),
+                  if (_editingGuardId != null) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _resetGuardForm(lots),
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('Batal edit'),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -14147,8 +14182,8 @@ class _ParkingGuardManagementScreenState
             const EmptyStateCard(
               title: 'Belum ada penjaga',
               body:
-                  'Akun penjaga yang dibuat penyedia akan tampil di daftar ini.',
-              actionLabel: 'Isi data penjaga',
+                  'Jika lahan memakai penjaga, akun yang dibuat penyedia akan tampil di daftar ini. Jika tidak, penyedia tetap bisa menjadi operator.',
+              actionLabel: 'Opsional',
               onPressed: _noop,
             )
           else
