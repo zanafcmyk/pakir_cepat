@@ -5390,42 +5390,137 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   late final TextEditingController _passwordController;
   bool _rememberMe = true;
   bool _isLoading = false;
-  AccountMode _mode = AccountMode.customer;
 
   Future<void> _submitLogin() async {
     if (_isLoading) {
       return;
     }
 
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
     final controller = ref.read(appControllerProvider.notifier);
 
-    if (_mode == AccountMode.customer) {
-      await _submitCustomerLogin(controller);
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password wajib diisi.');
       return;
     }
 
-    if (_mode == AccountMode.provider) {
-      await _submitProviderLogin(controller);
-      return;
-    }
+    setState(() => _isLoading = true);
 
-    if (_mode == AccountMode.superAdmin) {
-      await _submitSuperAdminLogin(controller);
-      return;
-    }
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
 
-    if (_mode == AccountMode.parkingGuard) {
-      await _submitGuardLogin(controller);
-      return;
-    }
+      if (user == null) {
+        _showLoginMessage('Login gagal. Coba lagi.');
+        return;
+      }
 
-    controller.login(
-      mode: _mode,
-      email: _emailController.text,
-      phoneNumber: _phoneController.text,
-      rememberMe: _rememberMe,
-    );
-    context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+      final profile = await supabase
+          .from('profiles')
+          .select(
+            'id, email, phone_number, role, access_status, account_status',
+          )
+          .eq('id', user.id)
+          .single();
+      final mode = accountModeFromDbRole(profile['role'] as String?);
+      if (mode == null) {
+        await supabase.auth.signOut();
+        _showLoginMessage('Role akun belum dikenali.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun sedang dinonaktifkan.');
+        return;
+      }
+
+      final phoneNumber =
+          (profile['phone_number'] as String?) ?? _phoneController.text;
+      final providerApplication = mode == AccountMode.provider
+          ? await _providerApplicationForLogin(user.id)
+          : null;
+      final accountStatus = mode == AccountMode.provider
+          ? await _currentProviderStatusForLogin(
+              user.id,
+              profileStatus: profile['account_status'] as String?,
+            )
+          : AccountStatus.verified;
+
+      controller.login(
+        mode: mode,
+        email: (profile['email'] as String?) ?? email,
+        phoneNumber: phoneNumber,
+        rememberMe: _rememberMe,
+        accountStatusOverride: accountStatus,
+        providerApplication: providerApplication,
+        clearProviderApplication: providerApplication == null,
+      );
+
+      await controller
+          .loadCurrentUserAvatarFromSupabase(
+            forCustomer: mode == AccountMode.customer,
+          )
+          .catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
+
+      switch (mode) {
+        case AccountMode.customer:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadCustomerVehiclesFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadActiveBookingFromSupabase().catchError((_) {});
+          await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+          await controller.loadCustomerFavoritesFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadCustomerSettingsFromSupabase().catchError(
+            (_) {},
+          );
+        case AccountMode.provider:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+        case AccountMode.parkingGuard:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+          await controller.loadGuardBookingsFromSupabase().catchError((_) {});
+          final guard = activeGuard(ref.read(appControllerProvider));
+          if (guard == null) {
+            await supabase.auth.signOut();
+            _showLoginMessage(
+              'Akun penjaga belum dihubungkan oleh penyedia parkir.',
+            );
+            return;
+          }
+        case AccountMode.superAdmin:
+          await controller.loadComplaintsFromSupabase().catchError((_) {});
+          await controller.loadRegistrationRequestsFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadManagedUsersFromSupabase().catchError((_) {});
+      }
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage('Tidak bisa login. Cek email, password, dan koneksi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _submitCustomerLogin(AppController controller) async {
@@ -5874,7 +5969,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _phoneController = TextEditingController(text: state.phoneNumber);
     _passwordController = TextEditingController();
     _rememberMe = state.rememberMe;
-    _mode = state.currentMode;
     unawaited(_loadSavedLoginForm());
   }
 
@@ -5884,14 +5978,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
     final rememberMe = preferences.getBool(AppController._rememberMeKey);
-    final savedMode = preferences.getString(AppController._lastModeKey);
     final savedEmail = preferences.getString(AppController._lastEmailKey);
     final savedPhone = preferences.getString(AppController._lastPhoneKey);
     setState(() {
       _rememberMe = rememberMe ?? _rememberMe;
-      if (savedMode != null) {
-        _mode = accountModeFromPreference(savedMode);
-      }
       if (savedEmail != null) {
         _emailController.text = savedEmail;
       }
@@ -5919,16 +6009,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Masuk sebagai',
+              'Masuk akun',
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
-          ),
-          const SizedBox(height: 14),
-          RoleSelectionCards(
-            value: _mode,
-            onChanged: (value) => setState(() => _mode = value),
           ),
           const SizedBox(height: 18),
           TextField(
@@ -5938,20 +6023,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
-          if (_mode == AccountMode.customer ||
-              _mode == AccountMode.provider ||
-              _mode == AccountMode.parkingGuard ||
-              _mode == AccountMode.superAdmin) ...[
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-              ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _passwordController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Password',
+              prefixIcon: Icon(Icons.lock_outline_rounded),
             ),
-          ],
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -6537,7 +6617,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Buat akun baru',
-      subtitle: 'Pilih mode akun sesuai peran Anda di ekosistem smart parking.',
+      subtitle:
+          'Daftar sebagai pelanggan atau penyedia parkir. Akun admin dikelola aplikasi, akun penjaga dibuat oleh penyedia.',
       child: Column(
         children: [
           TextField(
@@ -6594,6 +6675,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           RoleSelectionCards(
             value: _mode,
+            allowedModes: const [AccountMode.customer, AccountMode.provider],
             onChanged: (value) => setState(() => _mode = value),
           ),
           if (_mode == AccountMode.provider) ...[
@@ -6711,24 +6793,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                 ],
               ),
-            ),
-          ],
-          if (_mode == AccountMode.parkingGuard) ...[
-            const SizedBox(height: 18),
-            const InlineNotice(
-              icon: Icons.security_rounded,
-              accent: Color(0xFFD97706),
-              message:
-                  'Daftar sebagai penjaga, lalu minta penyedia menghubungkan email ini ke lokasi parkir.',
-            ),
-          ],
-          if (_mode == AccountMode.superAdmin) ...[
-            const SizedBox(height: 18),
-            const InlineNotice(
-              icon: Icons.admin_panel_settings_rounded,
-              accent: AppTheme.ink,
-              message:
-                  'Super Admin memverifikasi pengguna, melihat laporan lintas lokasi, dan menangani komplain.',
             ),
           ],
           const SizedBox(height: 20),
@@ -19541,14 +19605,16 @@ class RoleSelectionCards extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.allowedModes,
   });
 
   final AccountMode value;
   final ValueChanged<AccountMode> onChanged;
+  final List<AccountMode>? allowedModes;
 
   @override
   Widget build(BuildContext context) {
-    const roles = [
+    const roleOptions = [
       (
         mode: AccountMode.customer,
         title: 'Pelanggan',
@@ -19574,6 +19640,11 @@ class RoleSelectionCards extends StatelessWidget {
         accent: AppTheme.ink,
       ),
     ];
+    final roles = allowedModes == null
+        ? roleOptions
+        : roleOptions
+              .where((role) => allowedModes!.contains(role.mode))
+              .toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
