@@ -20,7 +20,7 @@ import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'models/app_models.dart';
 import 'services/customer_location_service.dart';
@@ -193,6 +193,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/customer/payment',
         builder: (context, state) => const PaymentScreen(),
+      ),
+      GoRoute(
+        path: '/customer/payment-webview',
+        builder: (context, state) =>
+            PaymentWebViewScreen(url: state.uri.queryParameters['url'] ?? ''),
       ),
       GoRoute(
         path: '/customer/history',
@@ -9945,17 +9950,11 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
       }
 
       setState(() => _gatewayOpened = true);
-
-      final opened = await launchUrl(
-        Uri.parse(redirectUrl),
-        mode: LaunchMode.externalApplication,
+      await context.push(
+        '/customer/payment-webview?url=${Uri.encodeQueryComponent(redirectUrl)}',
       );
-      if (!opened && mounted) {
-        setState(() {
-          _gatewayOpened = false;
-          _paymentError =
-              'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.';
-        });
+      if (mounted) {
+        await _checkPaymentStatus();
       }
     } catch (error) {
       if (!mounted) {
@@ -10223,6 +10222,114 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+class PaymentWebViewScreen extends ConsumerStatefulWidget {
+  const PaymentWebViewScreen({super.key, required this.url});
+
+  final String url;
+
+  @override
+  ConsumerState<PaymentWebViewScreen> createState() =>
+      _PaymentWebViewScreenState();
+}
+
+class _PaymentWebViewScreenState extends ConsumerState<PaymentWebViewScreen> {
+  late final WebViewController _webViewController;
+  int _progress = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final initialUri = Uri.tryParse(widget.url);
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() => _progress = progress);
+            }
+          },
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            if (_isPaymentFinishUri(uri)) {
+              unawaited(_finishPaymentFlow());
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+          onWebResourceError: (error) {
+            if (mounted && error.isForMainFrame == true) {
+              setState(() => _error = error.description);
+            }
+          },
+        ),
+      );
+
+    if (initialUri == null || !initialUri.hasScheme) {
+      _error = 'URL pembayaran tidak valid.';
+    } else {
+      unawaited(_webViewController.loadRequest(initialUri));
+    }
+  }
+
+  bool _isPaymentFinishUri(Uri? uri) {
+    if (uri == null || uri.scheme != 'parkircepat') {
+      return false;
+    }
+    final target = [
+      uri.host,
+      ...uri.pathSegments,
+    ].where((segment) => segment.isNotEmpty).join('/');
+    return target == 'payment-finish' || target == 'payment/finish';
+  }
+
+  Future<void> _finishPaymentFlow() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadActiveBookingFromSupabase().catchError((_) {});
+    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+    final booking = ref.read(appControllerProvider).activeBooking;
+    context.go(
+      booking?.isPaid ?? false ? '/customer/tickets' : '/customer/payment',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canLoad = _error == null && widget.url.trim().isNotEmpty;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pembayaran Midtrans'),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: InlineNotice(
+                  icon: Icons.error_outline_rounded,
+                  accent: const Color(0xFFDC2626),
+                  message: 'Halaman pembayaran gagal dimuat: $_error',
+                ),
+              ),
+            )
+          : Stack(
+              children: [
+                if (canLoad) WebViewWidget(controller: _webViewController),
+                if (_progress < 100)
+                  LinearProgressIndicator(value: _progress / 100),
+              ],
+            ),
     );
   }
 }
