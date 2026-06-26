@@ -8,6 +8,66 @@ class SupabaseChatService {
 
   final SupabaseClient _client;
 
+  Future<List<ChatRoom>> fetchRoomsForCurrentUser({
+    required AccountMode mode,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    final memberRows = await _client
+        .from('chat_room_members')
+        .select('room_id, profile_id, member_role, display_name, unread_count')
+        .eq('profile_id', user.id);
+    if (memberRows.isEmpty) {
+      return const [];
+    }
+
+    final roomIds = [
+      for (final row in memberRows) (row as Map)['room_id'] as String?,
+    ].whereType<String>().toSet().toList();
+    if (roomIds.isEmpty) {
+      return const [];
+    }
+
+    final roomRows = await _client
+        .from('chat_rooms')
+        .select(
+          'id, room_key, title, last_message, last_message_at, created_at',
+        )
+        .inFilter('id', roomIds)
+        .order('last_message_at', ascending: false);
+    final allMemberRows = await _client
+        .from('chat_room_members')
+        .select('room_id, profile_id, member_role, display_name, unread_count')
+        .inFilter('room_id', roomIds);
+
+    final membersByRoom = <String, List<Map<String, dynamic>>>{};
+    for (final row in allMemberRows) {
+      final member = Map<String, dynamic>.from(row as Map);
+      final roomId = member['room_id'] as String?;
+      if (roomId == null) {
+        continue;
+      }
+      membersByRoom.putIfAbsent(roomId, () => []).add(member);
+    }
+
+    final rooms = <ChatRoom>[];
+    for (final row in roomRows) {
+      final room = _roomFromRow(
+        Map<String, dynamic>.from(row as Map),
+        membersByRoom,
+        currentProfileId: user.id,
+        mode: mode,
+      );
+      if (room != null) {
+        rooms.add(room);
+      }
+    }
+    return rooms;
+  }
+
   Future<List<ChatMessage>> fetchMessages({required String localRoomId}) async {
     final roomId = await _roomIdForLocalRoom(localRoomId);
     if (roomId == null) {
@@ -89,6 +149,54 @@ class SupabaseChatService {
       'sender_name': senderName,
       'message': message,
     });
+  }
+
+  ChatRoom? _roomFromRow(
+    Map<String, dynamic> row,
+    Map<String, List<Map<String, dynamic>>> membersByRoom, {
+    required String currentProfileId,
+    required AccountMode mode,
+  }) {
+    final roomId = row['id'] as String?;
+    final roomKey = row['room_key'] as String?;
+    if (roomId == null || roomKey == null) {
+      return null;
+    }
+
+    final localRoomId = _localRoomIdForCanonicalKey(roomKey, mode);
+    if (localRoomId == null) {
+      return null;
+    }
+
+    final members = membersByRoom[roomId] ?? const [];
+    final currentMember = members
+        .where((member) => member['profile_id'] == currentProfileId)
+        .firstOrNull;
+    final participant = members
+        .where((member) => member['profile_id'] != currentProfileId)
+        .firstOrNull;
+    final fallbackParticipant = members.firstOrNull;
+    final displayParticipant = participant ?? fallbackParticipant;
+    final participantRole = _roleLabel(
+      displayParticipant?['member_role'] as String?,
+    );
+    final participantName =
+        displayParticipant?['display_name'] as String? ?? participantRole;
+    final lastMessageAt =
+        DateTime.tryParse(row['last_message_at'] as String? ?? '') ??
+        DateTime.tryParse(row['created_at'] as String? ?? '') ??
+        DateTime.now();
+
+    return ChatRoom(
+      id: localRoomId,
+      title: row['title'] as String? ?? 'Chat',
+      participantRole: participantRole,
+      participantName: participantName,
+      lastMessage:
+          row['last_message'] as String? ?? 'Room chat siap digunakan.',
+      lastMessageAt: lastMessageAt,
+      unreadCount: currentMember?['unread_count'] as int? ?? 0,
+    );
   }
 
   Future<String?> _roomIdForLocalRoom(String localRoomId) async {
@@ -616,5 +724,38 @@ class SupabaseChatService {
     }
 
     return 'group:$localRoomId';
+  }
+
+  String? _localRoomIdForCanonicalKey(String roomKey, AccountMode mode) {
+    final separator = roomKey.indexOf(':');
+    if (separator == -1 || separator == roomKey.length - 1) {
+      return null;
+    }
+
+    final type = roomKey.substring(0, separator);
+    final contextId = roomKey.substring(separator + 1);
+    return switch ((type, mode)) {
+      ('customer_provider', AccountMode.customer) =>
+        'customer-provider-$contextId',
+      ('customer_provider', AccountMode.provider) =>
+        'provider-customer-$contextId',
+      ('customer_guard', AccountMode.customer) => 'customer-guard-$contextId',
+      ('customer_guard', AccountMode.parkingGuard) =>
+        'guard-customer-$contextId',
+      ('customer_admin', AccountMode.customer) => 'customer-admin-$contextId',
+      ('customer_admin', AccountMode.superAdmin) =>
+        'superadmin-customer-$contextId',
+      ('provider_guard', AccountMode.provider) => 'provider-guard-$contextId',
+      ('provider_guard', AccountMode.parkingGuard) =>
+        'guard-provider-$contextId',
+      ('provider_admin', AccountMode.provider) =>
+        'provider-superadmin-$contextId',
+      ('provider_admin', AccountMode.superAdmin) =>
+        'superadmin-provider-$contextId',
+      ('guard_admin', AccountMode.parkingGuard) => 'guard-admin-$contextId',
+      ('guard_admin', AccountMode.superAdmin) => 'superadmin-guard-$contextId',
+      ('group', _) => contextId,
+      _ => null,
+    };
   }
 }

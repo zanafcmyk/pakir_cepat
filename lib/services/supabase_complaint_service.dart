@@ -64,6 +64,26 @@ class SupabaseComplaintService {
     ];
   }
 
+  Future<List<Complaint>> fetchCurrentUserComplaints() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('complaints')
+        .select(
+          'id, sender_role, title, category, description, priority, status, created_at, profiles(full_name)',
+        )
+        .eq('sender_profile_id', user.id)
+        .order('created_at', ascending: false);
+
+    return [
+      for (final row in rows)
+        _complaintFromRow(Map<String, dynamic>.from(row as Map)),
+    ];
+  }
+
   Future<void> answerComplaint({
     required String id,
     required String reply,
@@ -103,6 +123,27 @@ class SupabaseComplaintService {
     );
   }
 
+  Complaint _complaintFromRow(Map<String, dynamic> row) {
+    final createdAt =
+        DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
+    final profile = row['profiles'];
+    final senderRole = _roleFromDb(row['sender_role'] as String?);
+
+    return Complaint(
+      id: row['id'] as String,
+      senderRole: _roleLabel(senderRole),
+      senderName: profile is Map
+          ? profile['full_name'] as String? ?? 'Pengguna'
+          : 'Pengguna',
+      title: row['title'] as String? ?? '-',
+      category: row['category'] as String? ?? '-',
+      description: row['description'] as String? ?? '-',
+      priority: _priorityText(row['priority'] as String?),
+      status: _statusText(row['status'] as String?),
+      createdAt: createdAt,
+    );
+  }
+
   String _roleToDb(AccountMode mode) => switch (mode) {
     AccountMode.superAdmin => 'super_admin',
     AccountMode.provider => 'provider',
@@ -131,6 +172,13 @@ class SupabaseComplaintService {
     if (normalized.contains('urgent')) return 'urgent';
     return 'normal';
   }
+
+  String _priorityText(String? priority) => switch (priority) {
+    'low' => 'Rendah',
+    'high' => 'Tinggi',
+    'urgent' => 'Urgent',
+    _ => 'Sedang',
+  };
 
   ComplaintStatus _statusFromDb(String? status) => switch (status) {
     'answered' => ComplaintStatus.answered,

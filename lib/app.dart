@@ -1899,6 +1899,48 @@ class AppController extends StateNotifier<AppState> {
     _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
   }
 
+  Future<void> loadChatRoomsFromSupabase(AccountMode mode) async {
+    final rooms = await _chatService.fetchRoomsForCurrentUser(mode: mode);
+    if (rooms.isEmpty) {
+      return;
+    }
+
+    switch (mode) {
+      case AccountMode.customer:
+        state = state.copyWith(
+          customerChatRooms: _mergeChatRooms(state.customerChatRooms, rooms),
+        );
+      case AccountMode.provider:
+        state = state.copyWith(
+          providerChatRooms: _mergeChatRooms(state.providerChatRooms, rooms),
+        );
+      case AccountMode.parkingGuard:
+        state = state.copyWith(
+          guardChatRooms: _mergeChatRooms(state.guardChatRooms, rooms),
+        );
+      case AccountMode.superAdmin:
+        state = state.copyWith(
+          superAdminChatRooms: _mergeChatRooms(
+            state.superAdminChatRooms,
+            rooms,
+          ),
+        );
+    }
+  }
+
+  Future<void> loadCurrentUserComplaintsFromSupabase() async {
+    final complaints = await _complaintService.fetchCurrentUserComplaints();
+    switch (state.currentMode) {
+      case AccountMode.customer:
+        state = state.copyWith(customerComplaints: complaints);
+      case AccountMode.parkingGuard:
+        state = state.copyWith(guardComplaints: complaints);
+      case AccountMode.provider:
+      case AccountMode.superAdmin:
+        break;
+    }
+  }
+
   void replaceChatMessagesFromSupabase({
     required AccountMode mode,
     required String roomId,
@@ -1968,6 +2010,18 @@ class AppController extends StateNotifier<AppState> {
         else
           room,
     ];
+  }
+
+  List<ChatRoom> _mergeChatRooms(
+    List<ChatRoom> current,
+    List<ChatRoom> remote,
+  ) {
+    final remoteIds = remote.map((room) => room.id).toSet();
+    return [
+      ...remote,
+      for (final room in current)
+        if (!remoteIds.contains(room.id)) room,
+    ]..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
   }
 
   String? _mirrorRoomId(AccountMode from, String roomId) {
@@ -10666,24 +10720,34 @@ class _ParkingReviewDialogState extends ConsumerState<_ParkingReviewDialog> {
   }
 }
 
-class CustomerChatListScreen extends ConsumerWidget {
+class CustomerChatListScreen extends ConsumerStatefulWidget {
   const CustomerChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    ChatRoom? roomById(String id) {
-      for (final room in state.customerChatRooms) {
-        if (room.id == id) {
-          return room;
-        }
-      }
-      return null;
-    }
+  ConsumerState<CustomerChatListScreen> createState() =>
+      _CustomerChatListScreenState();
+}
 
-    final guardRoom = roomById('customer-guard-tkt-1002');
-    final providerRoom = roomById('customer-provider-lot-1');
-    final adminRoom = roomById('customer-admin-app');
+class _CustomerChatListScreenState
+    extends ConsumerState<CustomerChatListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final controller = ref.read(appControllerProvider.notifier);
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.customer));
+      unawaited(controller.loadCurrentUserComplaintsFromSupabase());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = [...state.customerChatRooms]
+      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return CustomerShell(
       currentIndex: 3,
       child: ListView(
@@ -10695,31 +10759,23 @@ class CustomerChatListScreen extends ConsumerWidget {
                 'Hubungi penjaga, penyedia parkir, atau laporkan masalah aplikasi.',
           ),
           const SizedBox(height: 18),
-          if (guardRoom != null)
-            _CustomerChatCategoryCard(
-              room: guardRoom,
-              icon: Icons.security_rounded,
-              accent: AppTheme.blue,
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${guardRoom.id}'),
-            ),
-          if (providerRoom != null)
-            _CustomerChatCategoryCard(
-              room: providerRoom,
-              icon: Icons.apartment_rounded,
-              accent: AppTheme.emerald,
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${providerRoom.id}'),
-            ),
-          if (adminRoom != null)
-            _CustomerChatCategoryCard(
-              room: adminRoom,
-              icon: Icons.support_agent_rounded,
-              accent: const Color(0xFFD97706),
-              actionLabel: 'Buka chat',
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${adminRoom.id}'),
-            ),
+          if (rooms.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada chat',
+              body:
+                  'Room chat akan muncul setelah kamu menghubungi penjaga, penyedia, atau admin.',
+              actionLabel: 'Buat Komplain',
+              onPressed: () => context.push('/customer/complaint'),
+            )
+          else
+            for (final room in rooms)
+              _CustomerChatCategoryCard(
+                room: room,
+                icon: _customerChatIcon(room.participantRole),
+                accent: _customerChatAccent(room.participantRole),
+                onTap: () =>
+                    context.push('/customer/chat-room?roomId=${room.id}'),
+              ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => context.push('/customer/complaint'),
@@ -10991,7 +11047,7 @@ class _CustomerChatRoomScreenState
   }
 }
 
-class RoleChatListScreen extends ConsumerWidget {
+class RoleChatListScreen extends ConsumerStatefulWidget {
   const RoleChatListScreen({
     super.key,
     required this.mode,
@@ -11004,15 +11060,35 @@ class RoleChatListScreen extends ConsumerWidget {
   final String subtitle;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RoleChatListScreen> createState() => _RoleChatListScreenState();
+}
+
+class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        ref
+            .read(appControllerProvider.notifier)
+            .loadChatRoomsFromSupabase(widget.mode),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final rooms = switch (mode) {
+    final rooms = switch (widget.mode) {
       AccountMode.provider => state.providerChatRooms,
       AccountMode.superAdmin => state.superAdminChatRooms,
       AccountMode.customer => state.customerChatRooms,
       AccountMode.parkingGuard => state.guardChatRooms,
     };
-    final routePrefix = switch (mode) {
+    final routePrefix = switch (widget.mode) {
       AccountMode.provider => '/provider',
       AccountMode.superAdmin => '/super-admin',
       AccountMode.customer => '/customer',
@@ -11021,7 +11097,7 @@ class RoleChatListScreen extends ConsumerWidget {
     final child = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
       children: [
-        HeaderSection(title: title, subtitle: subtitle),
+        HeaderSection(title: widget.title, subtitle: widget.subtitle),
         const SizedBox(height: 18),
         for (final room in rooms)
           _RoleChatCard(
@@ -11032,7 +11108,7 @@ class RoleChatListScreen extends ConsumerWidget {
       ],
     );
 
-    return switch (mode) {
+    return switch (widget.mode) {
       AccountMode.provider => AdminShell(currentIndex: 3, child: child),
       AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
       AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
@@ -11565,14 +11641,12 @@ class _CustomerChatCategoryCard extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.onTap,
-    this.actionLabel = 'Buka chat',
   });
 
   final ChatRoom room;
   final IconData icon;
   final Color accent;
   final VoidCallback onTap;
-  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -11641,7 +11715,7 @@ class _CustomerChatCategoryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_customerChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      '${_customerChatTimeLabel(room.lastMessageAt)} - Buka chat',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w700,
@@ -17622,24 +17696,33 @@ String _guardBookingStatusLabel(BookingStatus status) => switch (status) {
   BookingStatus.cancelled => 'Dibatalkan',
 };
 
-class GuardChatListScreen extends ConsumerWidget {
+class GuardChatListScreen extends ConsumerStatefulWidget {
   const GuardChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    ChatRoom? roomById(String id) {
-      for (final room in state.guardChatRooms) {
-        if (room.id == id) {
-          return room;
-        }
-      }
-      return null;
-    }
+  ConsumerState<GuardChatListScreen> createState() =>
+      _GuardChatListScreenState();
+}
 
-    final customerRoom = roomById('guard-customer-tkt-1002');
-    final providerRoom = roomById('guard-provider-main');
-    final adminRoom = roomById('guard-admin-app');
+class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final controller = ref.read(appControllerProvider.notifier);
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard));
+      unawaited(controller.loadCurrentUserComplaintsFromSupabase());
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = [...state.guardChatRooms]
+      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return GuardShell(
       currentIndex: 3,
       child: ListView(
@@ -17651,30 +17734,22 @@ class GuardChatListScreen extends ConsumerWidget {
                 'Hubungi customer, penyedia parkir, atau admin aplikasi dari satu tempat.',
           ),
           const SizedBox(height: 18),
-          if (customerRoom != null)
-            _GuardChatCategoryCard(
-              room: customerRoom,
-              icon: Icons.person_rounded,
-              accent: AppTheme.blue,
-              onTap: () =>
-                  context.push('/guard/chat-room?roomId=${customerRoom.id}'),
-            ),
-          if (providerRoom != null)
-            _GuardChatCategoryCard(
-              room: providerRoom,
-              icon: Icons.apartment_rounded,
-              accent: AppTheme.emerald,
-              onTap: () =>
-                  context.push('/guard/chat-room?roomId=${providerRoom.id}'),
-            ),
-          if (adminRoom != null)
-            _GuardChatCategoryCard(
-              room: adminRoom,
-              icon: Icons.support_agent_rounded,
-              accent: const Color(0xFFD97706),
-              actionLabel: 'Kirim komplain',
-              onTap: () => context.push('/guard/complaint'),
-            ),
+          if (rooms.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada chat',
+              body:
+                  'Chat customer, penyedia, dan admin akan tampil setelah ada percakapan aktif.',
+              actionLabel: 'Buat Komplain',
+              onPressed: () => context.push('/guard/complaint'),
+            )
+          else
+            for (final room in rooms)
+              _GuardChatCategoryCard(
+                room: room,
+                icon: _guardChatIcon(room.participantRole),
+                accent: _guardChatAccent(room.participantRole),
+                onTap: () => context.push('/guard/chat-room?roomId=${room.id}'),
+              ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => context.push('/guard/complaint'),
@@ -18141,14 +18216,12 @@ class _GuardChatCategoryCard extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.onTap,
-    this.actionLabel = 'Buka chat',
   });
 
   final ChatRoom room;
   final IconData icon;
   final Color accent;
   final VoidCallback onTap;
-  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -18217,7 +18290,7 @@ class _GuardChatCategoryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_guardChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      '${_guardChatTimeLabel(room.lastMessageAt)} - Buka chat',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w700,
