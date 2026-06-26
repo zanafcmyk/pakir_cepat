@@ -538,13 +538,23 @@ class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
     }
 
     final controller = ref.read(appControllerProvider.notifier);
-    await controller.restoreRememberedSession();
+    var sessionRestored = ref.read(appControllerProvider).isAuthenticated;
+    if (!sessionRestored) {
+      sessionRestored = await controller.restoreRememberedSession();
+    }
+    if (!sessionRestored &&
+        Supabase.instance.client.auth.currentSession == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      sessionRestored = await controller.restoreRememberedSession();
+    }
     if (!mounted) {
       return;
     }
 
     final state = ref.read(appControllerProvider);
-    if (!state.isAuthenticated) {
+    if (!state.isAuthenticated &&
+        !sessionRestored &&
+        Supabase.instance.client.auth.currentUser == null) {
       context.go('/login');
       return;
     }
@@ -1681,6 +1691,22 @@ class AppController extends StateNotifier<AppState> {
     _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
   }
 
+  void markChatRoomReadForMode({
+    required AccountMode mode,
+    required String roomId,
+  }) {
+    switch (mode) {
+      case AccountMode.customer:
+        markCustomerChatAsRead(roomId);
+      case AccountMode.provider:
+        markProviderChatAsRead(roomId);
+      case AccountMode.parkingGuard:
+        markChatAsRead(roomId);
+      case AccountMode.superAdmin:
+        markSuperAdminChatAsRead(roomId);
+    }
+  }
+
   void _markChatRoomAsReadInSupabase(String roomId, AccountMode mode) {
     unawaited(
       _chatService
@@ -1701,10 +1727,6 @@ class AppController extends StateNotifier<AppState> {
     required String roomId,
     required List<ChatMessage> messages,
   }) {
-    if (messages.isEmpty) {
-      return;
-    }
-
     List<ChatMessage> merge(List<ChatMessage> current) {
       return [
         for (final message in current)
@@ -10883,13 +10905,17 @@ class _CustomerChatRoomScreenState
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: AccountMode.customer,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: AccountMode.customer,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: AccountMode.customer,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.customer));
     });
   }
 
@@ -11231,13 +11257,17 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: widget.mode,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: widget.mode,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: widget.mode,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(widget.mode));
     });
   }
 
@@ -17985,13 +18015,17 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: AccountMode.parkingGuard,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: AccountMode.parkingGuard,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: AccountMode.parkingGuard,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard));
     });
   }
 
