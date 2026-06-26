@@ -68,14 +68,20 @@ begin
     raise exception 'Selected parking lots do not belong to this provider or are inactive.';
   end if;
 
-  update public.profiles
+  update public.profiles as target_profile
   set
-    full_name = coalesce(nullif(trim(p_guard_name), ''), full_name),
-    phone_number = coalesce(nullif(trim(p_guard_phone), ''), phone_number),
+    full_name = coalesce(
+      nullif(trim(p_guard_name), ''),
+      target_profile.full_name
+    ),
+    phone_number = coalesce(
+      nullif(trim(p_guard_phone), ''),
+      target_profile.phone_number
+    ),
     account_status = 'verified',
     access_status = 'active',
-    verified_at = coalesce(verified_at, now())
-  where id = v_profile_id;
+    verified_at = coalesce(target_profile.verified_at, now())
+  where target_profile.id = v_profile_id;
 
   insert into public.parking_guards (
     profile_id,

@@ -128,14 +128,20 @@ begin
     raise exception 'Parking guard account not found. Ask the guard to register first.';
   end if;
 
-  update public.profiles
+  update public.profiles as target_profile
   set
-    full_name = coalesce(nullif(trim(p_guard_name), ''), full_name),
-    phone_number = coalesce(nullif(trim(p_guard_phone), ''), phone_number),
+    full_name = coalesce(
+      nullif(trim(p_guard_name), ''),
+      target_profile.full_name
+    ),
+    phone_number = coalesce(
+      nullif(trim(p_guard_phone), ''),
+      target_profile.phone_number
+    ),
     account_status = 'verified',
     access_status = 'active',
-    verified_at = coalesce(verified_at, now())
-  where id = v_profile_id;
+    verified_at = coalesce(target_profile.verified_at, now())
+  where target_profile.id = v_profile_id;
 
   insert into public.parking_guards (
     profile_id,
@@ -206,9 +212,9 @@ begin
     and guard.id = p_guard_id
     and guard.provider_id = v_provider_id;
 
-  delete from public.parking_guards
-  where id = p_guard_id
-    and provider_id = v_provider_id;
+  delete from public.parking_guards as target_guard
+  where target_guard.id = p_guard_id
+    and target_guard.provider_id = v_provider_id;
 end;
 $$;
 
