@@ -7548,15 +7548,33 @@ class SuperAdminComplaintsScreen extends ConsumerStatefulWidget {
 
 class _SuperAdminComplaintsScreenState
     extends ConsumerState<SuperAdminComplaintsScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref
+    Future.microtask(_loadComplaints);
+  }
+
+  Future<void> _loadComplaints() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      await ref
           .read(appControllerProvider.notifier)
-          .loadComplaintsFromSupabase()
-          .catchError((_) {}),
-    );
+          .loadComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Gagal memuat komplain: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -7580,12 +7598,35 @@ class _SuperAdminComplaintsScreenState
                 '${complaints.where((item) => item.status == ComplaintStatus.waiting).length} komplain menunggu balasan admin super.',
           ),
           const SizedBox(height: 18),
-          ...complaints.map(
-            (complaint) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ComplaintCard(complaint: complaint),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Komplain gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadComplaints,
+            )
+          else if (complaints.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada komplain',
+              body:
+                  'Komplain customer, penjaga, dan penyedia akan muncul di sini.',
+              actionLabel: 'Muat ulang',
+              onPressed: _loadComplaints,
+            )
+          else
+            ...complaints.map(
+              (complaint) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ComplaintCard(complaint: complaint),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -10602,6 +10643,9 @@ class CustomerChatListScreen extends ConsumerStatefulWidget {
 
 class _CustomerChatListScreenState
     extends ConsumerState<CustomerChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
@@ -10609,11 +10653,29 @@ class _CustomerChatListScreenState
       if (!mounted) {
         return;
       }
-      final controller = ref.read(appControllerProvider.notifier);
-      controller.startChatRoomsRealtime(AccountMode.customer);
-      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.customer));
-      unawaited(controller.loadCurrentUserComplaintsFromSupabase());
+      unawaited(_loadChatData());
     });
+  }
+
+  Future<void> _loadChatData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(AccountMode.customer);
+    try {
+      await controller.loadChatRoomsFromSupabase(AccountMode.customer);
+      await controller.loadCurrentUserComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -10633,7 +10695,21 @@ class _CustomerChatListScreenState
                 'Hubungi penjaga, penyedia parkir, atau laporkan masalah aplikasi.',
           ),
           const SizedBox(height: 18),
-          if (rooms.isEmpty)
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Chat gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadChatData,
+            )
+          else if (rooms.isEmpty)
             EmptyStateCard(
               title: 'Belum ada chat',
               body:
@@ -10956,6 +11032,9 @@ class RoleChatListScreen extends ConsumerStatefulWidget {
 }
 
 class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
@@ -10963,15 +11042,28 @@ class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
       if (!mounted) {
         return;
       }
-      unawaited(
-        ref
-            .read(appControllerProvider.notifier)
-            .loadChatRoomsFromSupabase(widget.mode),
-      );
-      ref
-          .read(appControllerProvider.notifier)
-          .startChatRoomsRealtime(widget.mode);
+      unawaited(_loadChatRooms());
     });
+  }
+
+  Future<void> _loadChatRooms() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(widget.mode);
+    try {
+      await controller.loadChatRoomsFromSupabase(widget.mode);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -10996,12 +11088,34 @@ class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
       children: [
         HeaderSection(title: widget.title, subtitle: widget.subtitle),
         const SizedBox(height: 18),
-        for (final room in rooms)
-          _RoleChatCard(
-            room: room,
-            onTap: () =>
-                context.push('$routePrefix/chat-room?roomId=${room.id}'),
-          ),
+        if (_isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (_loadError != null)
+          EmptyStateCard(
+            title: 'Chat gagal dimuat',
+            body: _loadError!,
+            actionLabel: 'Coba lagi',
+            onPressed: _loadChatRooms,
+          )
+        else if (rooms.isEmpty)
+          EmptyStateCard(
+            title: 'Belum ada chat',
+            body: 'Percakapan baru akan muncul setelah ada pesan masuk.',
+            actionLabel: 'Muat ulang',
+            onPressed: _loadChatRooms,
+          )
+        else
+          for (final room in rooms)
+            _RoleChatCard(
+              room: room,
+              onTap: () =>
+                  context.push('$routePrefix/chat-room?roomId=${room.id}'),
+            ),
       ],
     );
 
@@ -17624,6 +17738,9 @@ class GuardChatListScreen extends ConsumerStatefulWidget {
 }
 
 class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
@@ -17631,11 +17748,29 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
       if (!mounted) {
         return;
       }
-      final controller = ref.read(appControllerProvider.notifier);
-      controller.startChatRoomsRealtime(AccountMode.parkingGuard);
-      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard));
-      unawaited(controller.loadCurrentUserComplaintsFromSupabase());
+      unawaited(_loadChatData());
     });
+  }
+
+  Future<void> _loadChatData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(AccountMode.parkingGuard);
+    try {
+      await controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard);
+      await controller.loadCurrentUserComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -17655,7 +17790,21 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
                 'Hubungi customer, penyedia parkir, atau admin aplikasi dari satu tempat.',
           ),
           const SizedBox(height: 18),
-          if (rooms.isEmpty)
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Chat gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadChatData,
+            )
+          else if (rooms.isEmpty)
             EmptyStateCard(
               title: 'Belum ada chat',
               body:
