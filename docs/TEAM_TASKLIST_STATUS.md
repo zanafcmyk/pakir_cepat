@@ -18,8 +18,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 26 Juni 2026
 
 - Total item terhitung: 272.
-- Selesai: 258 (94.9%).
-- Belum selesai: 14 (5.1%).
+- Selesai: 259 (95.2%).
+- Belum selesai: 13 (4.8%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -172,7 +172,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
 - [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
 - [ ] Deploy ulang `create-midtrans-payment` agar callback selesai pembayaran memakai fallback `parkircepat://payment-finish`, lalu uji kembali otomatis dari Midtrans sandbox ke aplikasi.
-- [ ] Push notification asli perlu audit akhir: pastikan Firebase config/secret live, token device tersimpan, dan pemicu server-side otomatis mengirim event booking/payment/guard ke HP.
+- [x] Push notification asli sudah diaudit: Firebase config/secret live, token device tersimpan, dan pemicu server-side mengirim event booking/payment/guard ke HP berdasarkan konfirmasi owner.
 - [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
 - [x] Realtime slot SQL `docs/supabase_realtime_slots.sql` sudah dijalankan di Supabase production.
