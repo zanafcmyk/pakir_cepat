@@ -169,6 +169,17 @@ begin
           )
         )
         or (
+          v_room_type = 'customer_provider'
+          and v_target_role = 'customer'
+          and exists (
+            select 1
+            from public.chat_room_members member
+            where member.room_id = v_room_id
+              and member.profile_id = target.id
+              and member.member_role = 'customer'
+          )
+        )
+        or (
           v_room_type = 'provider_guard'
           and v_target_role = 'parking_guard'
           and target.role = 'parking_guard'

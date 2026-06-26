@@ -3852,7 +3852,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendProviderMessage({required String roomId, required String message}) {
+  Future<void> sendProviderMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3867,26 +3870,27 @@ class AppController extends StateNotifier<AppState> {
     if (room == null) {
       return;
     }
+    final providerName = state.userName.isEmpty
+        ? 'Penyedia Parkir'
+        : state.userName;
     final now = DateTime.now();
     final chatMessage = _outgoingMessage(
       roomId: roomId,
       senderRole: 'Penyedia Parkir',
-      senderName: 'Penyedia - Parkir Plaza Sudirman',
+      senderName: providerName,
       receiverRole: room.participantRole,
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
     );
-    unawaited(
-      _syncChatMessage(
-        localRoomId: roomId,
-        title: room.title,
-        senderMode: AccountMode.provider,
-        senderName: 'Penyedia - Parkir Plaza Sudirman',
-        participantRole: room.participantRole,
-        participantName: room.participantName,
-        message: trimmed,
-      ).catchError((_) {}),
+    await _syncChatMessage(
+      localRoomId: roomId,
+      title: room.title,
+      senderMode: AccountMode.provider,
+      senderName: providerName,
+      participantRole: room.participantRole,
+      participantName: room.participantName,
+      message: trimmed,
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.provider, roomId);
     state = state.copyWith(
@@ -11254,7 +11258,10 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
     try {
       switch (widget.mode) {
         case AccountMode.provider:
-          controller.sendProviderMessage(roomId: widget.roomId, message: text);
+          await controller.sendProviderMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
         case AccountMode.superAdmin:
           controller.sendSuperAdminMessage(
             roomId: widget.roomId,

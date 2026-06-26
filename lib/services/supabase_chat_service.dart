@@ -333,6 +333,10 @@ class SupabaseChatService {
         roomKey.startsWith('customer_provider:')) {
       return _providerProfilesForLot(_contextId(roomKey));
     }
+    if (targetRole == AccountMode.customer &&
+        roomKey.startsWith('customer_provider:')) {
+      return _customerProfilesForExistingRoom(roomKey);
+    }
 
     if (roomKey.startsWith('customer_guard:')) {
       final ticketNumber = _contextId(roomKey);
@@ -408,6 +412,32 @@ class SupabaseChatService {
       return const [];
     }
     return [profile];
+  }
+
+  Future<List<Map<String, dynamic>>> _customerProfilesForExistingRoom(
+    String roomKey,
+  ) async {
+    final roomRows = await _client
+        .from('chat_rooms')
+        .select('id')
+        .eq('room_key', roomKey)
+        .limit(1);
+    if (roomRows.isEmpty) {
+      return const [];
+    }
+
+    final roomId = (roomRows.first as Map)['id'] as String?;
+    if (roomId == null) {
+      return const [];
+    }
+
+    final rows = await _client
+        .from('chat_room_members')
+        .select('profiles(id, full_name, role, access_status)')
+        .eq('room_id', roomId)
+        .eq('member_role', 'customer');
+
+    return _profilesFromDirectRows(rows);
   }
 
   Future<List<Map<String, dynamic>>> _guardProfilesForTicket(
