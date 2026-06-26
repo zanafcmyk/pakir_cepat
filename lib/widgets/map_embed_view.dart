@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'map_embed_view_platform.dart';
-
 class MapEmbedView extends StatelessWidget {
   const MapEmbedView({
     super.key,
@@ -22,17 +20,6 @@ class MapEmbedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (supportsMapIframe && _canEmbedMap(embedUrl)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: SizedBox(
-          height: height,
-          width: double.infinity,
-          child: buildPlatformMapEmbed(embedUrl),
-        ),
-      );
-    }
-
     return Container(
       height: height,
       width: double.infinity,
@@ -44,31 +31,11 @@ class MapEmbedView extends StatelessWidget {
       child: Stack(
         children: [
           const Positioned.fill(child: _InlineMapPreviewPainter()),
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0F172A).withValues(alpha: 0.14),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Text(
-                  'P',
-                  style: TextStyle(
-                    color: Color(0xFF0F9F83),
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
+          const Center(
+            child: Icon(
+              Icons.location_on_rounded,
+              color: Color(0xFF10B981),
+              size: 58,
             ),
           ),
           Positioned(
@@ -130,12 +97,6 @@ class MapEmbedView extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  bool _canEmbedMap(String value) {
-    return value.startsWith('https://www.google.com/maps/embed?') ||
-        (value.startsWith('https://maps.google.com/maps?') &&
-            value.contains('output=embed'));
   }
 
   String get _fallbackLocationText {
