@@ -5144,6 +5144,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _restoreAndNavigate() async {
+    final updateService = SupabaseAppUpdateService();
+    final updateInfo = await updateService.checkForUpdate();
+
+    if (updateInfo != null && mounted) {
+      if (updateInfo.isRequired) {
+        await _showForceUpdateDialog(updateInfo);
+        return;
+      } else if (updateInfo.isAvailable) {
+        final proceed = await _showOptionalUpdateDialog(updateInfo);
+        if (!proceed) {
+          return;
+        }
+      }
+    }
+
+    if (!mounted) {
+      return;
+    }
+
     final controller = ref.read(appControllerProvider.notifier);
     await controller.restoreRememberedSession();
     if (!mounted) {
@@ -5157,6 +5176,385 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     } else {
       context.go(controller.landingRouteFor(state));
     }
+  }
+
+  Future<void> _showForceUpdateDialog(AppUpdateInfo info) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+            backgroundColor: AppTheme.white,
+            surfaceTintColor: Colors.transparent,
+            titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            actionsPadding: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFEE2E2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.system_update_rounded,
+                    color: Colors.redAccent,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Update Wajib',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Versi aplikasi yang Anda gunakan sudah tidak didukung lagi. Harap perbarui aplikasi untuk terus menggunakan layanan Parkir Cepat.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: AppTheme.ink.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.slateSoft,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Versi Saat Ini:',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.slate,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            info.currentVersion,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.ink,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Versi Terbaru:',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.slate,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            info.latestVersion,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.blue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (info.releaseNotes.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Catatan Rilis:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 100),
+                    width: double.infinity,
+                    child: SingleChildScrollView(
+                      child: Text(
+                        info.releaseNotes,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.ink.withValues(alpha: 0.7),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.blue,
+                    foregroundColor: AppTheme.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await launchUrl(
+                      Uri.parse(info.downloadUrl),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+                  child: Text(
+                    'Perbarui Sekarang',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<bool> _showOptionalUpdateDialog(AppUpdateInfo info) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          backgroundColor: AppTheme.white,
+          surfaceTintColor: Colors.transparent,
+          titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          actionsPadding: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: AppTheme.blueSoft,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.system_update_rounded,
+                  color: AppTheme.blue,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Update Tersedia',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    color: AppTheme.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Versi terbaru aplikasi Parkir Cepat telah tersedia. Apakah Anda ingin memperbarui sekarang untuk mendapatkan fitur terbaru?',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppTheme.ink.withValues(alpha: 0.8),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.slateSoft,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Versi Saat Ini:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.slate,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          info.currentVersion,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.ink,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Versi Terbaru:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.slate,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          info.latestVersion,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.blue,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (info.releaseNotes.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Catatan Rilis:',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 100),
+                  width: double.infinity,
+                  child: SingleChildScrollView(
+                    child: Text(
+                      info.releaseNotes,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.ink.withValues(alpha: 0.7),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.slate),
+                        foregroundColor: AppTheme.slate,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).pop(true);
+                      },
+                      child: Text(
+                        'Nanti',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.blue,
+                        foregroundColor: AppTheme.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () async {
+                        await launchUrl(
+                          Uri.parse(info.downloadUrl),
+                          mode: LaunchMode.externalApplication,
+                        );
+                        if (context.mounted) {
+                          Navigator.of(context).pop(false);
+                        }
+                      },
+                      child: Text(
+                        'Perbarui',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? true;
   }
 
   @override

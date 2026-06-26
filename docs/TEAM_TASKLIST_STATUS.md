@@ -75,8 +75,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
 - [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
-- [ ] Build APK release belum berhasil diverifikasi. Flutter berhasil sampai tahap kompilasi/tree-shaking, lalu JVM Gradle crash; turunkan konfigurasi heap `-Xmx8G` dan ulangi build pada mesin yang cukup stabil.
-- [ ] Tambahkan strategi auto update aplikasi nanti sebelum release, misalnya lewat Play Store/App Store update atau pemeriksaan versi minimum dari server.
+- [x] Build rilis Android App Bundle (AAB) berhasil diverifikasi dan sukses dibuat setelah alokasi memori heap diturunkan ke -Xmx4G.
+- [x] Tambahkan strategi auto update aplikasi nanti sebelum release, misalnya lewat Play Store/App Store update atau pemeriksaan versi minimum dari server. (Selesai terintegrasi di SplashScreen dengan SupabaseAppUpdateService).
 - [ ] Edit ulang data lahan live lama dengan alamat lengkap. Dua lahan yang diaudit masih memakai koordinat default yang sama `-6.2087145, 106.8224854`.
 - [x] `send-push-notification` sekarang mewajibkan `PUSH_FUNCTION_SECRET`; function sudah dideploy ulang sebagai version 6.
 
