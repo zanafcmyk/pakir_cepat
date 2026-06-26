@@ -127,6 +127,20 @@ class SupabaseChatService {
     }
 
     final targetRole = _roleFromLabel(participantRole);
+    final roomKey = _canonicalRoomKey(localRoomId);
+    final sentByRpc = await _sendMessageWithRpc(
+      roomKey: roomKey,
+      title: title,
+      senderMode: senderMode,
+      senderName: senderName,
+      targetRole: targetRole,
+      participantName: participantName,
+      message: message,
+    );
+    if (sentByRpc) {
+      return;
+    }
+
     final targetProfiles = await _targetProfilesForRoom(
       localRoomId: localRoomId,
       targetRole: targetRole,
@@ -149,6 +163,35 @@ class SupabaseChatService {
       'sender_name': senderName,
       'message': message,
     });
+  }
+
+  Future<bool> _sendMessageWithRpc({
+    required String roomKey,
+    required String title,
+    required AccountMode senderMode,
+    required String senderName,
+    required AccountMode? targetRole,
+    required String participantName,
+    required String message,
+  }) async {
+    try {
+      await _client.rpc(
+        'app_send_chat_message',
+        params: {
+          'p_room_key': roomKey,
+          'p_room_type': _roomTypeFromKey(roomKey),
+          'p_title': title,
+          'p_sender_role': _roleToDb(senderMode),
+          'p_sender_name': senderName,
+          'p_target_role': targetRole == null ? null : _roleToDb(targetRole),
+          'p_target_name': participantName,
+          'p_message': message,
+        },
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   ChatRoom? _roomFromRow(

@@ -1,4 +1,4 @@
-// ignore_for_file: unused_field, unused_element, prefer_final_fields
+// ignore_for_file: unused_field, unused_element, unused_local_variable, prefer_final_fields
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -1510,18 +1510,18 @@ class AppState {
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
-      customerChatRooms: customerChatRooms,
-      customerChatMessages: customerChatMessages,
+      customerChatRooms: const [],
+      customerChatMessages: const [],
       customerComplaints: const [],
-      guardChatRooms: guardChatRooms,
-      guardChatMessages: guardChatMessages,
+      guardChatRooms: const [],
+      guardChatMessages: const [],
       guardComplaints: const [],
-      providerChatRooms: providerChatRooms,
-      providerChatMessages: providerChatMessages,
-      superAdminChatRooms: superAdminChatRooms,
-      superAdminChatMessages: superAdminChatMessages,
+      providerChatRooms: const [],
+      providerChatMessages: const [],
+      superAdminChatRooms: const [],
+      superAdminChatMessages: const [],
       superAdminNotifications: superAdminNotifications,
-      complaints: complaints,
+      complaints: const [],
       registrationRequests: registrationRequests,
       managedUsers: managedUsers,
     );
