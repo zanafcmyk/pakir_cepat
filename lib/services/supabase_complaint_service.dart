@@ -47,6 +47,7 @@ class SupabaseComplaintService {
       createdAt:
           DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
+      reply: null,
     );
   }
 
@@ -73,7 +74,7 @@ class SupabaseComplaintService {
     final rows = await _client
         .from('complaints')
         .select(
-          'id, sender_role, title, category, description, priority, status, created_at, profiles(full_name)',
+          'id, sender_role, title, category, description, priority, status, reply, created_at, profiles(full_name)',
         )
         .eq('sender_profile_id', user.id)
         .order('created_at', ascending: false);
@@ -148,6 +149,7 @@ class SupabaseComplaintService {
       priority: _priorityText(row['priority'] as String?),
       status: _statusText(row['status'] as String?),
       createdAt: createdAt,
+      reply: row['reply'] as String?,
     );
   }
 

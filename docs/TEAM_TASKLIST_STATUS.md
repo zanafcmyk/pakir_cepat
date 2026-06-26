@@ -107,6 +107,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Komplain ke Supabase.
 - [x] Chat membaca pesan lama dari Supabase.
 - [x] Chat realtime dari Supabase.
+- [x] Daftar chat customer/penyedia/penjaga/super admin refresh realtime dan badge unread di-reset saat room dibuka.
+- [x] Komplain tampil sebagai thread sederhana: pesan pelapor dan balasan admin terlihat di kartu admin serta riwayat pelapor.
 - [x] Notifikasi in-app/table ke Supabase.
 - [x] Akun penjaga ke Supabase.
 - [x] Favorit lokasi parkir customer ke Supabase.
@@ -158,6 +160,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Error handling refresh dashboard customer menampilkan data yang gagal dimuat.
 - [x] Error handling dashboard penyedia, penjaga, dan super admin menampilkan kegagalan data Supabase.
 - [x] Data demo/lokal mulai dipisah dengan flag `isUsingDemoData` dan notice dashboard.
+- [x] Audit demo chat/komplain terakhir: seed chat/komplain tidak lagi dipasang ke state, dan mirror room tidak memakai ID demo hardcoded.
 
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 

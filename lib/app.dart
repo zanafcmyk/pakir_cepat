@@ -1066,41 +1066,6 @@ class AppState {
       ),
     ];
 
-    const complaints = [
-      ComplaintItem(
-        id: 'cmp-1',
-        senderName: 'Dio Pratama',
-        senderRole: AccountMode.customer,
-        subject: 'Pembayaran tunai belum dikonfirmasi',
-        message:
-            'Saya sudah bayar tunai ke penjaga, tetapi status tiket masih belum lunas.',
-        timeLabel: '8 menit lalu',
-        status: ComplaintStatus.waiting,
-      ),
-      ComplaintItem(
-        id: 'cmp-2',
-        senderName: 'Admin Plaza Sudirman',
-        senderRole: AccountMode.provider,
-        subject: 'Approval perubahan tarif',
-        message:
-            'Mohon tinjau perubahan tarif jam sibuk agar bisa diterapkan minggu ini.',
-        timeLabel: '32 menit lalu',
-        status: ComplaintStatus.waiting,
-      ),
-      ComplaintItem(
-        id: 'cmp-3',
-        senderName: 'Raka Penjaga',
-        senderRole: AccountMode.parkingGuard,
-        subject: 'Akses scan QR tidak tampil',
-        message:
-            'Menu scan QR sempat tidak aktif saat saya bertugas di lot Emerald.',
-        timeLabel: '1 jam lalu',
-        status: ComplaintStatus.answered,
-        reply:
-            'Akses penjaga sudah dicek. Silakan login ulang, lalu hubungi penyedia bila lokasi tugas belum muncul.',
-      ),
-    ];
-
     const registrationRequests = [
       RegistrationRequest(
         id: 'reg-1',
@@ -1172,316 +1137,6 @@ class AppState {
         status: 'Lunas',
         total: 15000,
         timeLabel: 'Kemarin, 18:20 - 19:10',
-      ),
-    ];
-
-    final seededChatTime = DateTime(2026, 6, 8, 9, 15);
-    final guardChatRooms = [
-      ChatRoom(
-        id: 'guard-customer-tkt-1002',
-        title: 'Chat Customer - TKT-1002',
-        participantRole: 'Customer',
-        participantName: 'Customer TKT-1002',
-        lastMessage: 'Baik Pak, saya cek tiketnya.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 12)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'guard-provider-main',
-        title: 'Penyedia Parkir',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia Parkir',
-        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'guard-admin-app',
-        title: 'Admin Aplikasi',
-        participantRole: 'Admin Aplikasi',
-        participantName: 'Admin Aplikasi',
-        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final guardChatMessages = [
-      ChatMessage(
-        id: 'msg-guard-customer-1',
-        roomId: 'guard-customer-tkt-1002',
-        senderRole: 'Customer',
-        senderName: 'Customer TKT-1002',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Pak, tiket saya TKT-1002 belum terbaca di gerbang.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 18)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-guard-customer-2',
-        roomId: 'guard-customer-tkt-1002',
-        senderRole: 'Penjaga Parkir',
-        senderName: 'Raka Penjaga',
-        receiverRole: 'Customer',
-        receiverName: 'Customer TKT-1002',
-        message: 'Baik Pak, saya cek tiketnya.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 12)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-guard-provider-1',
-        roomId: 'guard-provider-main',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia Parkir',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Laporkan kondisi operasional jika ada kendala.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-guard-admin-1',
-        roomId: 'guard-admin-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Gunakan form komplain untuk masalah aplikasi.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
-        isRead: true,
-      ),
-    ];
-
-    final customerChatTime = DateTime(2026, 6, 8, 10, 5);
-    final customerChatRooms = [
-      ChatRoom(
-        id: 'customer-guard-tkt-1002',
-        title: 'Chat Penjaga - TKT-1002',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        lastMessage: 'Silakan tunjukkan QR tiket di gerbang masuk.',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 10)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'customer-provider-lot-1',
-        title: 'Chat Penyedia - Parkir Plaza Sudirman',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia - Parkir Plaza Sudirman',
-        lastMessage: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'customer-admin-app',
-        title: 'Admin Aplikasi',
-        participantRole: 'Admin Aplikasi',
-        participantName: 'Admin Aplikasi',
-        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
-        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final customerChatMessages = [
-      ChatMessage(
-        id: 'msg-customer-guard-1',
-        roomId: 'customer-guard-tkt-1002',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        message: 'Pak, slot saya ada di area mana?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 16)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-guard-2',
-        roomId: 'customer-guard-tkt-1002',
-        senderRole: 'Penjaga Parkir',
-        senderName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Silakan tunjukkan QR tiket di gerbang masuk.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 10)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-customer-provider-1',
-        roomId: 'customer-provider-lot-1',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Apakah tarif malam sama dengan siang?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-provider-2',
-        roomId: 'customer-provider-lot-1',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-admin-1',
-        roomId: 'customer-admin-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Laporkan kendala aplikasi lewat form komplain.',
-        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-    ];
-
-    final providerChatRooms = [
-      ChatRoom(
-        id: 'provider-customer-lot-1',
-        title: 'Chat Customer - Parkir Plaza Sudirman',
-        participantRole: 'Customer',
-        participantName: 'Dio Pratama',
-        lastMessage: 'Apakah tarif malam sama dengan siang?',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'provider-guard-main',
-        title: 'Chat Penjaga - Raka Penjaga',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Raka Penjaga',
-        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'provider-superadmin-main',
-        title: 'Chat Super Admin',
-        participantRole: 'Super Admin',
-        participantName: 'Admin Super Parkir Cepat',
-        lastMessage: 'Koordinasikan kendala penyedia di sini.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final providerChatMessages = [
-      ChatMessage(
-        id: 'msg-provider-customer-1',
-        roomId: 'provider-customer-lot-1',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Apakah tarif malam sama dengan siang?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-provider-customer-2',
-        roomId: 'provider-customer-lot-1',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-provider-guard-1',
-        roomId: 'provider-guard-main',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia Parkir',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Laporkan kondisi operasional jika ada kendala.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-provider-superadmin-1',
-        roomId: 'provider-superadmin-main',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Koordinasikan kendala penyedia di sini.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-    ];
-
-    final superAdminChatRooms = [
-      ChatRoom(
-        id: 'superadmin-customer-app',
-        title: 'Chat Customer - Dio Pratama',
-        participantRole: 'Customer',
-        participantName: 'Dio Pratama',
-        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
-        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'superadmin-provider-main',
-        title: 'Chat Penyedia - Plaza Sudirman',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia - Parkir Plaza Sudirman',
-        lastMessage: 'Koordinasikan kendala penyedia di sini.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'superadmin-guard-app',
-        title: 'Chat Penjaga - Raka Penjaga',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Raka Penjaga',
-        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final superAdminChatMessages = [
-      ChatMessage(
-        id: 'msg-superadmin-customer-1',
-        roomId: 'superadmin-customer-app',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Laporkan kendala aplikasi lewat form komplain.',
-        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-superadmin-provider-1',
-        roomId: 'superadmin-provider-main',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Koordinasikan kendala penyedia di sini.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-superadmin-guard-1',
-        roomId: 'superadmin-guard-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Gunakan form komplain untuk masalah aplikasi.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
-        isRead: true,
       ),
     ];
 
@@ -2111,29 +1766,27 @@ class AppController extends StateNotifier<AppState> {
   }
 
   String? _mirrorRoomId(AccountMode from, String roomId) {
-    return switch ((from, roomId)) {
-      (AccountMode.customer, 'customer-guard-tkt-1002') =>
-        'guard-customer-tkt-1002',
-      (AccountMode.customer, 'customer-provider-lot-1') =>
-        'provider-customer-lot-1',
-      (AccountMode.customer, 'customer-admin-app') => 'superadmin-customer-app',
-      (AccountMode.parkingGuard, 'guard-customer-tkt-1002') =>
-        'customer-guard-tkt-1002',
-      (AccountMode.parkingGuard, 'guard-provider-main') =>
-        'provider-guard-main',
-      (AccountMode.parkingGuard, 'guard-admin-app') => 'superadmin-guard-app',
-      (AccountMode.provider, 'provider-customer-lot-1') =>
-        'customer-provider-lot-1',
-      (AccountMode.provider, 'provider-guard-main') => 'guard-provider-main',
-      (AccountMode.provider, 'provider-superadmin-main') =>
-        'superadmin-provider-main',
-      (AccountMode.superAdmin, 'superadmin-customer-app') =>
-        'customer-admin-app',
-      (AccountMode.superAdmin, 'superadmin-provider-main') =>
-        'provider-superadmin-main',
-      (AccountMode.superAdmin, 'superadmin-guard-app') => 'guard-admin-app',
-      _ => null,
-    };
+    const mirrors = [
+      ('customer-guard-', 'guard-customer-'),
+      ('guard-customer-', 'customer-guard-'),
+      ('customer-provider-', 'provider-customer-'),
+      ('provider-customer-', 'customer-provider-'),
+      ('customer-admin-', 'superadmin-customer-'),
+      ('superadmin-customer-', 'customer-admin-'),
+      ('guard-provider-', 'provider-guard-'),
+      ('provider-guard-', 'guard-provider-'),
+      ('guard-admin-', 'superadmin-guard-'),
+      ('superadmin-guard-', 'guard-admin-'),
+      ('provider-superadmin-', 'superadmin-provider-'),
+      ('superadmin-provider-', 'provider-superadmin-'),
+    ];
+
+    for (final (sourcePrefix, targetPrefix) in mirrors) {
+      if (roomId.startsWith(sourcePrefix)) {
+        return '$targetPrefix${roomId.substring(sourcePrefix.length)}';
+      }
+    }
+    return null;
   }
 
   String landingRouteFor(AppState value) {
@@ -8308,26 +7961,28 @@ class ComplaintCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Text(
-            complaint.message,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppTheme.slate,
-              height: 1.45,
-            ),
+          _ComplaintThreadBubble(
+            sender: complaint.senderName,
+            roleLabel: roleLabel(complaint.senderRole),
+            message: complaint.message,
+            accent: roleAccent(complaint.senderRole),
+            alignRight: false,
           ),
+          if (complaint.reply != null) ...[
+            const SizedBox(height: 10),
+            _ComplaintThreadBubble(
+              sender: 'Admin Aplikasi',
+              roleLabel: 'Balasan',
+              message: complaint.reply!,
+              accent: AppTheme.emerald,
+              alignRight: true,
+            ),
+          ],
           const SizedBox(height: 14),
           StatusBadge(
             label: complaintStatusLabel(complaint.status),
             color: complaintStatusColor(complaint.status),
           ),
-          if (complaint.reply != null) ...[
-            const SizedBox(height: 14),
-            InlineNotice(
-              icon: Icons.reply_rounded,
-              accent: AppTheme.emerald,
-              message: complaint.reply!,
-            ),
-          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -8358,6 +8013,68 @@ class ComplaintCard extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ComplaintThreadBubble extends StatelessWidget {
+  const _ComplaintThreadBubble({
+    required this.sender,
+    required this.roleLabel,
+    required this.message,
+    required this.accent,
+    required this.alignRight,
+  });
+
+  final String sender;
+  final String roleLabel;
+  final String message;
+  final Color accent;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: alignRight ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accent.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          crossAxisAlignment: alignRight
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              sender,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: accent,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              roleLabel,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: AppTheme.slate),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: alignRight ? TextAlign.right : TextAlign.left,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.ink,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -10973,6 +10690,14 @@ class _CustomerChatListScreenState
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
+                          if (complaint.reply != null) ...[
+                            const SizedBox(height: 10),
+                            InlineNotice(
+                              icon: Icons.reply_rounded,
+                              accent: AppTheme.emerald,
+                              message: 'Admin: ${complaint.reply!}',
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -17997,6 +17722,14 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
+                          if (complaint.reply != null) ...[
+                            const SizedBox(height: 10),
+                            InlineNotice(
+                              icon: Icons.reply_rounded,
+                              accent: AppTheme.emerald,
+                              message: 'Admin: ${complaint.reply!}',
+                            ),
+                          ],
                         ],
                       ),
                     ),

@@ -519,6 +519,7 @@ class Complaint {
     required this.priority,
     required this.status,
     required this.createdAt,
+    this.reply,
   });
 
   final String id;
@@ -530,6 +531,7 @@ class Complaint {
   final String priority;
   final String status;
   final DateTime createdAt;
+  final String? reply;
 }
 
 class ProviderApplication {
