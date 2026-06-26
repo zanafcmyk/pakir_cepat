@@ -29,6 +29,7 @@ import 'services/firebase_push_notification_service.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_app_update_service.dart';
 import 'services/supabase_customer_settings_service.dart';
 import 'services/supabase_favorite_service.dart';
 import 'services/supabase_guard_service.dart';
