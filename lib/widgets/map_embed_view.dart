@@ -44,7 +44,7 @@ class MapEmbedView extends StatelessWidget {
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.parkircepat.parkir_cepat',
+                  userAgentPackageName: 'com.ti23a4.parkircepat',
                   retinaMode: RetinaMode.isHighDensity(context),
                 ),
                 MarkerLayer(
