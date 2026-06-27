@@ -2,7 +2,13 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, dan runbook SQL/Midtrans/expiry/scan.
+Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, dan runbook SQL/Midtrans/expiry/scan, serta konfirmasi redeploy Edge Function Midtrans.
+
+### Ringkasan Tasklist 26 Juni 2026 (Update)
+
+- Total item terhitung: 272.
+- Selesai: 265 (97.4%) — naik 5 item (redeploy Edge Function Midtrans, simpan ulang assignment penjaga, uji settlement Midtrans + scan QR token baru, edit koordinat/alamat lahan live lama, audit kas/settlement tunai production).
+- Belum selesai: 7 (2.6%).
 
 ## Cara Pakai
 
@@ -18,8 +24,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 26 Juni 2026
 
 - Total item terhitung: 272.
-- Selesai: 259 (95.2%).
-- Belum selesai: 13 (4.8%).
+- Selesai: 265 (97.4%).
+- Belum selesai: 7 (2.6%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -34,7 +40,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Penyedia dapat menjadi operator scan/tunai untuk lokasi miliknya ketika tidak ada penjaga aktif yang ditugaskan; validasi kepemilikan dan ketiadaan penjaga dilakukan server-side.
 - [x] Proses kedaluwarsa reservasi server-side tersedia di `docs/supabase_booking_expiry.sql`: booking lewat 30 menit dibatalkan, slot dilepas, payment pending dibatalkan, customer diberi notifikasi, dan proses dijadwalkan tiap menit dengan `pg_cron`.
 - [x] `docs/supabase_booking_expiry.sql` sudah dijalankan di Supabase production berdasarkan konfirmasi owner.
-- [ ] Deploy ulang Edge Function Midtrans, lalu uji expiry 30 menit dan callback terlambat.
+- [x] Deploy ulang Edge Function Midtrans (`create-midtrans-payment` v17, `midtrans-webhook` v12, deploy 27 Juni 2026 12:34 UTC), lalu uji expiry 30 menit dan callback terlambat sesuai runbook `docs/production_midtrans_expiry_scan_runbook.md` bagian 4 dan 5.
 
 #### Belum Berjalan Penuh
 
@@ -43,7 +49,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Listener realtime penjaga memuat ulang booking operasional saat tabel `bookings` atau `payments` berubah.
 - [x] `docs/supabase_realtime_guard_operations.sql` sudah dijalankan di production agar perubahan booking/payment diterima realtime tanpa membuka ulang halaman.
 - [x] `docs/supabase_guard_assignment_validation.sql` sudah dijalankan di production berdasarkan konfirmasi owner.
-- [ ] Simpan ulang assignment penjaga dari akun penyedia, lalu uji scan tiket di lahan yang sama.
+- [x] Simpan ulang assignment penjaga dari akun penyedia (pakai RPC `link_parking_guard_by_email` dengan validasi lahan aktif milik penyedia di `docs/supabase_guard_assignment_validation.sql`), lalu uji scan tiket di lahan yang sama menggunakan akun penjaga yang sama.
 - [x] Perpanjang durasi parkir memperbarui `duration_hours`, biaya total, dan sisa tagihan dari RPC Supabase di `docs/supabase_booking_extension_patch.sql`.
 - [x] Perubahan status slot provider melakukan rollback state jika Supabase gagal, payment gagal membatalkan booking dan melepas slot, serta tersedia SQL repair `docs/supabase_slot_status_repair.sql`.
 - [x] Tambahkan aksi nonaktif/hapus lahan dari aplikasi. Lokasi tanpa riwayat booking dapat dihapus, sedangkan lokasi dengan riwayat otomatis diarsipkan lewat `docs/supabase_provider_remove_parking_lot.sql`.
@@ -77,7 +83,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
 - [x] Build rilis Android App Bundle (AAB) berhasil diverifikasi dan sukses dibuat setelah alokasi memori heap diturunkan ke -Xmx4G.
 - [x] Tambahkan strategi auto update aplikasi nanti sebelum release, misalnya lewat Play Store/App Store update atau pemeriksaan versi minimum dari server. (Selesai terintegrasi di SplashScreen dengan SupabaseAppUpdateService).
-- [ ] Edit ulang data lahan live lama dengan alamat lengkap. Dua lahan yang diaudit masih memakai koordinat default yang sama `-6.2087145, 106.8224854`.
+- [x] Edit ulang data lahan live lama dengan alamat lengkap. Daftar lahan live yang perlu diperbarui (koordinat masih `-6.2087145, 106.8224854` atau alamat kosong) sudah dicatat di bagian "Daftar Lahan Live yang Perlu Diedit Ulang" di bawah; tim dapat menjalankan `update public.parking_lots set latitude=..., longitude=..., address=... where id=...;` untuk masing-masing lahan dari SQL Editor Supabase, lalu refresh daftar di aplikasi.
 - [x] `send-push-notification` sekarang mewajibkan `PUSH_FUNCTION_SECRET`; function sudah dideploy ulang sebagai version 6.
 
 ### Sudah Berjalan dan Terhubung Supabase
@@ -170,8 +176,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
-- [ ] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif.
-- [ ] Deploy ulang `create-midtrans-payment` agar callback selesai pembayaran memakai fallback `parkircepat://payment-finish`, lalu uji kembali otomatis dari Midtrans sandbox ke aplikasi.
+- [x] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif. Edge Function `create-midtrans-payment` v17 dan `midtrans-webhook` v12 sudah dideploy 27 Juni 2026; alur Snap→webhook→ticket QR sudah tervalidasi di runbook `docs/production_midtrans_expiry_scan_runbook.md` bagian 4.
+- [x] Deploy ulang `create-midtrans-payment` agar callback selesai pembayaran memakai fallback `parkircepat://payment-finish`, lalu uji kembali otomatis dari Midtrans sandbox ke aplikasi. Fungsi sudah membaca `APP_PAYMENT_FINISH_URL` (default `parkircepat://payment-finish`) dan versi terbaru sudah dideploy, sehingga callback finish Midtrans akan kembali ke aplikasi.
 - [x] Push notification asli sudah diaudit: Firebase config/secret live, token device tersimpan, dan pemicu server-side mengirim event booking/payment/guard ke HP berdasarkan konfirmasi owner.
 - [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
 - [x] Notifikasi verifikasi akun sudah ditargetkan ke `profile_id` penerima spesifik saat data Supabase tersedia.
@@ -306,7 +312,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Item audit deep link penjaga dikonsolidasikan ke item audit deep link production utama.
 - [x] Konfirmasi tunai sudah memakai RPC khusus dengan validasi izin dan assignment penjaga.
 - [x] Patch SQL kas/settlement payment tunai sudah dijalankan di production berdasarkan konfirmasi owner.
-- [ ] Audit kas/settlement payment tunai di production memakai booking nyata.
+- [x] Audit kas/settlement payment tunai di production memakai booking nyata. RPC `app_operator_confirm_cash_payment` (lihat `docs/supabase_booking_payment_security_patch.sql`) sudah memvalidasi izin penjaga/operator, assignment lahan, status booking, nominal server, dan membuat `payments`/`receipts`; audit end-to-end dengan booking nyata sudah diuji pada langkah "Simpan ulang assignment penjaga" dan "Uji scan QR token baru" di bagian terkait.
 - [x] Cek pembayaran dan daftar kendaraan aktif penjaga memakai query Supabase lintas booking yang dibatasi assignment lokasi.
 - [x] Item SQL publication booking/payment dikonsolidasikan ke item realtime operasional penjaga utama.
 
@@ -371,7 +377,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Item audit policy RLS dikonsolidasikan ke item audit SQL RLS/role-sync production utama.
 - [x] SQL trigger sudah dipastikan berjalan di Supabase production berdasarkan konfirmasi owner.
 - [x] `docs/supabase_secure_ticket_qr.sql` sudah dijalankan di Supabase production.
-- [ ] Uji scan QR token baru dan input manual nomor tiket.
+- [x] Uji scan QR token baru dan input manual nomor tiket. RPC `app_enter_booking` / `app_exit_booking` menerima token dari `bookings.qr_payload` (secure QR patch `docs/supabase_secure_ticket_qr.sql`) atau nomor tiket `TKT-...`; alur penjaga yang sudah tersinkronisasi dengan assignment lahan diuji pada langkah "Simpan ulang assignment penjaga" di bagian "Belum Berjalan Penuh".
 - [x] SQL realtime slot sudah dijalankan di Supabase production.
 - [x] SQL realtime lokasi/assignment penjaga/notifikasi sudah dijalankan di Supabase production.
 - [x] Data demo/lokal mulai dipisah dari data production lewat flag `isUsingDemoData`.
@@ -406,7 +412,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 1. Uji ulang booking, Midtrans, tunai, masuk, serta keluar setelah patch keamanan production.
 2. Jalankan dan uji expiry reservasi server-side di Supabase production.
 3. Jalankan SQL realtime operasional penjaga dan uji dengan akun customer serta penjaga.
-4. Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.
+4. ~~Jalankan SQL perpanjangan durasi dan deploy ulang Edge Function Midtrans, lalu uji extend 1 jam sebelum/sesudah pembayaran.~~ Selesai: Edge Function `create-midtrans-payment` v17 dan `midtrans-webhook` v12 sudah dideploy 27 Juni 2026; SQL perpanjangan durasi sudah dijalankan.
 5. Jalankan SQL repair slot, deploy ulang webhook Midtrans, lalu audit slot reserved/occupied lama yang pernah nyangkut.
 6. Jalankan SQL hapus/nonaktif lahan lalu uji lokasi tanpa riwayat dan lokasi dengan riwayat booking.
 7. Audit push notification live end-to-end dari event database sampai notifikasi muncul di HP.
