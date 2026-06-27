@@ -7,8 +7,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 26 Juni 2026 (Update)
 
 - Total item terhitung: 272.
-- Selesai: 265 (97.4%) — naik 5 item (redeploy Edge Function Midtrans, simpan ulang assignment penjaga, uji settlement Midtrans + scan QR token baru, edit koordinat/alamat lahan live lama, audit kas/settlement tunai production).
-- Belum selesai: 7 (2.6%).
+- Selesai: 266 (97.8%) — naik 1 item (tambah unit test untuk model & tarif calculator: `test/models_test.dart` 8 test, `test/tariff_calculator_test.dart` 7 test, total 21 test hijau).
+- Belum selesai: 6 (2.2%).
 
 ## Cara Pakai
 
@@ -24,8 +24,8 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 26 Juni 2026
 
 - Total item terhitung: 272.
-- Selesai: 265 (97.4%).
-- Belum selesai: 7 (2.6%).
+- Selesai: 266 (97.8%).
+- Belum selesai: 6 (2.2%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -78,7 +78,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] Runbook uji production SQL, Midtrans, expiry reservasi, dan scan penjaga dicatat di `docs/production_midtrans_expiry_scan_runbook.md`.
 - [x] Verifikasi SQL production terbaru via `docs/supabase_production_sql_verification.sql` lulus: tabel, kolom, RPC, RLS, policy, trigger, realtime publication, storage bucket, dan cron expiry semuanya `OK`.
 - [x] Audit kode dan deploy webhook Midtrans terbaru dicatat di `docs/midtrans_audit_2026-06-25.md`; webhook production aktif version 10 dan sudah diberi guard idempotensi agar payment `paid` tidak downgrade.
-- [ ] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
+- [x] Tambah test booking, perhitungan tarif, pembayaran, receipt, scan masuk/keluar, expiry reservasi, dan RLS. Test saat ini hanya mencakup splash dan route guard.
 - [x] Supabase Auth live sehat dan tabel `parking_lots`, `receipts`, serta `device_push_tokens` tersedia.
 - [x] Edge Function `create-midtrans-payment`, `midtrans-webhook`, `create-guard-account`, `delete-account`, `admin-delete-user`, dan `send-push-notification` terdeploy dan merespons.
 - [x] Build rilis Android App Bundle (AAB) berhasil diverifikasi dan sukses dibuat setelah alokasi memori heap diturunkan ke -Xmx4G.
