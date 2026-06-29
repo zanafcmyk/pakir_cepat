@@ -2,13 +2,13 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, dan runbook SQL/Midtrans/expiry/scan, serta konfirmasi redeploy Edge Function Midtrans.
+Terakhir diperbarui: 29 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, runbook SQL/Midtrans/expiry/scan, konfirmasi redeploy Edge Function Midtrans, serta sinkronisasi checklist terbuka.
 
-### Ringkasan Tasklist 26 Juni 2026 (Update)
+### Ringkasan Tasklist 29 Juni 2026 (Update)
 
 - Total item terhitung: 272.
-- Selesai: 266 (97.8%) — naik 1 item (tambah unit test untuk model & tarif calculator: `test/models_test.dart` 8 test, `test/tariff_calculator_test.dart` 7 test, total 21 test hijau).
-- Belum selesai: 6 (2.2%).
+- Selesai: 271 (99.6%) - review final kode, dokumen, analyzer, dan test sudah selesai; blocker tersisa hanya audit deep link di perangkat asli.
+- Belum selesai: 1 (0.4%).
 
 ## Cara Pakai
 
@@ -21,11 +21,11 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 
 ## Status Umum
 
-### Ringkasan Tasklist 26 Juni 2026
+### Ringkasan Tasklist 29 Juni 2026
 
 - Total item terhitung: 272.
-- Selesai: 266 (97.8%).
-- Belum selesai: 6 (2.2%).
+- Selesai: 271 (99.6%).
+- Belum selesai: 1 (0.4%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -67,7 +67,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] QR pembayaran demo sebelum Midtrans dihapus; QRIS resmi hanya ditampilkan oleh halaman Midtrans, sedangkan aplikasi menampilkan QR tiket setelah pembayaran berhasil.
 - [x] Input nomor e-wallet demo dihapus dari aplikasi; pilihan e-wallet hanya menjadi preferensi metode dan detail pembayaran diisi di Midtrans bila dibutuhkan.
 - [x] Pengeluaran laporan penyedia memakai gaji penjaga 15% dari revenue lahan yang punya penjaga; lahan tanpa penjaga tidak memotong gaji, dan satu lahan dengan beberapa penjaga dibagi rata.
-- [ ] Pilihan bahasa dan keamanan akun baru disimpan sebagai setting, belum mengubah bahasa atau mekanisme keamanan aplikasi.
+- [x] Pilihan bahasa mengubah locale dan label settings utama; mode keamanan akun membatasi pemulihan sesi tersimpan ketika `Ingat saya` tidak aktif.
 - [x] Data seed lokasi, kendaraan, chat, notifikasi, dan laporan dibatasi untuk debug/profile; build release memakai state kosong.
 
 #### Hasil Pemeriksaan Teknis
@@ -176,7 +176,7 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Sudah Ada Tapi Masih Demo/Lokal/Belum Production
 
 - [x] Edge Function Midtrans dan webhook sudah terdeploy serta merespons pada proyek Supabase live.
-- [x] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif. Edge Function `create-midtrans-payment` v17 dan `midtrans-webhook` v12 sudah dideploy 27 Juni 2026; alur Snap→webhook→ticket QR sudah tervalidasi di runbook `docs/production_midtrans_expiry_scan_runbook.md` bagian 4.
+- [x] Lakukan uji settlement Midtrans end-to-end berulang dengan transaksi sandbox nyata: Snap, webhook, `payments.status`, `bookings.status`, receipt, dan tampilan tiket setelah aplikasi kembali aktif. Edge Function `create-midtrans-payment` v17 dan `midtrans-webhook` v12 sudah dideploy 27 Juni 2026; alur Snap -> webhook -> ticket QR sudah tervalidasi di runbook `docs/production_midtrans_expiry_scan_runbook.md` bagian 4.
 - [x] Deploy ulang `create-midtrans-payment` agar callback selesai pembayaran memakai fallback `parkircepat://payment-finish`, lalu uji kembali otomatis dari Midtrans sandbox ke aplikasi. Fungsi sudah membaca `APP_PAYMENT_FINISH_URL` (default `parkircepat://payment-finish`) dan versi terbaru sudah dideploy, sehingga callback finish Midtrans akan kembali ke aplikasi.
 - [x] Push notification asli sudah diaudit: Firebase config/secret live, token device tersimpan, dan pemicu server-side mengirim event booking/payment/guard ke HP berdasarkan konfirmasi owner.
 - [x] App Flutter sudah menambahkan Firebase Messaging, permission Android, registrasi token FCM ke `device_push_tokens`, refresh token, dan unregister saat logout/delete account.
@@ -255,9 +255,9 @@ Terakhir diperbarui: 26 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] User management super admin untuk hapus akun Auth sungguhan lewat Edge Function.
 - [x] Role guard dasar dan redirect auth sudah tersedia.
 - [x] Audit role guard dan middleware auth dasar untuk deep link role.
-- [ ] Audit deep link production di perangkat asli sebelum release.
+- [ ] Audit deep link production di perangkat asli sebelum release. Audit konfigurasi dan langkah uji sudah dicatat di `docs/deep_link_device_audit_2026-06-29.md`; belum bisa ditutup karena belum ada HP Android/iOS terdeteksi di mesin audit.
 - [x] Item push notification production dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
-- [ ] Review final sebelum merge ke `development` atau `master`.
+- [x] Review final sebelum merge ke `development` atau `master` sudah dilakukan: `flutter analyze --no-pub` bersih dan `flutter test --no-pub` lulus 31 test. Catatan rilis tersisa: audit deep link perangkat asli belum bisa ditutup karena belum ada HP Android/iOS terdeteksi.
 
 ### maulana-bintang - Penyedia Parkir
 
