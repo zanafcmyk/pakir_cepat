@@ -1,213 +1,422 @@
-# Product Requirements Document
+# Product Requirements Document - Parkir Cepat
 
 ## 1. Ringkasan Produk
 
-`Parkir Cepat` adalah aplikasi smart parking mobile untuk membantu pengguna menemukan, memesan, membayar, dan mengelola parkir secara cepat. Aplikasi juga menyediakan mode admin untuk operator lahan parkir agar dapat memantau transaksi, kendaraan, dan kapasitas slot secara realtime.
+Parkir Cepat adalah aplikasi mobile smart parking berbasis Flutter untuk mempertemukan customer, penyedia lahan parkir, penjaga parkir, dan super admin dalam satu sistem. Aplikasi membantu customer mencari lokasi parkir, menyimpan kendaraan, melakukan booking, membayar parkir, memakai tiket QR, memberi review, mengirim komplain, dan menerima notifikasi.
 
-Fokus versi ini adalah:
+Di sisi operasional, penyedia dapat mengelola lokasi parkir, slot, penjaga, profil, dan data transaksi. Penjaga dapat login menggunakan akun yang dibuat penyedia, melakukan scan QR, serta memperbarui status kendaraan masuk dan keluar. Super admin bertugas memantau sistem, memverifikasi penyedia, mengelola komplain, dan melihat data lintas role.
 
-- pengalaman mobile modern, premium, dan ringan
-- flow end-to-end yang mudah diuji
-- fondasi produk yang siap dikembangkan ke backend production
+Versi saat ini bukan lagi prototype lokal penuh. Sebagian besar alur utama sudah mulai terhubung ke Supabase, sementara beberapa fitur masih demo/lokal dan perlu diselesaikan bertahap sebelum production.
 
 ## 2. Tujuan Produk
 
-### Tujuan bisnis
+### Tujuan Customer
 
-- meningkatkan okupansi lahan parkir
-- mengurangi antrean masuk dan keluar
-- mempercepat pembayaran parkir
-- memberi visibilitas operasional bagi penyedia parkir
+- Menemukan lokasi parkir dengan cepat.
+- Melihat ketersediaan slot sebelum datang.
+- Menyimpan kendaraan pribadi.
+- Melakukan booking parkir.
+- Menerima tiket QR digital.
+- Melihat riwayat transaksi dan parkir.
+- Mengirim komplain dan chat dengan role terkait.
+- Memberi rating dan review lokasi parkir.
 
-### Tujuan pengguna
+### Tujuan Penyedia Parkir
 
-- menemukan parkir terdekat dengan cepat
-- mengetahui ketersediaan slot sebelum datang
-- melakukan booking dan pembayaran digital dengan mudah
-- menyimpan tiket digital QR yang praktis
+- Mendaftarkan dan mengelola lokasi parkir.
+- Mengelola slot parkir.
+- Melihat kendaraan, booking, dan transaksi.
+- Membuat dan mengelola akun penjaga.
+- Melihat laporan pendapatan dan statistik operasional.
+- Mengelola profil penyedia.
 
-### Tujuan admin
+### Tujuan Penjaga Parkir
 
-- memantau kendaraan masuk dan keluar
-- melihat status pembayaran dan kapasitas slot
-- mengelola lahan, slot, dan laporan transaksi
+- Login memakai akun yang dibuat penyedia.
+- Melihat lokasi yang ditugaskan.
+- Scan QR booking customer.
+- Memverifikasi kendaraan masuk.
+- Memverifikasi kendaraan keluar.
+- Melihat kendaraan aktif dan status pembayaran.
 
-## 3. Persona
+### Tujuan Super Admin
 
-### Persona 1: Customer / Pengguna
+- Memverifikasi penyedia.
+- Memantau aktivitas lintas role.
+- Menangani komplain.
+- Mengelola user management.
+- Melihat laporan dan statistik global.
+- Menjaga keamanan akses aplikasi.
 
-- pekerja kantoran, pengunjung mall, atau pengemudi harian
-- butuh parkir cepat dan minim antre
-- mengutamakan kepastian slot, navigasi, dan pembayaran digital
+## 3. Role Pengguna
 
-### Persona 2: Penyedia Parkir / Admin
+### 3.1 Customer
 
-- operator gedung, mall, area komersial, atau pengelola parkir
-- membutuhkan dashboard operasional yang rapi
-- fokus pada monitoring kendaraan, pendapatan, dan utilisasi slot
+Pengguna akhir yang mencari dan memakai layanan parkir.
 
-## 4. Desain dan Brand Direction
+Kebutuhan utama:
 
-- light mode only
-- warna utama: putih, biru modern, hijau emerald, abu muda
-- rounded card modern
-- soft shadow
-- banyak whitespace
-- layout clean, premium, dan profesional
-- font modern seperti Poppins
-- bottom navigation modern
-- nuansa visual gabungan Google Maps, Gojek, Grab, dan smart city parking
+- Register dan login.
+- Tambah kendaraan.
+- Cari lokasi parkir.
+- Booking parkir.
+- Bayar parkir.
+- Pakai tiket QR.
+- Melihat riwayat.
+- Chat, komplain, notifikasi, favorit, dan review.
 
-## 5. Scope Fitur
+### 3.2 Penyedia Parkir
 
-### 5.1 Autentikasi
+Pemilik atau pengelola lokasi parkir.
 
-- Splash Screen
-- Onboarding 3 halaman
-- Login
-- Register
-- Forgot Password
-- Delete Account
+Kebutuhan utama:
 
-### 5.2 Customer
+- Register dan menunggu verifikasi super admin.
+- Login setelah disetujui.
+- Tambah lokasi parkir.
+- Kelola slot.
+- Buat akun penjaga.
+- Melihat laporan, transaksi, dan monitoring kendaraan.
+- Edit profil dan avatar.
 
-- Home Dashboard
-- Map Lokasi Parkir
-- Detail Lokasi Parkir
-- Tambah Kendaraan
-- Booking Parkir
-- Tiket Digital
-- Pembayaran
-- Riwayat Parkir
-- Notifikasi Pengguna
-- Profil Pengguna
+### 3.3 Penjaga Parkir
 
-### 5.3 Admin
+Petugas operasional di lokasi parkir.
 
-- Dashboard Admin
-- Map Monitoring Area Parkir
-- Tambah Lahan Parkir
-- Monitoring Kendaraan
-- Scan QR Kendaraan
-- Detail Transaksi
-- Cetak Nota Parkir
-- Statistik dan Laporan
-- Kelola Slot Parkir
-- Notifikasi Admin
-- Profil Admin
+Kebutuhan utama:
+
+- Login memakai akun dari penyedia.
+- Melihat lokasi yang ditugaskan.
+- Scan QR customer.
+- Update status masuk/keluar kendaraan.
+- Melihat kendaraan aktif.
+- Edit profil dan avatar.
+
+### 3.4 Super Admin
+
+Admin pusat aplikasi.
+
+Kebutuhan utama:
+
+- Login khusus super admin.
+- Verifikasi penyedia.
+- Memantau semua role.
+- Menangani komplain.
+- Mengelola user dan data production.
+- Melihat laporan global.
+
+## 4. Scope Fitur
+
+### 4.1 Autentikasi dan Akun
+
+- Splash screen.
+- Onboarding.
+- Login customer.
+- Register customer.
+- Login penyedia.
+- Register penyedia.
+- Verifikasi penyedia oleh super admin.
+- Login penjaga.
+- Login super admin.
+- Edit profil customer.
+- Edit profil penyedia.
+- Edit profil penjaga.
+- Upload avatar/profil ke Supabase Storage.
+- Load avatar dari Supabase saat login.
+
+Belum production:
+
+- Forgot password Supabase sungguhan.
+- Ganti password Supabase.
+- Delete account sungguhan.
+- Edit profil super admin ke Supabase.
+- Route protection dan middleware auth ketat.
+
+### 4.2 Customer
+
+- Dashboard customer.
+- Daftar lokasi parkir.
+- Detail lokasi parkir.
+- Tambah kendaraan.
+- Booking parkir.
+- Tiket QR.
+- Payment demo.
+- Riwayat transaksi.
+- Favorit lokasi parkir.
+- Review/rating lokasi parkir.
+- Komplain.
+- Chat.
+- Notifikasi in-app.
+- Profil customer.
+- Settings customer.
+
+Belum production:
+
+- Payment gateway asli.
+- Search/filter lokasi dari query database penuh.
+- Push notification asli ke HP.
+- Receipt print/export sungguhan.
+
+### 4.3 Penyedia
+
+- Dashboard penyedia.
+- Tambah lokasi parkir.
+- Kelola slot.
+- Membaca lokasi dan slot dari Supabase.
+- Monitoring kendaraan.
+- Membuat akun penjaga.
+- Mengelola akun penjaga.
+- Melihat notifikasi.
+- Profil penyedia.
+
+Belum production:
+
+- Upload foto lahan ke Supabase Storage.
+- Upload dokumen identitas penyedia.
+- Statistik penyedia dari query agregasi Supabase.
+- Laporan pendapatan penyedia dari Supabase.
+- Daily revenue dari query Supabase.
+- Settings penyedia.
+- Edge Function untuk membuat akun penjaga secara aman.
+
+### 4.4 Penjaga
+
+- Dashboard penjaga.
+- Melihat lokasi yang ditugaskan.
+- Scan QR booking.
+- Update kendaraan masuk.
+- Update kendaraan keluar.
+- Melihat kendaraan aktif.
+- Komplain/chat/notifikasi.
+- Profil penjaga.
+
+Belum production:
+
+- Settings penjaga.
+- Role guard khusus agar penjaga tidak bisa membuka halaman role lain.
+- Realtime status slot/lokasi penuh.
+- Push notification tugas.
+
+### 4.5 Super Admin
+
+- Dashboard super admin.
+- Login super admin.
+- Verifikasi penyedia.
+- Melihat komplain.
+- Mengelola status komplain.
+- Melihat notifikasi.
+- Melihat data lintas role.
+
+Belum production:
+
+- Edit profil super admin.
+- User management penuh ke Supabase.
+- Statistik global dari query Supabase.
+- Laporan global dari query Supabase.
+- Route protection ketat.
+
+## 5. Integrasi Supabase Saat Ini
+
+### Sudah Terhubung
+
+- Auth untuk customer, penyedia, penjaga, dan super admin.
+- Tabel profil/role dasar.
+- Lokasi parkir.
+- Slot parkir.
+- Kendaraan customer.
+- Booking parkir.
+- Payment demo.
+- Booking aktif customer.
+- Riwayat transaksi/customer history.
+- Scan QR membaca booking.
+- Update status masuk/keluar.
+- Komplain.
+- Chat pesan lama.
+- Chat realtime.
+- Notifikasi in-app/table.
+- Akun penjaga.
+- Favorit lokasi parkir.
+- Review/rating.
+- Edit profil customer.
+- Edit profil penyedia.
+- Edit profil penjaga.
+- Settings customer.
+- Upload avatar ke Supabase Storage.
+- Load avatar saat login.
+
+### Masih Demo/Lokal/Belum Production
+
+- Onboarding.
+- Beberapa data dashboard tiap role.
+- Statistik dan laporan.
+- Monitoring kendaraan penyedia sebagian.
+- Settings penyedia/penjaga.
+- Forgot password.
+- Delete account.
+- Payment gateway.
+- Receipt print/export.
+- Foto lahan parkir.
+- Dokumen identitas penyedia.
+- Search/filter database penuh.
+- Push notification asli.
+- Realtime slot/lokasi/notifikasi penuh.
+- User management super admin penuh.
 
 ## 6. User Flow Utama
 
-### 6.1 Flow customer
+### 6.1 Flow Customer
 
-1. Pengguna membuka aplikasi
-2. Splash dan onboarding ditampilkan
-3. Pengguna login atau register
-4. Pengguna melihat dashboard dan daftar parkir terdekat
-5. Pengguna membuka map atau detail lokasi
-6. Pengguna menambahkan kendaraan jika perlu
-7. Pengguna memilih slot dan waktu masuk
-8. Pengguna mengonfirmasi booking
-9. Pengguna menerima tiket QR digital
-10. Pengguna menyelesaikan pembayaran
-11. Riwayat dan notifikasi diperbarui
+1. Customer membuka aplikasi.
+2. Customer login atau register.
+3. Aplikasi membaca data profil, avatar, kendaraan, booking aktif, riwayat, favorit, notifikasi, lokasi, dan slot dari Supabase.
+4. Customer memilih lokasi parkir.
+5. Customer memilih kendaraan dan membuat booking.
+6. Booking tersimpan ke Supabase.
+7. Customer melakukan payment demo.
+8. Tiket QR aktif.
+9. Penjaga melakukan scan QR.
+10. Status masuk/keluar diperbarui ke Supabase.
+11. Customer melihat riwayat, receipt, notifikasi, review, dan komplain.
 
-### 6.2 Flow admin
+### 6.2 Flow Penyedia
 
-1. Admin login
-2. Admin membuka dashboard operasional
-3. Admin memantau statistik, transaksi, dan kapasitas
-4. Admin menambah lahan parkir atau mengelola slot
-5. Admin memverifikasi QR kendaraan
-6. Admin mengonfirmasi kendaraan keluar
-7. Dashboard dan notifikasi diperbarui
+1. Penyedia register.
+2. Penyedia menunggu verifikasi super admin.
+3. Setelah disetujui, penyedia login.
+4. Penyedia membuat lokasi parkir dan slot.
+5. Data lokasi dan slot tersimpan ke Supabase.
+6. Penyedia membuat akun penjaga.
+7. Penjaga memakai akun tersebut untuk login.
+8. Penyedia memantau kendaraan, slot, dan transaksi.
+
+### 6.3 Flow Penjaga
+
+1. Penjaga menerima akun dari penyedia.
+2. Penjaga login.
+3. Aplikasi membaca data lokasi yang ditugaskan.
+4. Penjaga scan QR customer.
+5. Sistem membaca booking dari Supabase.
+6. Penjaga mengonfirmasi kendaraan masuk.
+7. Penjaga mengonfirmasi kendaraan keluar.
+8. Status booking, slot, dan riwayat diperbarui.
+
+### 6.4 Flow Super Admin
+
+1. Super admin login.
+2. Super admin melihat dashboard.
+3. Super admin memverifikasi penyedia.
+4. Super admin menangani komplain.
+5. Super admin memantau data lintas role.
+6. Super admin mengelola user dan laporan setelah fitur production selesai.
 
 ## 7. Kebutuhan Fungsional
 
-### 7.1 Customer
+### Customer
 
-- sistem harus menampilkan daftar lokasi parkir dan status ketersediaan
-- sistem harus mengizinkan pengguna memilih lokasi parkir
-- sistem harus mengizinkan pengguna menambahkan data kendaraan
-- sistem harus mengizinkan pengguna memilih slot tersedia
-- sistem harus menghitung estimasi biaya berdasarkan tarif dan durasi
-- sistem harus membuat tiket digital setelah booking
-- sistem harus mengubah status pembayaran setelah bayar
-- sistem harus menyimpan riwayat booking dan transaksi
-- sistem harus menampilkan notifikasi booking, pembayaran, dan verifikasi
+- Sistem harus menyimpan akun customer di Supabase.
+- Sistem harus menyimpan kendaraan customer di Supabase.
+- Sistem harus menampilkan lokasi dan slot dari Supabase.
+- Sistem harus membuat booking ke Supabase.
+- Sistem harus membuat tiket QR dari booking aktif.
+- Sistem harus menyimpan payment demo dan receipt ke Supabase.
+- Sistem harus membaca riwayat transaksi dari Supabase.
+- Sistem harus menyimpan favorit, review, chat, komplain, dan notifikasi.
 
-### 7.2 Admin
+### Penyedia
 
-- sistem harus menampilkan statistik operasional ringkas
-- sistem harus menampilkan monitoring kendaraan dan transaksi
-- sistem harus mengizinkan penambahan lahan parkir
-- sistem harus mengizinkan pengelolaan status slot
-- sistem harus menampilkan detail transaksi
-- sistem harus menampilkan preview nota parkir
-- sistem harus memverifikasi tiket aktif melalui QR flow
-- sistem harus mengembalikan slot menjadi tersedia saat kendaraan keluar
+- Sistem harus menyimpan akun penyedia dan status verifikasi.
+- Sistem harus mencegah penyedia belum disetujui masuk dashboard utama.
+- Sistem harus menyimpan lokasi parkir dan slot.
+- Sistem harus menampilkan lokasi milik penyedia.
+- Sistem harus membuat akun penjaga.
+- Sistem harus menyimpan profil dan avatar penyedia.
+
+### Penjaga
+
+- Sistem harus mengizinkan penjaga login memakai akun dari penyedia.
+- Sistem harus membatasi data penjaga berdasarkan lokasi yang ditugaskan.
+- Sistem harus membaca booking dari QR.
+- Sistem harus update status masuk/keluar ke Supabase.
+- Sistem harus menyimpan profil dan avatar penjaga.
+
+### Super Admin
+
+- Sistem harus mengizinkan super admin login.
+- Sistem harus mengizinkan super admin memverifikasi penyedia.
+- Sistem harus menampilkan komplain.
+- Sistem harus memperbarui status komplain.
+- Sistem harus disiapkan untuk user management production.
 
 ## 8. Kebutuhan Non-Fungsional
 
-- responsive untuk Android dan iOS
-- performa UI halus dan modern
-- desain bersih dan mudah dipahami
-- navigasi sederhana dan konsisten
-- struktur kode mudah dikembangkan ke backend production
+- Aplikasi harus berjalan di Android dan iOS.
+- UI harus ringan, jelas, dan mudah dipahami.
+- Integrasi Supabase harus dibuat bertahap dan aman.
+- Perubahan fitur harus kecil, mudah dites, dan mudah di-rollback.
+- Data role harus dipisahkan dengan jelas.
+- Akses role harus diperketat sebelum production.
+- Error koneksi Supabase harus ditangani dengan pesan yang jelas.
+- Fitur production wajib lolos `flutter analyze` dan `flutter test`.
 
-## 9. Definisi MVP Versi Saat Ini
+## 9. Desain dan Brand Direction
 
-Versi yang sudah diimplementasikan dalam repo ini adalah `functional prototype`:
+- Mobile-first.
+- Light mode.
+- Tampilan bersih, modern, dan profesional.
+- Warna utama putih, hijau, biru, abu muda, dan aksen status yang jelas.
+- Navigasi sederhana.
+- Dashboard tiap role harus padat informasi tetapi tetap mudah dipindai.
+- UI operasional penyedia/penjaga/super admin harus fokus pada aksi cepat, bukan tampilan marketing.
 
-- semua halaman utama tersedia
-- flow customer dan admin dapat dijalankan dari ujung ke ujung
-- data dikelola lewat state lokal in-memory
-- komponen visual reusable sudah tersedia
-- QR ticket, pembayaran, dan kelola slot sudah punya perilaku aplikasi
+## 10. Prioritas Roadmap
 
-## 10. Yang Belum Masuk Production Scope
+### Fase 1 - Stabilkan Supabase Core
 
-Item berikut belum dihubungkan ke layanan nyata:
+- Edit profil super admin ke Supabase.
+- Ganti password dan reset password Supabase.
+- Search/filter lokasi dari Supabase.
+- Upload foto lahan ke Storage.
 
-- autentikasi backend
-- login Google asli
-- OTP service
-- SDK map production
-- kamera scanner QR asli
-- payment gateway real
-- database dan sinkronisasi server
-- push notification production
-- storage upload foto lahan
+### Fase 2 - Operasional Penyedia dan Penjaga
 
-## 11. Asumsi Teknis Versi Ini
+- Query laporan pendapatan penyedia.
+- Query statistik penyedia.
+- Realtime slot/lokasi.
+- Edge Function untuk membuat akun penjaga secara aman.
+- Role guard penjaga.
 
-- framework: Flutter
-- state management: Riverpod
-- routing: GoRouter
-- chart: fl_chart
-- QR UI: qr_flutter
-- seluruh fitur disimulasikan dengan local state agar mudah diuji
+### Fase 3 - Super Admin dan Production Hardening
 
-## 12. Rencana Fase Lanjutan
+- User management super admin.
+- Statistik global.
+- Laporan global.
+- Route protection dan middleware auth penuh.
+- RLS review per role.
+- Delete account sungguhan.
 
-### Fase 2
+### Fase 4 - Production Services
 
-- integrasi backend auth dan database
-- integrasi map SDK
-- integrasi pembayaran nyata
-- integrasi scanner kamera
-- persistence akun, kendaraan, tiket, transaksi
+- Payment gateway asli.
+- Push notification asli ke HP.
+- Receipt print/export.
+- Upload dokumen identitas penyedia.
+- Map SDK production.
 
-### Fase 3
+## 11. Kriteria Sukses
 
-- multi-branch admin dengan role lebih detail
-- laporan export PDF/Excel
-- smart recommendation berbasis okupansi dan lokasi
-- push notification dan live updates via websocket
+- Customer dapat register, login, tambah kendaraan, booking, bayar demo, melihat QR, riwayat, favorit, review, chat, komplain, dan notifikasi.
+- Penyedia dapat register, diverifikasi, login, membuat lokasi, mengelola slot, membuat akun penjaga, dan melihat data operasional.
+- Penjaga dapat login, melihat lokasi tugas, scan QR, dan update masuk/keluar.
+- Super admin dapat login, memverifikasi penyedia, dan menangani komplain.
+- Data utama tersimpan di Supabase.
+- Fitur demo diberi batas jelas dan tidak dianggap production.
+- Aplikasi lolos `flutter analyze` dan `flutter test` sebelum merge.
 
-## 13. Kriteria Sukses
+## 12. Dokumen Pendukung
 
-- pengguna dapat menyelesaikan flow booking sampai pembayaran tanpa kebingungan
-- admin dapat memantau slot dan transaksi dari dashboard
-- semua halaman utama dapat dinavigasi tanpa error
-- aplikasi lolos `flutter analyze` dan `flutter test`
+- Pembagian role: `docs/ROLE_SYSTEM_PRD.md`
+- Tasklist role: `docs/ROLE_SYSTEM_TASKLIST.md`
+- Pembagian branch tim: `docs/TEAM_BRANCHES.md`
+- Status tasklist tim: `docs/TEAM_TASKLIST_STATUS.md`
+- Schema Supabase: `docs/supabase_schema.sql`
+- SQL tambahan Supabase: `docs/supabase_schema_additions.sql`

@@ -1,0 +1,847 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../models/app_models.dart';
+
+class SupabaseParkingData {
+  const SupabaseParkingData({required this.lots, required this.slots});
+
+  final List<ParkingLot> lots;
+  final List<ParkingSlot> slots;
+}
+
+class SupabaseParkingSlotInsertResult {
+  const SupabaseParkingSlotInsertResult({
+    required this.id,
+    required this.label,
+  });
+
+  final String id;
+  final String label;
+}
+
+class ParkingCoordinates {
+  const ParkingCoordinates({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
+}
+
+class SupabaseProviderDashboardSummary {
+  const SupabaseProviderDashboardSummary({
+    required this.vehiclesEnteredToday,
+    required this.revenueToday,
+    required this.availableSlots,
+    required this.occupiedSlots,
+  });
+
+  final int vehiclesEnteredToday;
+  final int revenueToday;
+  final int availableSlots;
+  final int occupiedSlots;
+}
+
+class SupabaseProviderDailyRevenue {
+  const SupabaseProviderDailyRevenue({
+    required this.transactions,
+    required this.qrisRevenue,
+    required this.cashRevenue,
+    required this.otherRevenue,
+  });
+
+  final List<TransactionRecord> transactions;
+  final int qrisRevenue;
+  final int cashRevenue;
+  final int otherRevenue;
+
+  int get totalRevenue =>
+      transactions.fold(0, (total, item) => total + item.total);
+
+  int get averageTransaction =>
+      transactions.isEmpty ? 0 : (totalRevenue / transactions.length).round();
+
+  int get highestTransaction => transactions.isEmpty
+      ? 0
+      : transactions
+            .map((item) => item.total)
+            .reduce((value, item) => value > item ? value : item);
+}
+
+class SupabaseRevenuePoint {
+  const SupabaseRevenuePoint({required this.label, required this.amount});
+
+  final String label;
+  final int amount;
+}
+
+class SupabaseGuardSalaryShare {
+  const SupabaseGuardSalaryShare({
+    required this.guardId,
+    required this.guardName,
+    required this.assignedLotNames,
+    required this.dailyRevenue,
+    required this.monthlyRevenue,
+    required this.dailySalary,
+    required this.monthlySalary,
+  });
+
+  final String guardId;
+  final String guardName;
+  final List<String> assignedLotNames;
+  final int dailyRevenue;
+  final int monthlyRevenue;
+  final int dailySalary;
+  final int monthlySalary;
+}
+
+class SupabaseProviderFinancialReport {
+  const SupabaseProviderFinancialReport({
+    required this.transactions,
+    required this.dailyRevenue,
+    required this.monthlyRevenue,
+    required this.availableSlots,
+    required this.occupiedSlots,
+    required this.chartPoints,
+    required this.guardSalaryShares,
+  });
+
+  final List<TransactionRecord> transactions;
+  final int dailyRevenue;
+  final int monthlyRevenue;
+  final int availableSlots;
+  final int occupiedSlots;
+  final List<SupabaseRevenuePoint> chartPoints;
+  final List<SupabaseGuardSalaryShare> guardSalaryShares;
+
+  int get totalRevenue =>
+      transactions.fold(0, (total, item) => total + item.total);
+
+  int get guardSalaryDailyTotal =>
+      guardSalaryShares.fold(0, (total, item) => total + item.dailySalary);
+
+  int get guardSalaryMonthlyTotal =>
+      guardSalaryShares.fold(0, (total, item) => total + item.monthlySalary);
+
+  int get estimatedExpense => guardSalaryMonthlyTotal;
+
+  int get estimatedNetIncome => totalRevenue - estimatedExpense;
+}
+
+class _GuardAssignmentSummary {
+  const _GuardAssignmentSummary({
+    required this.guardId,
+    required this.guardName,
+    required this.lotIds,
+    required this.lotNames,
+  });
+
+  final String guardId;
+  final String guardName;
+  final List<String> lotIds;
+  final List<String> lotNames;
+}
+
+class SupabaseParkingService {
+  SupabaseParkingService({SupabaseClient? client})
+    : _client = client ?? Supabase.instance.client;
+
+  final SupabaseClient _client;
+
+  Future<ParkingCoordinates?> geocodeAddress(String address) async {
+    final query = address.trim();
+    if (query.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+      'q': '$query, Indonesia',
+      'format': 'jsonv2',
+      'limit': '1',
+      'countrycodes': 'id',
+    });
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'Accept-Language': 'id',
+    };
+    if (!kIsWeb) {
+      headers['User-Agent'] = 'ParkirCepat/1.0';
+    }
+
+    final response = await http
+        .get(uri, headers: headers)
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) {
+      throw StateError(
+        'Pencarian koordinat lokasi gagal (${response.statusCode}). Coba lagi.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List || decoded.isEmpty || decoded.first is! Map) {
+      return null;
+    }
+    final result = decoded.first as Map;
+    final latitude = double.tryParse(result['lat']?.toString() ?? '');
+    final longitude = double.tryParse(result['lon']?.toString() ?? '');
+    if (latitude == null || longitude == null) {
+      return null;
+    }
+
+    return ParkingCoordinates(latitude: latitude, longitude: longitude);
+  }
+
+  Future<String?> uploadCurrentProviderLotPhoto({
+    required String lotId,
+    required Uint8List bytes,
+    String? fileName,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final extension = _fileExtension(fileName);
+    final path =
+        '${user.id}/$lotId/lot-${DateTime.now().millisecondsSinceEpoch}.$extension';
+    await _client.storage
+        .from('parking-lot-photos')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            contentType: _contentType(extension),
+            upsert: true,
+          ),
+        );
+
+    return _client.storage.from('parking-lot-photos').getPublicUrl(path);
+  }
+
+  Future<SupabaseParkingData> fetchParkingData({
+    String? searchQuery,
+    bool currentProviderOnly = false,
+  }) async {
+    final normalizedSearch = searchQuery?.trim();
+    var lotQuery = _client
+        .from('parking_lots')
+        .select(
+          'id, provider_id, name, address, price_per_hour, total_slots, open_hours, rating, map_embed_url, latitude, longitude, photo_url, tariff_type, motor_rate, car_rate, truck_rate',
+        )
+        .eq('is_active', true);
+    if (currentProviderOnly) {
+      final providerId = await _currentProviderId();
+      if (providerId == null) {
+        return const SupabaseParkingData(lots: [], slots: []);
+      }
+      lotQuery = lotQuery.eq('provider_id', providerId);
+    }
+    if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
+      final pattern = normalizedSearch.replaceAll(',', ' ');
+      lotQuery = lotQuery.or('name.ilike.%$pattern%,address.ilike.%$pattern%');
+    }
+    final lotRows = await lotQuery.order('created_at', ascending: false);
+
+    final slotRows = await _client
+        .from('parking_slots')
+        .select('id, parking_lot_id, label, status')
+        .order('label');
+
+    final availableByLot = <String, int>{};
+    for (final row in slotRows) {
+      if (row['status'] != 'available') {
+        continue;
+      }
+      final lotId = row['parking_lot_id'] as String?;
+      if (lotId == null) {
+        continue;
+      }
+      availableByLot[lotId] = (availableByLot[lotId] ?? 0) + 1;
+    }
+
+    final lots = [
+      for (final row in lotRows)
+        _parkingLotFromRow(
+          row,
+          availableSlots: availableByLot[row['id'] as String?] ?? 0,
+        ),
+    ];
+    final visibleLotIds = {for (final lot in lots) lot.id};
+
+    final slots = [
+      for (final row in slotRows)
+        if (!currentProviderOnly ||
+            visibleLotIds.contains(row['parking_lot_id'] as String?))
+          ParkingSlot(
+            id: row['id'] as String,
+            lotId: row['parking_lot_id'] as String?,
+            label: row['label'] as String? ?? '-',
+            isAvailable: row['status'] == 'available',
+          ),
+    ];
+
+    return SupabaseParkingData(lots: lots, slots: slots);
+  }
+
+  Future<SupabaseParkingSlotInsertResult?> addCurrentProviderParkingSlot(
+    String lotId,
+  ) async {
+    try {
+      final rows = await _client.rpc(
+        'app_provider_add_parking_slot',
+        params: {'p_parking_lot_id': lotId},
+      );
+      if (rows is! List || rows.isEmpty) {
+        return null;
+      }
+      final row = Map<String, dynamic>.from(rows.first as Map);
+      return SupabaseParkingSlotInsertResult(
+        id: row['slot_id'] as String,
+        label: row['slot_label'] as String? ?? '-',
+      );
+    } on PostgrestException catch (error) {
+      if (!_isMissingAddSlotRpc(error)) {
+        rethrow;
+      }
+    }
+
+    final existingSlots = await _client
+        .from('parking_slots')
+        .select('label')
+        .eq('parking_lot_id', lotId);
+    final label = _nextSlotLabel(existingSlots);
+    final row = await _client
+        .from('parking_slots')
+        .insert({
+          'parking_lot_id': lotId,
+          'label': label,
+          'status': 'available',
+        })
+        .select('id, label')
+        .single();
+    return SupabaseParkingSlotInsertResult(
+      id: row['id'] as String,
+      label: row['label'] as String? ?? label,
+    );
+  }
+
+  Future<SupabaseProviderDashboardSummary>
+  fetchCurrentProviderDashboardSummary() async {
+    final lotIds = await _currentProviderLotIds();
+
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderDashboardSummary(
+        vehiclesEnteredToday: 0,
+        revenueToday: 0,
+        availableSlots: 0,
+        occupiedSlots: 0,
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayRows = await _client
+        .from('bookings')
+        .select('status, estimated_cost, final_cost, checked_in_at')
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', todayStart.toIso8601String());
+
+    var vehiclesEnteredToday = 0;
+    var revenueToday = 0;
+    var availableSlots = 0;
+    var occupiedSlots = 0;
+
+    final slotRows = await _client
+        .from('parking_slots')
+        .select('status')
+        .inFilter('parking_lot_id', lotIds);
+    for (final row in slotRows) {
+      if (row['status'] == 'available') {
+        availableSlots++;
+      } else {
+        occupiedSlots++;
+      }
+    }
+
+    for (final row in todayRows) {
+      final status = row['status'] as String?;
+      if (row['checked_in_at'] != null ||
+          status == 'active' ||
+          status == 'completed') {
+        vehiclesEnteredToday++;
+      }
+
+      if (status == 'paid' || status == 'active' || status == 'completed') {
+        revenueToday +=
+            (row['final_cost'] as num?)?.toInt() ??
+            (row['estimated_cost'] as num?)?.toInt() ??
+            0;
+      }
+    }
+
+    return SupabaseProviderDashboardSummary(
+      vehiclesEnteredToday: vehiclesEnteredToday,
+      revenueToday: revenueToday,
+      availableSlots: availableSlots,
+      occupiedSlots: occupiedSlots,
+    );
+  }
+
+  Future<SupabaseProviderDailyRevenue>
+  fetchCurrentProviderDailyRevenue() async {
+    final lotIds = await _currentProviderLotIds();
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderDailyRevenue(
+        transactions: [],
+        qrisRevenue: 0,
+        cashRevenue: 0,
+        otherRevenue: 0,
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, entry_time, estimated_cost, final_cost, status, '
+          'parking_lots(name), vehicles(plate_number), '
+          'payments(method, status, amount, paid_at)',
+        )
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', todayStart.toIso8601String())
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    var qrisRevenue = 0;
+    var cashRevenue = 0;
+    var otherRevenue = 0;
+    final transactions = <TransactionRecord>[];
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final payment = _latestSuccessfulPayment(row['payments']);
+      final amount =
+          (payment?['amount'] as num?)?.toInt() ??
+          (row['final_cost'] as num?)?.toInt() ??
+          (row['estimated_cost'] as num?)?.toInt() ??
+          0;
+      final method = payment?['method'] as String?;
+
+      switch (method) {
+        case 'qris':
+        case 'ewallet':
+        case 'card':
+          qrisRevenue += amount;
+        case 'cash':
+          cashRevenue += amount;
+        default:
+          otherRevenue += amount;
+      }
+
+      transactions.add(
+        TransactionRecord(
+          id: row['ticket_number'] as String? ?? '-',
+          locationName: _nestedText(row['parking_lots'], 'name'),
+          plateNumber: _nestedText(row['vehicles'], 'plate_number'),
+          status: _bookingStatusLabel(row['status'] as String?),
+          total: amount,
+          timeLabel: _timeLabel(row['entry_time'] as String?),
+        ),
+      );
+    }
+
+    return SupabaseProviderDailyRevenue(
+      transactions: transactions,
+      qrisRevenue: qrisRevenue,
+      cashRevenue: cashRevenue,
+      otherRevenue: otherRevenue,
+    );
+  }
+
+  Future<SupabaseProviderFinancialReport>
+  fetchCurrentProviderFinancialReport() async {
+    final lotIds = await _currentProviderLotIds();
+    if (lotIds.isEmpty) {
+      return const SupabaseProviderFinancialReport(
+        transactions: [],
+        dailyRevenue: 0,
+        monthlyRevenue: 0,
+        availableSlots: 0,
+        occupiedSlots: 0,
+        chartPoints: [],
+        guardSalaryShares: [],
+      );
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final monthStart = DateTime(now.year, now.month);
+    final weekStart = todayStart.subtract(const Duration(days: 6));
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, parking_lot_id, entry_time, estimated_cost, final_cost, status, '
+          'created_at, parking_lots(name), vehicles(plate_number), '
+          'payments(method, status, amount, paid_at)',
+        )
+        .inFilter('parking_lot_id', lotIds)
+        .gte('created_at', monthStart.toIso8601String())
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    final transactions = <TransactionRecord>[];
+    final chartBuckets = <int, int>{
+      for (var index = 0; index < 7; index++) index: 0,
+    };
+    final dailyRevenueByLot = <String, int>{};
+    final monthlyRevenueByLot = <String, int>{};
+    var dailyRevenue = 0;
+    var monthlyRevenue = 0;
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final createdAt = DateTime.tryParse(
+        row['created_at'] as String? ?? '',
+      )?.toLocal();
+      final amount = _bookingRevenueAmount(row);
+      final lotId = row['parking_lot_id'] as String?;
+      monthlyRevenue += amount;
+      if (lotId != null) {
+        monthlyRevenueByLot[lotId] = (monthlyRevenueByLot[lotId] ?? 0) + amount;
+      }
+
+      if (createdAt != null && !createdAt.isBefore(todayStart)) {
+        dailyRevenue += amount;
+        if (lotId != null) {
+          dailyRevenueByLot[lotId] = (dailyRevenueByLot[lotId] ?? 0) + amount;
+        }
+      }
+
+      if (createdAt != null && !createdAt.isBefore(weekStart)) {
+        final bucketIndex = createdAt.difference(weekStart).inDays.clamp(0, 6);
+        chartBuckets[bucketIndex] = (chartBuckets[bucketIndex] ?? 0) + amount;
+      }
+
+      transactions.add(
+        TransactionRecord(
+          id: row['ticket_number'] as String? ?? '-',
+          locationName: _nestedText(row['parking_lots'], 'name'),
+          plateNumber: _nestedText(row['vehicles'], 'plate_number'),
+          status: _bookingStatusLabel(row['status'] as String?),
+          total: amount,
+          timeLabel: _dateTimeLabel(row['entry_time'] as String?),
+        ),
+      );
+    }
+
+    final guardSalaryShares = await _providerGuardSalaryShares(
+      lotIds: lotIds,
+      dailyRevenueByLot: dailyRevenueByLot,
+      monthlyRevenueByLot: monthlyRevenueByLot,
+    );
+
+    final slotRows = await _client
+        .from('parking_slots')
+        .select('status')
+        .inFilter('parking_lot_id', lotIds);
+    var availableSlots = 0;
+    var occupiedSlots = 0;
+    for (final row in slotRows) {
+      if (row['status'] == 'available') {
+        availableSlots++;
+      } else {
+        occupiedSlots++;
+      }
+    }
+
+    return SupabaseProviderFinancialReport(
+      transactions: transactions,
+      dailyRevenue: dailyRevenue,
+      monthlyRevenue: monthlyRevenue,
+      availableSlots: availableSlots,
+      occupiedSlots: occupiedSlots,
+      chartPoints: [
+        for (var index = 0; index < 7; index++)
+          SupabaseRevenuePoint(
+            label: _shortDayLabel(weekStart.add(Duration(days: index))),
+            amount: chartBuckets[index] ?? 0,
+          ),
+      ],
+      guardSalaryShares: guardSalaryShares,
+    );
+  }
+
+  Future<List<SupabaseGuardSalaryShare>> _providerGuardSalaryShares({
+    required List<String> lotIds,
+    required Map<String, int> dailyRevenueByLot,
+    required Map<String, int> monthlyRevenueByLot,
+  }) async {
+    if (lotIds.isEmpty) {
+      return const [];
+    }
+
+    final List<dynamic> rows;
+    try {
+      rows = await _client
+          .from('guard_lot_assignments')
+          .select(
+            'parking_lot_id, parking_lots(name), '
+            'parking_guards(id, profiles(full_name))',
+          )
+          .inFilter('parking_lot_id', lotIds);
+    } on PostgrestException {
+      return const [];
+    }
+
+    final summaries = <String, _GuardAssignmentSummary>{};
+    final guardCountByLot = <String, int>{};
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final lotId = row['parking_lot_id'] as String?;
+      final guard = row['parking_guards'];
+      if (lotId == null || guard is! Map) {
+        continue;
+      }
+
+      final guardId = guard['id'] as String?;
+      if (guardId == null) {
+        continue;
+      }
+
+      guardCountByLot[lotId] = (guardCountByLot[lotId] ?? 0) + 1;
+      final profile = guard['profiles'];
+      final guardName = profile is Map
+          ? profile['full_name'] as String? ?? 'Penjaga'
+          : 'Penjaga';
+      final lotName = _nestedText(row['parking_lots'], 'name');
+      final previous = summaries[guardId];
+      summaries[guardId] = _GuardAssignmentSummary(
+        guardId: guardId,
+        guardName: guardName,
+        lotIds: [...?previous?.lotIds, lotId],
+        lotNames: [...?previous?.lotNames, lotName],
+      );
+    }
+
+    final shares = <SupabaseGuardSalaryShare>[];
+    for (final summary in summaries.values) {
+      var dailyRevenueShare = 0;
+      var monthlyRevenueShare = 0;
+
+      for (final lotId in summary.lotIds) {
+        final guardCount = guardCountByLot[lotId] ?? 1;
+        dailyRevenueShare += ((dailyRevenueByLot[lotId] ?? 0) / guardCount)
+            .round();
+        monthlyRevenueShare += ((monthlyRevenueByLot[lotId] ?? 0) / guardCount)
+            .round();
+      }
+
+      shares.add(
+        SupabaseGuardSalaryShare(
+          guardId: summary.guardId,
+          guardName: summary.guardName,
+          assignedLotNames: summary.lotNames.toSet().toList(),
+          dailyRevenue: dailyRevenueShare,
+          monthlyRevenue: monthlyRevenueShare,
+          dailySalary: (dailyRevenueShare * 0.15).round(),
+          monthlySalary: (monthlyRevenueShare * 0.15).round(),
+        ),
+      );
+    }
+
+    shares.sort((a, b) => b.monthlySalary.compareTo(a.monthlySalary));
+    return shares;
+  }
+
+  Future<List<String>> _currentProviderLotIds() async {
+    final providerId = await _currentProviderId();
+    if (providerId == null) {
+      return const [];
+    }
+
+    final lotRows = await _client
+        .from('parking_lots')
+        .select('id')
+        .eq('provider_id', providerId);
+
+    return [
+      for (final row in lotRows)
+        if (row['id'] != null) row['id'] as String,
+    ];
+  }
+
+  Future<String?> _currentProviderId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+    if (providerRows.isEmpty) {
+      return null;
+    }
+    return providerRows.first['id'] as String?;
+  }
+
+  Map<String, dynamic>? _latestSuccessfulPayment(dynamic value) {
+    if (value is! List || value.isEmpty) {
+      return null;
+    }
+
+    final payments = [
+      for (final item in value) Map<String, dynamic>.from(item as Map),
+    ];
+    payments.sort((a, b) {
+      final aTime =
+          DateTime.tryParse(a['paid_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime =
+          DateTime.tryParse(b['paid_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      return bTime.compareTo(aTime);
+    });
+
+    for (final payment in payments) {
+      if (payment['status'] == 'paid') {
+        return payment;
+      }
+    }
+    return payments.first;
+  }
+
+  int _bookingRevenueAmount(Map<String, dynamic> row) {
+    final payment = _latestSuccessfulPayment(row['payments']);
+    return (payment?['amount'] as num?)?.toInt() ??
+        (row['final_cost'] as num?)?.toInt() ??
+        (row['estimated_cost'] as num?)?.toInt() ??
+        0;
+  }
+
+  bool _isMissingAddSlotRpc(PostgrestException error) {
+    return error.code == '42883' ||
+        error.message.contains('app_provider_add_parking_slot');
+  }
+
+  String _nextSlotLabel(List<dynamic> rows) {
+    final numbers = rows
+        .map((row) => (row as Map)['label'] as String?)
+        .whereType<String>()
+        .map((label) => RegExp(r'(\d+)$').firstMatch(label)?.group(1))
+        .whereType<String>()
+        .map(int.tryParse)
+        .whereType<int>()
+        .toList();
+    final next = numbers.isEmpty
+        ? rows.length + 1
+        : numbers.reduce((a, b) => a > b ? a : b) + 1;
+    return 'A-${next.toString().padLeft(2, '0')}';
+  }
+
+  String _nestedText(dynamic value, String key) {
+    if (value is Map && value[key] != null) {
+      return value[key] as String;
+    }
+    return '-';
+  }
+
+  String _bookingStatusLabel(String? status) => switch (status) {
+    'paid' => 'Lunas',
+    'active' => 'Aktif',
+    'completed' => 'Selesai',
+    _ => 'Diproses',
+  };
+
+  String _timeLabel(String? value) {
+    final time = DateTime.tryParse(value ?? '');
+    if (time == null) {
+      return '-';
+    }
+
+    final local = time.toLocal();
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return 'Hari ini, $hour:$minute';
+  }
+
+  String _dateTimeLabel(String? value) {
+    final time = DateTime.tryParse(value ?? '');
+    if (time == null) {
+      return '-';
+    }
+
+    final local = time.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month $hour:$minute';
+  }
+
+  String _shortDayLabel(DateTime value) {
+    const labels = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    return labels[value.weekday - 1];
+  }
+
+  ParkingLot _parkingLotFromRow(
+    Map<String, dynamic> row, {
+    required int availableSlots,
+  }) {
+    final pricePerHour = (row['price_per_hour'] as num?)?.toInt() ?? 0;
+    final totalSlots = (row['total_slots'] as num?)?.toInt() ?? 0;
+
+    return ParkingLot(
+      id: row['id'] as String,
+      providerId: row['provider_id'] as String? ?? 'provider-main',
+      name: row['name'] as String? ?? 'Lokasi Parkir',
+      address: row['address'] as String? ?? '-',
+      pricePerHour: pricePerHour,
+      availableSlots: availableSlots,
+      totalSlots: totalSlots,
+      distanceKm: 0.8,
+      etaMinutes: 3,
+      openHours: row['open_hours'] as String? ?? '24 Jam',
+      rating: (row['rating'] as num?)?.toDouble() ?? 0,
+      accent: const Color(0xFF10B981),
+      mapEmbedUrl: row['map_embed_url'] as String? ?? '',
+      latitude: (row['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (row['longitude'] as num?)?.toDouble() ?? 0,
+      photoLabel: row['photo_url'] as String?,
+      tariffType: _tariffTypeFromDb(row['tariff_type'] as String?),
+      motorRate: (row['motor_rate'] as num?)?.toInt() ?? pricePerHour,
+      carRate: (row['car_rate'] as num?)?.toInt() ?? pricePerHour,
+      truckRate: (row['truck_rate'] as num?)?.toInt() ?? pricePerHour,
+    );
+  }
+
+  ParkingTariffType _tariffTypeFromDb(String? value) => switch (value) {
+    'flat' => ParkingTariffType.flat,
+    'daily' => ParkingTariffType.daily,
+    _ => ParkingTariffType.hourly,
+  };
+
+  String _fileExtension(String? fileName) {
+    final extension = fileName?.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'png',
+      'webp' => 'webp',
+      'jpg' || 'jpeg' => 'jpg',
+      _ => 'jpg',
+    };
+  }
+
+  String _contentType(String extension) => switch (extension) {
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => 'image/jpeg',
+  };
+}

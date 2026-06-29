@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "960580431503",
+    "project_id": "parkir-cepat-828b7",
+    "storage_bucket": "parkir-cepat-828b7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:960580431503:android:76c322d17dc98f21e58afa",
+        "android_client_info": {
+          "package_name": "com.ti23a4.parkircepat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAeiUmGB8ZsfIXiOSgmHXMVBfLYFsJ2mM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
