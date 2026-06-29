@@ -1,4 +1,4 @@
-package com.parkircepat.parkir_cepat
+package com.ti23a4.parkircepat
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_models.dart';
@@ -20,6 +23,13 @@ class SupabaseParkingSlotInsertResult {
 
   final String id;
   final String label;
+}
+
+class ParkingCoordinates {
+  const ParkingCoordinates({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
 }
 
 class SupabaseProviderDashboardSummary {
@@ -69,6 +79,26 @@ class SupabaseRevenuePoint {
   final int amount;
 }
 
+class SupabaseGuardSalaryShare {
+  const SupabaseGuardSalaryShare({
+    required this.guardId,
+    required this.guardName,
+    required this.assignedLotNames,
+    required this.dailyRevenue,
+    required this.monthlyRevenue,
+    required this.dailySalary,
+    required this.monthlySalary,
+  });
+
+  final String guardId;
+  final String guardName;
+  final List<String> assignedLotNames;
+  final int dailyRevenue;
+  final int monthlyRevenue;
+  final int dailySalary;
+  final int monthlySalary;
+}
+
 class SupabaseProviderFinancialReport {
   const SupabaseProviderFinancialReport({
     required this.transactions,
@@ -77,6 +107,7 @@ class SupabaseProviderFinancialReport {
     required this.availableSlots,
     required this.occupiedSlots,
     required this.chartPoints,
+    required this.guardSalaryShares,
   });
 
   final List<TransactionRecord> transactions;
@@ -85,13 +116,34 @@ class SupabaseProviderFinancialReport {
   final int availableSlots;
   final int occupiedSlots;
   final List<SupabaseRevenuePoint> chartPoints;
+  final List<SupabaseGuardSalaryShare> guardSalaryShares;
 
   int get totalRevenue =>
       transactions.fold(0, (total, item) => total + item.total);
 
-  int get estimatedExpense => (totalRevenue * 0.3).round();
+  int get guardSalaryDailyTotal =>
+      guardSalaryShares.fold(0, (total, item) => total + item.dailySalary);
+
+  int get guardSalaryMonthlyTotal =>
+      guardSalaryShares.fold(0, (total, item) => total + item.monthlySalary);
+
+  int get estimatedExpense => guardSalaryMonthlyTotal;
 
   int get estimatedNetIncome => totalRevenue - estimatedExpense;
+}
+
+class _GuardAssignmentSummary {
+  const _GuardAssignmentSummary({
+    required this.guardId,
+    required this.guardName,
+    required this.lotIds,
+    required this.lotNames,
+  });
+
+  final String guardId;
+  final String guardName;
+  final List<String> lotIds;
+  final List<String> lotNames;
 }
 
 class SupabaseParkingService {
@@ -99,6 +151,49 @@ class SupabaseParkingService {
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  Future<ParkingCoordinates?> geocodeAddress(String address) async {
+    final query = address.trim();
+    if (query.isEmpty) {
+      return null;
+    }
+
+    final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+      'q': '$query, Indonesia',
+      'format': 'jsonv2',
+      'limit': '1',
+      'countrycodes': 'id',
+    });
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      'Accept-Language': 'id',
+    };
+    if (!kIsWeb) {
+      headers['User-Agent'] = 'ParkirCepat/1.0';
+    }
+
+    final response = await http
+        .get(uri, headers: headers)
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) {
+      throw StateError(
+        'Pencarian koordinat lokasi gagal (${response.statusCode}). Coba lagi.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List || decoded.isEmpty || decoded.first is! Map) {
+      return null;
+    }
+    final result = decoded.first as Map;
+    final latitude = double.tryParse(result['lat']?.toString() ?? '');
+    final longitude = double.tryParse(result['lon']?.toString() ?? '');
+    if (latitude == null || longitude == null) {
+      return null;
+    }
+
+    return ParkingCoordinates(latitude: latitude, longitude: longitude);
+  }
 
   Future<String?> uploadCurrentProviderLotPhoto({
     required String lotId,
@@ -127,7 +222,10 @@ class SupabaseParkingService {
     return _client.storage.from('parking-lot-photos').getPublicUrl(path);
   }
 
-  Future<SupabaseParkingData> fetchParkingData({String? searchQuery}) async {
+  Future<SupabaseParkingData> fetchParkingData({
+    String? searchQuery,
+    bool currentProviderOnly = false,
+  }) async {
     final normalizedSearch = searchQuery?.trim();
     var lotQuery = _client
         .from('parking_lots')
@@ -135,6 +233,13 @@ class SupabaseParkingService {
           'id, provider_id, name, address, price_per_hour, total_slots, open_hours, rating, map_embed_url, latitude, longitude, photo_url, tariff_type, motor_rate, car_rate, truck_rate',
         )
         .eq('is_active', true);
+    if (currentProviderOnly) {
+      final providerId = await _currentProviderId();
+      if (providerId == null) {
+        return const SupabaseParkingData(lots: [], slots: []);
+      }
+      lotQuery = lotQuery.eq('provider_id', providerId);
+    }
     if (normalizedSearch != null && normalizedSearch.isNotEmpty) {
       final pattern = normalizedSearch.replaceAll(',', ' ');
       lotQuery = lotQuery.or('name.ilike.%$pattern%,address.ilike.%$pattern%');
@@ -165,15 +270,18 @@ class SupabaseParkingService {
           availableSlots: availableByLot[row['id'] as String?] ?? 0,
         ),
     ];
+    final visibleLotIds = {for (final lot in lots) lot.id};
 
     final slots = [
       for (final row in slotRows)
-        ParkingSlot(
-          id: row['id'] as String,
-          lotId: row['parking_lot_id'] as String?,
-          label: row['label'] as String? ?? '-',
-          isAvailable: row['status'] == 'available',
-        ),
+        if (!currentProviderOnly ||
+            visibleLotIds.contains(row['parking_lot_id'] as String?))
+          ParkingSlot(
+            id: row['id'] as String,
+            lotId: row['parking_lot_id'] as String?,
+            label: row['label'] as String? ?? '-',
+            isAvailable: row['status'] == 'available',
+          ),
     ];
 
     return SupabaseParkingData(lots: lots, slots: slots);
@@ -366,6 +474,7 @@ class SupabaseParkingService {
         availableSlots: 0,
         occupiedSlots: 0,
         chartPoints: [],
+        guardSalaryShares: [],
       );
     }
 
@@ -376,7 +485,7 @@ class SupabaseParkingService {
     final rows = await _client
         .from('bookings')
         .select(
-          'ticket_number, entry_time, estimated_cost, final_cost, status, '
+          'ticket_number, parking_lot_id, entry_time, estimated_cost, final_cost, status, '
           'created_at, parking_lots(name), vehicles(plate_number), '
           'payments(method, status, amount, paid_at)',
         )
@@ -389,6 +498,8 @@ class SupabaseParkingService {
     final chartBuckets = <int, int>{
       for (var index = 0; index < 7; index++) index: 0,
     };
+    final dailyRevenueByLot = <String, int>{};
+    final monthlyRevenueByLot = <String, int>{};
     var dailyRevenue = 0;
     var monthlyRevenue = 0;
 
@@ -398,10 +509,17 @@ class SupabaseParkingService {
         row['created_at'] as String? ?? '',
       )?.toLocal();
       final amount = _bookingRevenueAmount(row);
+      final lotId = row['parking_lot_id'] as String?;
       monthlyRevenue += amount;
+      if (lotId != null) {
+        monthlyRevenueByLot[lotId] = (monthlyRevenueByLot[lotId] ?? 0) + amount;
+      }
 
       if (createdAt != null && !createdAt.isBefore(todayStart)) {
         dailyRevenue += amount;
+        if (lotId != null) {
+          dailyRevenueByLot[lotId] = (dailyRevenueByLot[lotId] ?? 0) + amount;
+        }
       }
 
       if (createdAt != null && !createdAt.isBefore(weekStart)) {
@@ -420,6 +538,12 @@ class SupabaseParkingService {
         ),
       );
     }
+
+    final guardSalaryShares = await _providerGuardSalaryShares(
+      lotIds: lotIds,
+      dailyRevenueByLot: dailyRevenueByLot,
+      monthlyRevenueByLot: monthlyRevenueByLot,
+    );
 
     final slotRows = await _client
         .from('parking_slots')
@@ -448,26 +572,95 @@ class SupabaseParkingService {
             amount: chartBuckets[index] ?? 0,
           ),
       ],
+      guardSalaryShares: guardSalaryShares,
     );
   }
 
+  Future<List<SupabaseGuardSalaryShare>> _providerGuardSalaryShares({
+    required List<String> lotIds,
+    required Map<String, int> dailyRevenueByLot,
+    required Map<String, int> monthlyRevenueByLot,
+  }) async {
+    if (lotIds.isEmpty) {
+      return const [];
+    }
+
+    final List<dynamic> rows;
+    try {
+      rows = await _client
+          .from('guard_lot_assignments')
+          .select(
+            'parking_lot_id, parking_lots(name), '
+            'parking_guards(id, profiles(full_name))',
+          )
+          .inFilter('parking_lot_id', lotIds);
+    } on PostgrestException {
+      return const [];
+    }
+
+    final summaries = <String, _GuardAssignmentSummary>{};
+    final guardCountByLot = <String, int>{};
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final lotId = row['parking_lot_id'] as String?;
+      final guard = row['parking_guards'];
+      if (lotId == null || guard is! Map) {
+        continue;
+      }
+
+      final guardId = guard['id'] as String?;
+      if (guardId == null) {
+        continue;
+      }
+
+      guardCountByLot[lotId] = (guardCountByLot[lotId] ?? 0) + 1;
+      final profile = guard['profiles'];
+      final guardName = profile is Map
+          ? profile['full_name'] as String? ?? 'Penjaga'
+          : 'Penjaga';
+      final lotName = _nestedText(row['parking_lots'], 'name');
+      final previous = summaries[guardId];
+      summaries[guardId] = _GuardAssignmentSummary(
+        guardId: guardId,
+        guardName: guardName,
+        lotIds: [...?previous?.lotIds, lotId],
+        lotNames: [...?previous?.lotNames, lotName],
+      );
+    }
+
+    final shares = <SupabaseGuardSalaryShare>[];
+    for (final summary in summaries.values) {
+      var dailyRevenueShare = 0;
+      var monthlyRevenueShare = 0;
+
+      for (final lotId in summary.lotIds) {
+        final guardCount = guardCountByLot[lotId] ?? 1;
+        dailyRevenueShare += ((dailyRevenueByLot[lotId] ?? 0) / guardCount)
+            .round();
+        monthlyRevenueShare += ((monthlyRevenueByLot[lotId] ?? 0) / guardCount)
+            .round();
+      }
+
+      shares.add(
+        SupabaseGuardSalaryShare(
+          guardId: summary.guardId,
+          guardName: summary.guardName,
+          assignedLotNames: summary.lotNames.toSet().toList(),
+          dailyRevenue: dailyRevenueShare,
+          monthlyRevenue: monthlyRevenueShare,
+          dailySalary: (dailyRevenueShare * 0.15).round(),
+          monthlySalary: (monthlyRevenueShare * 0.15).round(),
+        ),
+      );
+    }
+
+    shares.sort((a, b) => b.monthlySalary.compareTo(a.monthlySalary));
+    return shares;
+  }
+
   Future<List<String>> _currentProviderLotIds() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      return const [];
-    }
-
-    final providerRows = await _client
-        .from('providers')
-        .select('id')
-        .eq('profile_id', user.id)
-        .limit(1);
-
-    if (providerRows.isEmpty) {
-      return const [];
-    }
-
-    final providerId = providerRows.first['id'] as String?;
+    final providerId = await _currentProviderId();
     if (providerId == null) {
       return const [];
     }
@@ -481,6 +674,23 @@ class SupabaseParkingService {
       for (final row in lotRows)
         if (row['id'] != null) row['id'] as String,
     ];
+  }
+
+  Future<String?> _currentProviderId() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final providerRows = await _client
+        .from('providers')
+        .select('id')
+        .eq('profile_id', user.id)
+        .limit(1);
+    if (providerRows.isEmpty) {
+      return null;
+    }
+    return providerRows.first['id'] as String?;
   }
 
   Map<String, dynamic>? _latestSuccessfulPayment(dynamic value) {
@@ -616,7 +826,6 @@ class SupabaseParkingService {
   ParkingTariffType _tariffTypeFromDb(String? value) => switch (value) {
     'flat' => ParkingTariffType.flat,
     'daily' => ParkingTariffType.daily,
-    'progressive' => ParkingTariffType.progressive,
     _ => ParkingTariffType.hourly,
   };
 

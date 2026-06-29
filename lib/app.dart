@@ -1,13 +1,15 @@
-// ignore_for_file: unused_field, unused_element, prefer_final_fields
+// ignore_for_file: unused_field, unused_element, unused_local_variable, prefer_final_fields
 
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:app_links/app_links.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -20,11 +22,15 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'models/app_models.dart';
+import 'services/customer_location_service.dart';
+import 'services/firebase_push_notification_service.dart';
 import 'services/supabase_booking_service.dart';
 import 'services/supabase_chat_service.dart';
 import 'services/supabase_complaint_service.dart';
+import 'services/supabase_app_update_service.dart';
 import 'services/supabase_customer_settings_service.dart';
 import 'services/supabase_favorite_service.dart';
 import 'services/supabase_guard_service.dart';
@@ -137,6 +143,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CustomerTicketScreen(),
       ),
       GoRoute(
+        path: '/customer/receipt',
+        builder: (context, state) =>
+            ReceiptScreen(ticketNumber: state.uri.queryParameters['ticket']),
+      ),
+      GoRoute(
         path: '/customer/chat',
         builder: (context, state) => const CustomerChatListScreen(),
       ),
@@ -185,6 +196,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/customer/payment',
         builder: (context, state) => const PaymentScreen(),
+      ),
+      GoRoute(
+        path: '/customer/payment-webview',
+        builder: (context, state) =>
+            PaymentWebViewScreen(url: state.uri.queryParameters['url'] ?? ''),
       ),
       GoRoute(
         path: '/customer/history',
@@ -385,6 +401,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   );
 });
 
+bool _isDemoChatRoomId(String roomId) {
+  return roomId.endsWith('tkt-1002') ||
+      roomId.endsWith('lot-1') ||
+      roomId.endsWith('-main') ||
+      roomId.endsWith('-app');
+}
+
+int unreadChatCountFor(AppState state, AccountMode mode) {
+  final rooms = switch (mode) {
+    AccountMode.customer => state.customerChatRooms,
+    AccountMode.provider => state.providerChatRooms,
+    AccountMode.parkingGuard => state.guardChatRooms,
+    AccountMode.superAdmin => state.superAdminChatRooms,
+  };
+  return rooms
+      .where((room) => !_isDemoChatRoomId(room.id))
+      .fold<int>(0, (total, room) => total + room.unreadCount);
+}
+
 String? guardedRedirect(String location, AppState Function() readState) {
   const publicRoutes = {
     '/',
@@ -457,20 +492,169 @@ String landingRouteForState(AppState value) {
   };
 }
 
-class ParkirCepatApp extends ConsumerWidget {
+class ParkirCepatApp extends ConsumerStatefulWidget {
   const ParkirCepatApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ParkirCepatApp> createState() => _ParkirCepatAppState();
+}
+
+class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _deepLinkSubscription;
+  Uri? _lastHandledDeepLink;
+
+  @override
+  void initState() {
+    super.initState();
+    _appLinks = AppLinks();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_startDeepLinkHandling());
+    });
+  }
+
+  Future<void> _startDeepLinkHandling() async {
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) {
+        await _handleDeepLink(initialLink);
+      }
+    } catch (_) {
+      // Deep link bootstrap is best-effort; normal navigation still works.
+    }
+
+    _deepLinkSubscription = _appLinks.uriLinkStream.listen(
+      (uri) => unawaited(_handleDeepLink(uri)),
+      onError: (_) {},
+    );
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    if (!mounted || _lastHandledDeepLink == uri) {
+      return;
+    }
+    _lastHandledDeepLink = uri;
+
+    final target = _deepLinkTarget(uri);
+    if (target == null) {
+      return;
+    }
+
+    if (target == _DeepLinkTarget.resetPassword) {
+      context.go('/reset-password');
+      return;
+    }
+
+    final controller = ref.read(appControllerProvider.notifier);
+    if (target == _DeepLinkTarget.authCallback) {
+      try {
+        await Supabase.instance.client.auth.getSessionFromUrl(uri);
+      } catch (_) {
+        // Supabase also observes auth links internally; this keeps manual
+        // handling from blocking navigation if the session was already set.
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        await controller.ensureCurrentCustomerAccount(rememberMe: true);
+      } catch (error) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          ),
+        );
+        context.go('/login');
+        return;
+      }
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+      return;
+    }
+
+    var sessionRestored = ref.read(appControllerProvider).isAuthenticated;
+    if (!sessionRestored) {
+      sessionRestored = await controller.restoreRememberedSession();
+    }
+    if (!sessionRestored &&
+        Supabase.instance.client.auth.currentSession == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      sessionRestored = await controller.restoreRememberedSession();
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final state = ref.read(appControllerProvider);
+    if (!state.isAuthenticated &&
+        !sessionRestored &&
+        Supabase.instance.client.auth.currentUser == null) {
+      context.go('/login');
+      return;
+    }
+
+    await controller.loadActiveBookingFromSupabase().catchError((_) {});
+    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+
+    final booking = ref.read(appControllerProvider).activeBooking;
+    context.go(
+      booking?.isPaid ?? false ? '/customer/tickets' : '/customer/payment',
+    );
+  }
+
+  _DeepLinkTarget? _deepLinkTarget(Uri uri) {
+    if (uri.scheme != 'parkircepat') {
+      return null;
+    }
+
+    final normalized = [
+      uri.host,
+      ...uri.pathSegments,
+    ].where((segment) => segment.isNotEmpty).join('/');
+
+    return switch (normalized) {
+      'reset-password' ||
+      'auth/reset-password' => _DeepLinkTarget.resetPassword,
+      'auth' || 'auth/callback' => _DeepLinkTarget.authCallback,
+      'payment-finish' || 'payment/finish' => _DeepLinkTarget.paymentFinish,
+      _ => null,
+    };
+  }
+
+  @override
+  void dispose() {
+    final subscription = _deepLinkSubscription;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final selectedLanguage = ref.watch(
+      appControllerProvider.select((state) => state.selectedLanguage),
+    );
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'Parkir Cepat',
+      title: appText(selectedLanguage).appTitle,
+      locale: appLocaleForLanguage(selectedLanguage),
+      supportedLocales: const [Locale('id'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
       theme: AppTheme.theme,
     );
   }
 }
+
+enum _DeepLinkTarget { resetPassword, paymentFinish, authCallback }
 
 class AppState {
   const AppState({
@@ -501,6 +685,7 @@ class AppState {
     required this.selectedVehicle,
     required this.slots,
     required this.activeBooking,
+    required this.guardBookings,
     required this.reservationLockedUntil,
     required this.favoriteLotIds,
     required this.providerApplication,
@@ -552,6 +737,7 @@ class AppState {
   final Vehicle? selectedVehicle;
   final List<ParkingSlot> slots;
   final Booking? activeBooking;
+  final List<Booking> guardBookings;
   final DateTime? reservationLockedUntil;
   final List<String> favoriteLotIds;
   final ProviderApplication? providerApplication;
@@ -607,6 +793,7 @@ class AppState {
     bool clearSelectedVehicle = false,
     List<ParkingSlot>? slots,
     Booking? activeBooking,
+    List<Booking>? guardBookings,
     DateTime? reservationLockedUntil,
     bool clearBooking = false,
     List<String>? favoriteLotIds,
@@ -674,6 +861,7 @@ class AppState {
       activeBooking: clearBooking
           ? null
           : (activeBooking ?? this.activeBooking),
+      guardBookings: guardBookings ?? this.guardBookings,
       reservationLockedUntil:
           reservationLockedUntil ?? this.reservationLockedUntil,
       favoriteLotIds: favoriteLotIds ?? this.favoriteLotIds,
@@ -812,7 +1000,7 @@ class AppState {
             'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15866.089919400229!2d106.8179532500215!3d-6.194579097638339!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e69f69e2ca1776f%3A0x729d6549e71fa7e7!2sPusat%20Bisnis%20Thamrin%20City!5e0!3m2!1sen!2sid!4v1780720526115!5m2!1sen!2sid',
         latitude: -6.194579097638339,
         longitude: 106.8179532500215,
-        tariffType: ParkingTariffType.progressive,
+        tariffType: ParkingTariffType.hourly,
         motorRate: 4000,
         carRate: 10000,
         truckRate: 18000,
@@ -932,41 +1120,6 @@ class AppState {
       ),
     ];
 
-    const complaints = [
-      ComplaintItem(
-        id: 'cmp-1',
-        senderName: 'Dio Pratama',
-        senderRole: AccountMode.customer,
-        subject: 'Pembayaran tunai belum dikonfirmasi',
-        message:
-            'Saya sudah bayar tunai ke penjaga, tetapi status tiket masih belum lunas.',
-        timeLabel: '8 menit lalu',
-        status: ComplaintStatus.waiting,
-      ),
-      ComplaintItem(
-        id: 'cmp-2',
-        senderName: 'Admin Plaza Sudirman',
-        senderRole: AccountMode.provider,
-        subject: 'Approval perubahan tarif',
-        message:
-            'Mohon tinjau perubahan tarif jam sibuk agar bisa diterapkan minggu ini.',
-        timeLabel: '32 menit lalu',
-        status: ComplaintStatus.waiting,
-      ),
-      ComplaintItem(
-        id: 'cmp-3',
-        senderName: 'Raka Penjaga',
-        senderRole: AccountMode.parkingGuard,
-        subject: 'Akses scan QR tidak tampil',
-        message:
-            'Menu scan QR sempat tidak aktif saat saya bertugas di lot Emerald.',
-        timeLabel: '1 jam lalu',
-        status: ComplaintStatus.answered,
-        reply:
-            'Akses penjaga sudah dicek. Silakan login ulang, lalu hubungi penyedia bila lokasi tugas belum muncul.',
-      ),
-    ];
-
     const registrationRequests = [
       RegistrationRequest(
         id: 'reg-1',
@@ -1041,316 +1194,6 @@ class AppState {
       ),
     ];
 
-    final seededChatTime = DateTime(2026, 6, 8, 9, 15);
-    final guardChatRooms = [
-      ChatRoom(
-        id: 'guard-customer-tkt-1002',
-        title: 'Chat Customer - TKT-1002',
-        participantRole: 'Customer',
-        participantName: 'Customer TKT-1002',
-        lastMessage: 'Baik Pak, saya cek tiketnya.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 12)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'guard-provider-main',
-        title: 'Penyedia Parkir',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia Parkir',
-        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'guard-admin-app',
-        title: 'Admin Aplikasi',
-        participantRole: 'Admin Aplikasi',
-        participantName: 'Admin Aplikasi',
-        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final guardChatMessages = [
-      ChatMessage(
-        id: 'msg-guard-customer-1',
-        roomId: 'guard-customer-tkt-1002',
-        senderRole: 'Customer',
-        senderName: 'Customer TKT-1002',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Pak, tiket saya TKT-1002 belum terbaca di gerbang.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 18)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-guard-customer-2',
-        roomId: 'guard-customer-tkt-1002',
-        senderRole: 'Penjaga Parkir',
-        senderName: 'Raka Penjaga',
-        receiverRole: 'Customer',
-        receiverName: 'Customer TKT-1002',
-        message: 'Baik Pak, saya cek tiketnya.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 12)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-guard-provider-1',
-        roomId: 'guard-provider-main',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia Parkir',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Laporkan kondisi operasional jika ada kendala.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-guard-admin-1',
-        roomId: 'guard-admin-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Gunakan form komplain untuk masalah aplikasi.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
-        isRead: true,
-      ),
-    ];
-
-    final customerChatTime = DateTime(2026, 6, 8, 10, 5);
-    final customerChatRooms = [
-      ChatRoom(
-        id: 'customer-guard-tkt-1002',
-        title: 'Chat Penjaga - TKT-1002',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        lastMessage: 'Silakan tunjukkan QR tiket di gerbang masuk.',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 10)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'customer-provider-lot-1',
-        title: 'Chat Penyedia - Parkir Plaza Sudirman',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia - Parkir Plaza Sudirman',
-        lastMessage: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'customer-admin-app',
-        title: 'Admin Aplikasi',
-        participantRole: 'Admin Aplikasi',
-        participantName: 'Admin Aplikasi',
-        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
-        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final customerChatMessages = [
-      ChatMessage(
-        id: 'msg-customer-guard-1',
-        roomId: 'customer-guard-tkt-1002',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        message: 'Pak, slot saya ada di area mana?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 16)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-guard-2',
-        roomId: 'customer-guard-tkt-1002',
-        senderRole: 'Penjaga Parkir',
-        senderName: 'Penjaga Parkir - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Silakan tunjukkan QR tiket di gerbang masuk.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 10)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-customer-provider-1',
-        roomId: 'customer-provider-lot-1',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Apakah tarif malam sama dengan siang?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-provider-2',
-        roomId: 'customer-provider-lot-1',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-customer-admin-1',
-        roomId: 'customer-admin-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Laporkan kendala aplikasi lewat form komplain.',
-        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-    ];
-
-    final providerChatRooms = [
-      ChatRoom(
-        id: 'provider-customer-lot-1',
-        title: 'Chat Customer - Parkir Plaza Sudirman',
-        participantRole: 'Customer',
-        participantName: 'Dio Pratama',
-        lastMessage: 'Apakah tarif malam sama dengan siang?',
-        lastMessageAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        unreadCount: 1,
-      ),
-      ChatRoom(
-        id: 'provider-guard-main',
-        title: 'Chat Penjaga - Raka Penjaga',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Raka Penjaga',
-        lastMessage: 'Laporkan kondisi operasional jika ada kendala.',
-        lastMessageAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'provider-superadmin-main',
-        title: 'Chat Super Admin',
-        participantRole: 'Super Admin',
-        participantName: 'Admin Super Parkir Cepat',
-        lastMessage: 'Koordinasikan kendala penyedia di sini.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final providerChatMessages = [
-      ChatMessage(
-        id: 'msg-provider-customer-1',
-        roomId: 'provider-customer-lot-1',
-        senderRole: 'Customer',
-        senderName: 'Dio Pratama',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Apakah tarif malam sama dengan siang?',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 35)),
-        isRead: false,
-      ),
-      ChatMessage(
-        id: 'msg-provider-customer-2',
-        roomId: 'provider-customer-lot-1',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia - Parkir Plaza Sudirman',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Tarif mengikuti jam masuk dan jenis kendaraan.',
-        createdAt: customerChatTime.subtract(const Duration(minutes: 28)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-provider-guard-1',
-        roomId: 'provider-guard-main',
-        senderRole: 'Penyedia Parkir',
-        senderName: 'Penyedia Parkir',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Laporkan kondisi operasional jika ada kendala.',
-        createdAt: seededChatTime.subtract(const Duration(minutes: 30)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-provider-superadmin-1',
-        roomId: 'provider-superadmin-main',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Koordinasikan kendala penyedia di sini.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-    ];
-
-    final superAdminChatRooms = [
-      ChatRoom(
-        id: 'superadmin-customer-app',
-        title: 'Chat Customer - Dio Pratama',
-        participantRole: 'Customer',
-        participantName: 'Dio Pratama',
-        lastMessage: 'Laporkan kendala aplikasi lewat form komplain.',
-        lastMessageAt: customerChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'superadmin-provider-main',
-        title: 'Chat Penyedia - Plaza Sudirman',
-        participantRole: 'Penyedia Parkir',
-        participantName: 'Penyedia - Parkir Plaza Sudirman',
-        lastMessage: 'Koordinasikan kendala penyedia di sini.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 2)),
-        unreadCount: 0,
-      ),
-      ChatRoom(
-        id: 'superadmin-guard-app',
-        title: 'Chat Penjaga - Raka Penjaga',
-        participantRole: 'Penjaga Parkir',
-        participantName: 'Raka Penjaga',
-        lastMessage: 'Gunakan form komplain untuk masalah aplikasi.',
-        lastMessageAt: seededChatTime.subtract(const Duration(hours: 1)),
-        unreadCount: 0,
-      ),
-    ];
-
-    final superAdminChatMessages = [
-      ChatMessage(
-        id: 'msg-superadmin-customer-1',
-        roomId: 'superadmin-customer-app',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Customer',
-        receiverName: 'Dio Pratama',
-        message: 'Laporkan kendala aplikasi lewat form komplain.',
-        createdAt: customerChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-superadmin-provider-1',
-        roomId: 'superadmin-provider-main',
-        senderRole: 'Super Admin',
-        senderName: 'Admin Super Parkir Cepat',
-        receiverRole: 'Penyedia Parkir',
-        receiverName: 'Penyedia - Parkir Plaza Sudirman',
-        message: 'Koordinasikan kendala penyedia di sini.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 2)),
-        isRead: true,
-      ),
-      ChatMessage(
-        id: 'msg-superadmin-guard-1',
-        roomId: 'superadmin-guard-app',
-        senderRole: 'Admin Aplikasi',
-        senderName: 'Admin Aplikasi',
-        receiverRole: 'Penjaga Parkir',
-        receiverName: 'Raka Penjaga',
-        message: 'Gunakan form komplain untuk masalah aplikasi.',
-        createdAt: seededChatTime.subtract(const Duration(hours: 1)),
-        isRead: true,
-      ),
-    ];
-
     return AppState(
       onboardingIndex: 0,
       onboardingDone: false,
@@ -1379,6 +1222,7 @@ class AppState {
       selectedVehicle: vehicles.first,
       slots: slots,
       activeBooking: null,
+      guardBookings: const [],
       reservationLockedUntil: null,
       favoriteLotIds: ['lot-1'],
       providerApplication: null,
@@ -1387,18 +1231,18 @@ class AppState {
       history: history,
       customerNotifications: customerNotifications,
       adminNotifications: adminNotifications,
-      customerChatRooms: customerChatRooms,
-      customerChatMessages: customerChatMessages,
+      customerChatRooms: const [],
+      customerChatMessages: const [],
       customerComplaints: const [],
-      guardChatRooms: guardChatRooms,
-      guardChatMessages: guardChatMessages,
+      guardChatRooms: const [],
+      guardChatMessages: const [],
       guardComplaints: const [],
-      providerChatRooms: providerChatRooms,
-      providerChatMessages: providerChatMessages,
-      superAdminChatRooms: superAdminChatRooms,
-      superAdminChatMessages: superAdminChatMessages,
+      providerChatRooms: const [],
+      providerChatMessages: const [],
+      superAdminChatRooms: const [],
+      superAdminChatMessages: const [],
       superAdminNotifications: superAdminNotifications,
-      complaints: complaints,
+      complaints: const [],
       registrationRequests: registrationRequests,
       managedUsers: managedUsers,
     );
@@ -1426,11 +1270,159 @@ Color roleAccent(AccountMode mode) => switch (mode) {
   AccountMode.customer => AppTheme.blue,
 };
 
+bool isEnglishLanguage(String language) {
+  return language.trim().toLowerCase().startsWith('english');
+}
+
+Locale appLocaleForLanguage(String language) {
+  return isEnglishLanguage(language) ? const Locale('en') : const Locale('id');
+}
+
+AppPreferenceText appText(String language) {
+  return isEnglishLanguage(language)
+      ? AppPreferenceText.english()
+      : AppPreferenceText.indonesia();
+}
+
+class AppPreferenceText {
+  const AppPreferenceText({
+    required this.appTitle,
+    required this.accountSettingsTitle,
+    required this.notificationSection,
+    required this.accountPreferenceSection,
+    required this.bookingNotification,
+    required this.paymentNotification,
+    required this.promoNotification,
+    required this.appLanguage,
+    required this.accountSecurityMode,
+    required this.accountSecuritySubtitle,
+    required this.saveSettings,
+    required this.saving,
+    required this.saved,
+    required this.customerSettingsFailure,
+    required this.roleSettingsSubtitle,
+    required this.providerSettingsTitle,
+    required this.guardSettingsTitle,
+    required this.providerPrimaryNotification,
+    required this.providerSecondaryNotification,
+    required this.providerReportNotification,
+    required this.guardPrimaryNotification,
+    required this.guardSecondaryNotification,
+    required this.guardReportNotification,
+    required this.roleSettingsFailure,
+  });
+
+  final String appTitle;
+  final String accountSettingsTitle;
+  final String notificationSection;
+  final String accountPreferenceSection;
+  final String bookingNotification;
+  final String paymentNotification;
+  final String promoNotification;
+  final String appLanguage;
+  final String accountSecurityMode;
+  final String accountSecuritySubtitle;
+  final String saveSettings;
+  final String saving;
+  final String saved;
+  final String customerSettingsFailure;
+  final String roleSettingsSubtitle;
+  final String providerSettingsTitle;
+  final String guardSettingsTitle;
+  final String providerPrimaryNotification;
+  final String providerSecondaryNotification;
+  final String providerReportNotification;
+  final String guardPrimaryNotification;
+  final String guardSecondaryNotification;
+  final String guardReportNotification;
+  final String roleSettingsFailure;
+
+  factory AppPreferenceText.indonesia() {
+    return const AppPreferenceText(
+      appTitle: 'Parkir Cepat',
+      accountSettingsTitle: 'Pengaturan Akun',
+      notificationSection: 'Notifikasi',
+      accountPreferenceSection: 'Preferensi akun',
+      bookingNotification: 'Notifikasi booking',
+      paymentNotification: 'Notifikasi pembayaran',
+      promoNotification: 'Notifikasi promo',
+      appLanguage: 'Bahasa aplikasi',
+      accountSecurityMode: 'Mode keamanan akun',
+      accountSecuritySubtitle:
+          'Saat aktif, sesi tersimpan hanya dipulihkan jika Ingat saya juga aktif.',
+      saveSettings: 'Simpan Pengaturan',
+      saving: 'Menyimpan...',
+      saved: 'Pengaturan akun berhasil disimpan.',
+      customerSettingsFailure: 'Gagal menyimpan pengaturan ke Supabase.',
+      roleSettingsSubtitle: 'Preferensi akun ini disimpan di Supabase.',
+      providerSettingsTitle: 'Pengaturan Penyedia',
+      guardSettingsTitle: 'Pengaturan Penjaga',
+      providerPrimaryNotification: 'Notifikasi booking masuk',
+      providerSecondaryNotification: 'Notifikasi pembayaran',
+      providerReportNotification: 'Notifikasi laporan harian',
+      guardPrimaryNotification: 'Notifikasi tugas lokasi',
+      guardSecondaryNotification: 'Notifikasi scan QR',
+      guardReportNotification: 'Notifikasi aktivitas shift',
+      roleSettingsFailure:
+          'Gagal menyimpan pengaturan. Pastikan SQL profile_settings sudah dijalankan.',
+    );
+  }
+
+  factory AppPreferenceText.english() {
+    return const AppPreferenceText(
+      appTitle: 'Fast Parking',
+      accountSettingsTitle: 'Account Settings',
+      notificationSection: 'Notifications',
+      accountPreferenceSection: 'Account preferences',
+      bookingNotification: 'Booking notifications',
+      paymentNotification: 'Payment notifications',
+      promoNotification: 'Promo notifications',
+      appLanguage: 'App language',
+      accountSecurityMode: 'Account security mode',
+      accountSecuritySubtitle:
+          'When enabled, saved sessions are restored only when Remember me is also enabled.',
+      saveSettings: 'Save Settings',
+      saving: 'Saving...',
+      saved: 'Account settings saved.',
+      customerSettingsFailure: 'Failed to save settings to Supabase.',
+      roleSettingsSubtitle: 'These account preferences are stored in Supabase.',
+      providerSettingsTitle: 'Provider Settings',
+      guardSettingsTitle: 'Guard Settings',
+      providerPrimaryNotification: 'Incoming booking notifications',
+      providerSecondaryNotification: 'Payment notifications',
+      providerReportNotification: 'Daily report notifications',
+      guardPrimaryNotification: 'Location task notifications',
+      guardSecondaryNotification: 'QR scan notifications',
+      guardReportNotification: 'Shift activity notifications',
+      roleSettingsFailure:
+          'Failed to save settings. Make sure profile_settings SQL has been run.',
+    );
+  }
+}
+
 AccountStatus accountStatusFromDb(String? value) => switch (value) {
   'verified' => AccountStatus.verified,
   'rejected' => AccountStatus.rejected,
   _ => AccountStatus.pending,
 };
+
+AccountMode? accountModeFromDbRole(String? value) => switch (value) {
+  'super_admin' => AccountMode.superAdmin,
+  'provider' => AccountMode.provider,
+  'parking_guard' => AccountMode.parkingGuard,
+  'customer' => AccountMode.customer,
+  _ => null,
+};
+
+String accountModeToPreference(AccountMode mode) => switch (mode) {
+  AccountMode.superAdmin => 'super_admin',
+  AccountMode.provider => 'provider',
+  AccountMode.parkingGuard => 'parking_guard',
+  AccountMode.customer => 'customer',
+};
+
+AccountMode accountModeFromPreference(String? value) =>
+    accountModeFromDbRole(value) ?? AccountMode.customer;
 
 Future<AccountStatus> currentProviderStatusFromSupabase(
   String profileId, {
@@ -1536,8 +1528,7 @@ List<ParkingLot> visibleLotsFor(AppState state) {
   return switch (state.currentMode) {
     AccountMode.parkingGuard when guard != null =>
       state.lots.where((lot) => guard.assignedLotIds.contains(lot.id)).toList(),
-    AccountMode.provider =>
-      state.lots.where((lot) => lot.providerId == 'provider-main').toList(),
+    AccountMode.provider => state.lots,
     _ => state.lots,
   };
 }
@@ -1545,35 +1536,54 @@ List<ParkingLot> visibleLotsFor(AppState state) {
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.initial()) {
     _loadOnboardingPreference();
+    _loadRememberedLoginPreference();
   }
 
   static const _onboardingDoneKey = 'parkir_cepat_onboarding_done';
+  static const _rememberMeKey = 'parkir_cepat_remember_me';
+  static const _lastModeKey = 'parkir_cepat_last_mode';
+  static const _lastEmailKey = 'parkir_cepat_last_email';
+  static const _lastPhoneKey = 'parkir_cepat_last_phone';
+  static const _selectedLanguageKey = 'parkir_cepat_selected_language';
+  static const _accountSecurityEnabledKey =
+      'parkir_cepat_account_security_enabled';
 
-  final SupabaseChatService _chatService = SupabaseChatService();
-  final SupabaseComplaintService _complaintService = SupabaseComplaintService();
-  final SupabaseCustomerSettingsService _customerSettingsService =
+  late final SupabaseChatService _chatService = SupabaseChatService();
+  late final SupabaseComplaintService _complaintService =
+      SupabaseComplaintService();
+  late final SupabaseCustomerSettingsService _customerSettingsService =
       SupabaseCustomerSettingsService();
-  final SupabaseProfileSettingsService _profileSettingsService =
+  late final SupabaseProfileSettingsService _profileSettingsService =
       SupabaseProfileSettingsService();
-  final SupabaseParkingService _parkingService = SupabaseParkingService();
-  final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
-  final SupabaseBookingService _bookingService = SupabaseBookingService();
-  final SupabasePaymentService _paymentService = SupabasePaymentService();
-  final SupabaseNotificationService _notificationService =
+  late final SupabaseParkingService _parkingService = SupabaseParkingService();
+  late final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
+  late final SupabaseBookingService _bookingService = SupabaseBookingService();
+  late final SupabasePaymentService _paymentService = SupabasePaymentService();
+  late final SupabaseNotificationService _notificationService =
       SupabaseNotificationService();
-  final SupabaseGuardService _guardService = SupabaseGuardService();
-  final SupabaseFavoriteService _favoriteService = SupabaseFavoriteService();
-  final SupabaseProfileService _profileService = SupabaseProfileService();
-  final SupabaseReviewService _reviewService = SupabaseReviewService();
-  final SupabaseSuperAdminService _superAdminService =
+  late final SupabaseGuardService _guardService = SupabaseGuardService();
+  late final SupabaseFavoriteService _favoriteService =
+      SupabaseFavoriteService();
+  late final SupabaseProfileService _profileService = SupabaseProfileService();
+  late final SupabaseReviewService _reviewService = SupabaseReviewService();
+  late final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
+  final CustomerLocationService _customerLocationService =
+      const CustomerLocationService();
+  late final FirebasePushNotificationService _pushNotificationService =
+      FirebasePushNotificationService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
   RealtimeChannel? _parkingLotRealtimeChannel;
   RealtimeChannel? _parkingGuardRealtimeChannel;
+  RealtimeChannel? _guardOperationsRealtimeChannel;
   RealtimeChannel? _notificationRealtimeChannel;
+  RealtimeChannel? _chatRoomsRealtimeChannel;
   Timer? _parkingSlotRealtimeDebounce;
+  Timer? _guardOperationsRealtimeDebounce;
   Timer? _notificationRealtimeDebounce;
+  Timer? _chatRoomsRealtimeDebounce;
   String? _notificationRealtimeProfileId;
+  String? _chatRoomsRealtimeProfileId;
 
   ChatMessage _outgoingMessage({
     required String roomId,
@@ -1601,7 +1611,7 @@ class AppController extends StateNotifier<AppState> {
     return message.copyWith(roomId: roomId, isRead: false);
   }
 
-  void _syncChatMessage({
+  Future<void> _syncChatMessage({
     required String localRoomId,
     required String title,
     required AccountMode senderMode,
@@ -1609,20 +1619,17 @@ class AppController extends StateNotifier<AppState> {
     required String participantRole,
     required String participantName,
     required String message,
-  }) {
-    unawaited(
-      _chatService
-          .sendMessage(
-            localRoomId: localRoomId,
-            title: title,
-            senderMode: senderMode,
-            senderName: senderName,
-            participantRole: participantRole,
-            participantName: participantName,
-            message: message,
-          )
-          .catchError((_) {}),
+  }) async {
+    await _chatService.sendMessage(
+      localRoomId: localRoomId,
+      title: title,
+      senderMode: senderMode,
+      senderName: senderName,
+      participantRole: participantRole,
+      participantName: participantName,
+      message: message,
     );
+    await loadChatRoomsFromSupabase(senderMode);
   }
 
   void _syncCurrentUserNotification(NoticeItem notice, {String type = 'info'}) {
@@ -1755,12 +1762,137 @@ class AppController extends StateNotifier<AppState> {
     _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
   }
 
+  Future<void> loadChatRoomsFromSupabase(AccountMode mode) async {
+    final rooms = await _chatService.fetchRoomsForCurrentUser(mode: mode);
+    if (rooms.isEmpty) {
+      startChatRoomsRealtime(mode);
+      return;
+    }
+
+    switch (mode) {
+      case AccountMode.customer:
+        state = state.copyWith(
+          customerChatRooms: _mergeChatRooms(state.customerChatRooms, rooms),
+        );
+      case AccountMode.provider:
+        state = state.copyWith(
+          providerChatRooms: _mergeChatRooms(state.providerChatRooms, rooms),
+        );
+      case AccountMode.parkingGuard:
+        state = state.copyWith(
+          guardChatRooms: _mergeChatRooms(state.guardChatRooms, rooms),
+        );
+      case AccountMode.superAdmin:
+        state = state.copyWith(
+          superAdminChatRooms: _mergeChatRooms(
+            state.superAdminChatRooms,
+            rooms,
+          ),
+        );
+    }
+    startChatRoomsRealtime(mode);
+  }
+
+  void startChatRoomsRealtime(AccountMode mode) {
+    final profileId = Supabase.instance.client.auth.currentUser?.id;
+    if (profileId == null) {
+      return;
+    }
+    final channelKey = '$profileId:${mode.name}';
+    if (_chatRoomsRealtimeChannel != null &&
+        _chatRoomsRealtimeProfileId == channelKey) {
+      return;
+    }
+
+    final oldChannel = _chatRoomsRealtimeChannel;
+    if (oldChannel != null) {
+      unawaited(Supabase.instance.client.removeChannel(oldChannel));
+    }
+
+    _chatRoomsRealtimeProfileId = channelKey;
+    _chatRoomsRealtimeChannel = Supabase.instance.client
+        .channel('public:chat-rooms:$channelKey')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_messages',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_room_members',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_rooms',
+          callback: (_) => _scheduleChatRoomsRealtimeRefresh(mode),
+        )
+        .subscribe();
+  }
+
+  void _scheduleChatRoomsRealtimeRefresh(AccountMode mode) {
+    _chatRoomsRealtimeDebounce?.cancel();
+    _chatRoomsRealtimeDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () => unawaited(_refreshChatRoomsFromRealtime(mode)),
+    );
+  }
+
+  Future<void> _refreshChatRoomsFromRealtime(AccountMode mode) async {
+    try {
+      await loadChatRoomsFromSupabase(mode);
+    } catch (_) {
+      // Realtime refresh is best-effort; opening the chat page reloads it.
+    }
+  }
+
+  Future<void> loadCurrentUserComplaintsFromSupabase() async {
+    final complaints = await _complaintService.fetchCurrentUserComplaints();
+    switch (state.currentMode) {
+      case AccountMode.customer:
+        state = state.copyWith(customerComplaints: complaints);
+      case AccountMode.parkingGuard:
+        state = state.copyWith(guardComplaints: complaints);
+      case AccountMode.provider:
+      case AccountMode.superAdmin:
+        break;
+    }
+  }
+
   void replaceChatMessagesFromSupabase({
     required AccountMode mode,
     required String roomId,
     required List<ChatMessage> messages,
   }) {
     _replaceChatMessages(mode: mode, roomId: roomId, messages: messages);
+  }
+
+  void markChatRoomReadForMode({
+    required AccountMode mode,
+    required String roomId,
+  }) {
+    switch (mode) {
+      case AccountMode.customer:
+        markCustomerChatAsRead(roomId);
+      case AccountMode.provider:
+        markProviderChatAsRead(roomId);
+      case AccountMode.parkingGuard:
+        markChatAsRead(roomId);
+      case AccountMode.superAdmin:
+        markSuperAdminChatAsRead(roomId);
+    }
+  }
+
+  void _markChatRoomAsReadInSupabase(String roomId, AccountMode mode) {
+    unawaited(
+      _chatService
+          .markRoomAsRead(localRoomId: roomId)
+          .then((_) => loadChatRoomsFromSupabase(mode))
+          .catchError((_) {}),
+    );
   }
 
   Future<Stream<List<ChatMessage>>> watchChatMessagesFromSupabase({
@@ -1774,10 +1906,6 @@ class AppController extends StateNotifier<AppState> {
     required String roomId,
     required List<ChatMessage> messages,
   }) {
-    if (messages.isEmpty) {
-      return;
-    }
-
     List<ChatMessage> merge(List<ChatMessage> current) {
       return [
         for (final message in current)
@@ -1826,30 +1954,40 @@ class AppController extends StateNotifier<AppState> {
     ];
   }
 
+  List<ChatRoom> _mergeChatRooms(
+    List<ChatRoom> current,
+    List<ChatRoom> remote,
+  ) {
+    final remoteIds = remote.map((room) => room.id).toSet();
+    return [
+      ...remote,
+      for (final room in current)
+        if (!remoteIds.contains(room.id) && !_isDemoChatRoomId(room.id)) room,
+    ]..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+  }
+
   String? _mirrorRoomId(AccountMode from, String roomId) {
-    return switch ((from, roomId)) {
-      (AccountMode.customer, 'customer-guard-tkt-1002') =>
-        'guard-customer-tkt-1002',
-      (AccountMode.customer, 'customer-provider-lot-1') =>
-        'provider-customer-lot-1',
-      (AccountMode.customer, 'customer-admin-app') => 'superadmin-customer-app',
-      (AccountMode.parkingGuard, 'guard-customer-tkt-1002') =>
-        'customer-guard-tkt-1002',
-      (AccountMode.parkingGuard, 'guard-provider-main') =>
-        'provider-guard-main',
-      (AccountMode.parkingGuard, 'guard-admin-app') => 'superadmin-guard-app',
-      (AccountMode.provider, 'provider-customer-lot-1') =>
-        'customer-provider-lot-1',
-      (AccountMode.provider, 'provider-guard-main') => 'guard-provider-main',
-      (AccountMode.provider, 'provider-superadmin-main') =>
-        'superadmin-provider-main',
-      (AccountMode.superAdmin, 'superadmin-customer-app') =>
-        'customer-admin-app',
-      (AccountMode.superAdmin, 'superadmin-provider-main') =>
-        'provider-superadmin-main',
-      (AccountMode.superAdmin, 'superadmin-guard-app') => 'guard-admin-app',
-      _ => null,
-    };
+    const mirrors = [
+      ('customer-guard-', 'guard-customer-'),
+      ('guard-customer-', 'customer-guard-'),
+      ('customer-provider-', 'provider-customer-'),
+      ('provider-customer-', 'customer-provider-'),
+      ('customer-admin-', 'superadmin-customer-'),
+      ('superadmin-customer-', 'customer-admin-'),
+      ('guard-provider-', 'provider-guard-'),
+      ('provider-guard-', 'guard-provider-'),
+      ('guard-admin-', 'superadmin-guard-'),
+      ('superadmin-guard-', 'guard-admin-'),
+      ('provider-superadmin-', 'superadmin-provider-'),
+      ('superadmin-provider-', 'provider-superadmin-'),
+    ];
+
+    for (final (sourcePrefix, targetPrefix) in mirrors) {
+      if (roomId.startsWith(sourcePrefix)) {
+        return '$targetPrefix${roomId.substring(sourcePrefix.length)}';
+      }
+    }
+    return null;
   }
 
   String landingRouteFor(AppState value) {
@@ -1868,6 +2006,53 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
+  Future<void> _loadRememberedLoginPreference() async {
+    final preferences = await SharedPreferences.getInstance();
+    final rememberMe = preferences.getBool(_rememberMeKey) ?? state.rememberMe;
+    final mode = accountModeFromPreference(preferences.getString(_lastModeKey));
+    state = state.copyWith(
+      rememberMe: rememberMe,
+      currentMode: mode,
+      email: preferences.getString(_lastEmailKey) ?? state.email,
+      phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
+      selectedLanguage:
+          preferences.getString(_selectedLanguageKey) ?? state.selectedLanguage,
+      accountSecurityEnabled:
+          preferences.getBool(_accountSecurityEnabledKey) ??
+          state.accountSecurityEnabled,
+    );
+  }
+
+  Future<void> _saveAccountPreference({
+    required String selectedLanguage,
+    required bool accountSecurityEnabled,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_selectedLanguageKey, selectedLanguage);
+    await preferences.setBool(
+      _accountSecurityEnabledKey,
+      accountSecurityEnabled,
+    );
+  }
+
+  Future<void> _saveRememberedLoginPreference({
+    required AccountMode mode,
+    required String email,
+    required String phoneNumber,
+    required bool rememberMe,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_rememberMeKey, rememberMe);
+    await preferences.setString(_lastModeKey, accountModeToPreference(mode));
+    if (rememberMe) {
+      await preferences.setString(_lastEmailKey, email);
+      await preferences.setString(_lastPhoneKey, phoneNumber);
+    } else {
+      await preferences.remove(_lastEmailKey);
+      await preferences.remove(_lastPhoneKey);
+    }
+  }
+
   Future<void> finishOnboarding() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_onboardingDoneKey, true);
@@ -1875,18 +2060,30 @@ class AppController extends StateNotifier<AppState> {
   }
 
   Future<void> loadParkingDataFromSupabase() async {
-    final data = await _parkingService.fetchParkingData();
+    final providerOnly = state.currentMode == AccountMode.provider;
+    final data = await _parkingService.fetchParkingData(
+      currentProviderOnly: providerOnly,
+    );
+    final lots = await _applyCustomerTravelEstimates(data.lots);
     if (data.lots.isEmpty) {
+      if (providerOnly) {
+        state = state.copyWith(
+          lots: const [],
+          slots: const [],
+          clearSelectedLot: true,
+          isUsingDemoData: false,
+        );
+      }
       return;
     }
 
-    final selectedLot = data.lots.firstWhere(
+    final selectedLot = lots.firstWhere(
       (lot) => lot.id == state.selectedLot?.id,
-      orElse: () => data.lots.first,
+      orElse: () => lots.first,
     );
 
     state = state.copyWith(
-      lots: data.lots,
+      lots: lots,
       selectedLot: selectedLot,
       slots: data.slots.isEmpty ? state.slots : data.slots,
       isUsingDemoData: false,
@@ -1940,6 +2137,12 @@ class AppController extends StateNotifier<AppState> {
           table: 'parking_guards',
           callback: (_) => _scheduleParkingDataRealtimeRefresh(),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'guard_lot_assignments',
+          callback: (_) => _scheduleParkingDataRealtimeRefresh(),
+        )
         .subscribe();
   }
 
@@ -1952,18 +2155,22 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> _refreshParkingDataFromRealtime() async {
     try {
-      final data = await _parkingService.fetchParkingData();
+      final providerOnly = state.currentMode == AccountMode.provider;
+      final data = await _parkingService.fetchParkingData(
+        currentProviderOnly: providerOnly,
+      );
+      final lots = await _applyCustomerTravelEstimates(data.lots);
       if (!mounted || data.lots.isEmpty) {
         return;
       }
 
-      final selectedLot = data.lots.firstWhere(
+      final selectedLot = lots.firstWhere(
         (lot) => lot.id == state.selectedLot?.id,
-        orElse: () => data.lots.first,
+        orElse: () => lots.first,
       );
 
       state = state.copyWith(
-        lots: data.lots,
+        lots: lots,
         selectedLot: selectedLot,
         slots: data.slots.isEmpty ? state.slots : data.slots,
         isUsingDemoData: false,
@@ -1985,7 +2192,12 @@ class AppController extends StateNotifier<AppState> {
       }
 
       if (guard == null) {
-        state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+        state = state.copyWith(
+          parkingGuards: const [],
+          guardBookings: const [],
+          clearActiveGuard: true,
+          clearSelectedLot: true,
+        );
         return;
       }
 
@@ -1999,6 +2211,7 @@ class AppController extends StateNotifier<AppState> {
         selectedLot: selectedLotStillAssigned ? selectedLot : null,
         clearSelectedLot: !selectedLotStillAssigned,
       );
+      await loadGuardBookingsFromSupabase();
     } catch (_) {
       // Realtime assignment refresh is best-effort; dashboard open reloads it.
     }
@@ -2006,12 +2219,27 @@ class AppController extends StateNotifier<AppState> {
 
   Future<void> searchParkingLotsFromSupabase(String query) async {
     final data = await _parkingService.fetchParkingData(searchQuery: query);
+    final lots = await _applyCustomerTravelEstimates(data.lots);
     state = state.copyWith(
-      lots: data.lots,
-      selectedLot: data.lots.isEmpty ? state.selectedLot : data.lots.first,
+      lots: lots,
+      selectedLot: lots.isEmpty ? state.selectedLot : lots.first,
       slots: data.slots.isEmpty ? state.slots : data.slots,
-      isUsingDemoData: data.lots.isEmpty ? state.isUsingDemoData : false,
+      isUsingDemoData: lots.isEmpty ? state.isUsingDemoData : false,
     );
+  }
+
+  Future<List<ParkingLot>> _applyCustomerTravelEstimates(
+    List<ParkingLot> lots,
+  ) async {
+    if (state.currentMode != AccountMode.customer) {
+      return lots;
+    }
+
+    try {
+      return await _customerLocationService.withTravelEstimates(lots);
+    } catch (_) {
+      return lots;
+    }
   }
 
   Future<void> loadCustomerVehiclesFromSupabase() async {
@@ -2064,6 +2292,23 @@ class AppController extends StateNotifier<AppState> {
       bookingNotificationEnabled: settings.bookingNotificationEnabled,
       paymentNotificationEnabled: settings.paymentNotificationEnabled,
       promoNotificationEnabled: settings.promoNotificationEnabled,
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
+    await _saveAccountPreference(
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
+  }
+
+  Future<void> loadCurrentProfileSettingsFromSupabase() async {
+    final settings = await _profileSettingsService
+        .fetchCurrentProfileSettings();
+    state = state.copyWith(
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
+    await _saveAccountPreference(
       selectedLanguage: settings.selectedLanguage,
       accountSecurityEnabled: settings.accountSecurityEnabled,
     );
@@ -2152,18 +2397,111 @@ class AppController extends StateNotifier<AppState> {
   Future<void> loadCurrentGuardFromSupabase() async {
     final guard = await _guardService.fetchCurrentGuardAccount();
     if (guard == null) {
-      state = state.copyWith(parkingGuards: const [], clearActiveGuard: true);
+      state = state.copyWith(
+        parkingGuards: const [],
+        guardBookings: const [],
+        clearActiveGuard: true,
+        clearSelectedLot: true,
+      );
       return;
     }
 
-    state = state.copyWith(parkingGuards: [guard], activeGuardId: guard.id);
+    final assignedLots = state.lots
+        .where((lot) => guard.assignedLotIds.contains(lot.id))
+        .toList();
+    final selectedLot = assignedLots
+        .where((lot) => lot.id == state.selectedLot?.id)
+        .firstOrNull;
+    state = state.copyWith(
+      parkingGuards: [guard],
+      activeGuardId: guard.id,
+      selectedLot: selectedLot ?? assignedLots.firstOrNull,
+      clearSelectedLot: assignedLots.isEmpty,
+    );
     startParkingGuardRealtime();
     startParkingSlotRealtime();
     startParkingLocationRealtime();
+    startGuardOperationsRealtime();
   }
 
-  Future<SupabaseReceiptRecord?> fetchLatestReceiptFromSupabase() {
-    return _paymentService.fetchLatestReceipt();
+  Future<void> loadGuardBookingsFromSupabase() async {
+    final guard = activeGuard(state);
+    if (guard == null || guard.assignedLotIds.isEmpty) {
+      state = state.copyWith(guardBookings: const []);
+      return;
+    }
+
+    final remoteBookings = await _bookingService.fetchGuardOperationalBookings(
+      guard.assignedLotIds,
+    );
+    state = state.copyWith(
+      guardBookings: [for (final item in remoteBookings) item.booking],
+    );
+    startGuardOperationsRealtime();
+  }
+
+  Future<Booking?> searchGuardBookingFromSupabase({
+    required String ticketNumber,
+    required String plateNumber,
+  }) async {
+    final guard = activeGuard(state);
+    if (guard == null) {
+      throw StateError('Assignment penjaga belum dimuat.');
+    }
+
+    final result = await _bookingService.searchGuardBooking(
+      assignedLotIds: guard.assignedLotIds,
+      ticketNumber: ticketNumber,
+      plateNumber: plateNumber,
+    );
+    return result?.booking;
+  }
+
+  void startGuardOperationsRealtime() {
+    if (_guardOperationsRealtimeChannel != null) {
+      return;
+    }
+
+    _guardOperationsRealtimeChannel = Supabase.instance.client
+        .channel('public:guard-operations:realtime')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bookings',
+          callback: (_) => _scheduleGuardOperationsRealtimeRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'payments',
+          callback: (_) => _scheduleGuardOperationsRealtimeRefresh(),
+        )
+        .subscribe();
+  }
+
+  void _scheduleGuardOperationsRealtimeRefresh() {
+    _guardOperationsRealtimeDebounce?.cancel();
+    _guardOperationsRealtimeDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () => unawaited(_refreshGuardOperationsFromRealtime()),
+    );
+  }
+
+  Future<void> _refreshGuardOperationsFromRealtime() async {
+    if (state.currentMode != AccountMode.parkingGuard) {
+      return;
+    }
+    try {
+      await loadGuardBookingsFromSupabase();
+    } catch (_) {
+      // Manual refresh remains available if a realtime refresh fails.
+    }
+  }
+
+  Future<SupabaseReceiptRecord?> fetchReceiptFromSupabase({
+    String? ticketNumber,
+  }) {
+    return _paymentService.fetchReceipt(ticketNumber: ticketNumber);
   }
 
   Future<SupabaseProviderDashboardSummary>
@@ -2178,6 +2516,16 @@ class AppController extends StateNotifier<AppState> {
   Future<SupabaseProviderFinancialReport>
   fetchProviderFinancialReportFromSupabase() {
     return _parkingService.fetchCurrentProviderFinancialReport();
+  }
+
+  Future<ParkingCoordinates> geocodeParkingAddress(String address) async {
+    final coordinates = await _parkingService.geocodeAddress(address);
+    if (coordinates == null) {
+      throw StateError(
+        'Alamat tidak ditemukan. Lengkapi nama jalan, nomor, kota, dan provinsi lalu coba lagi.',
+      );
+    }
+    return coordinates;
   }
 
   Future<void> loadProviderMonitoringFromSupabase() async {
@@ -2207,6 +2555,212 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(registrationRequests: requests);
   }
 
+  Future<bool> restoreRememberedSession() async {
+    final preferences = await SharedPreferences.getInstance();
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    final rememberMe = preferences.getBool(_rememberMeKey) ?? (user != null);
+    final selectedLanguage =
+        preferences.getString(_selectedLanguageKey) ?? state.selectedLanguage;
+    final accountSecurityEnabled =
+        preferences.getBool(_accountSecurityEnabledKey) ??
+        state.accountSecurityEnabled;
+
+    if (user == null) {
+      state = state.copyWith(
+        isAuthenticated: false,
+        rememberMe: rememberMe,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
+      );
+      return false;
+    }
+
+    if (accountSecurityEnabled && !rememberMe) {
+      await supabase.auth.signOut();
+      state = state.copyWith(
+        isAuthenticated: false,
+        rememberMe: false,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
+      );
+      return false;
+    }
+
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('email, phone_number, role, access_status, account_status')
+          .eq('id', user.id)
+          .single();
+      final mode = accountModeFromDbRole(profile['role'] as String?);
+      if (mode == null || profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        state = state.copyWith(isAuthenticated: false, rememberMe: false);
+        return false;
+      }
+
+      final email = (profile['email'] as String?) ?? user.email ?? state.email;
+      final phoneNumber =
+          (profile['phone_number'] as String?) ?? state.phoneNumber;
+      final providerApplication = mode == AccountMode.provider
+          ? await providerApplicationFromSupabase(user.id)
+          : null;
+      final accountStatus = mode == AccountMode.provider
+          ? await currentProviderStatusFromSupabase(
+              user.id,
+              profileStatus: profile['account_status'] as String?,
+            )
+          : AccountStatus.verified;
+
+      login(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: true,
+        accountStatusOverride: accountStatus,
+        providerApplication: providerApplication,
+        clearProviderApplication: providerApplication == null,
+      );
+      await _loadAuthenticatedRoleData(mode);
+      await _saveRememberedLoginPreference(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: true,
+      );
+      return true;
+    } catch (_) {
+      final mode = accountModeFromPreference(
+        preferences.getString(_lastModeKey),
+      );
+      state = state.copyWith(
+        isAuthenticated: true,
+        currentMode: mode,
+        email: user.email,
+        phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
+        rememberMe: rememberMe,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
+      );
+      return true;
+    }
+  }
+
+  Future<void> _loadAuthenticatedRoleData(AccountMode mode) async {
+    await loadCurrentUserAvatarFromSupabase(
+      forCustomer: mode == AccountMode.customer,
+    ).catchError((_) {});
+    await loadCurrentUserNotificationsFromSupabase().catchError((_) {});
+
+    switch (mode) {
+      case AccountMode.customer:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadCustomerVehiclesFromSupabase().catchError((_) {});
+        await loadActiveBookingFromSupabase().catchError((_) {});
+        await loadCustomerHistoryFromSupabase().catchError((_) {});
+        await loadCustomerFavoritesFromSupabase().catchError((_) {});
+        await loadCustomerSettingsFromSupabase().catchError((_) {});
+      case AccountMode.provider:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadProviderGuardsFromSupabase().catchError((_) {});
+        await loadCurrentProfileSettingsFromSupabase().catchError((_) {});
+      case AccountMode.parkingGuard:
+        await loadParkingDataFromSupabase().catchError((_) {});
+        await loadCurrentGuardFromSupabase().catchError((_) {});
+        await loadGuardBookingsFromSupabase().catchError((_) {});
+        await loadCurrentProfileSettingsFromSupabase().catchError((_) {});
+      case AccountMode.superAdmin:
+        await loadComplaintsFromSupabase().catchError((_) {});
+        await loadRegistrationRequestsFromSupabase().catchError((_) {});
+        await loadManagedUsersFromSupabase().catchError((_) {});
+    }
+  }
+
+  Future<void> ensureCurrentCustomerAccount({
+    String? phoneNumber,
+    bool rememberMe = true,
+  }) async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      throw StateError('Session login belum aktif.');
+    }
+
+    final existingRows = await supabase
+        .from('profiles')
+        .select('id, email, phone_number, role, access_status')
+        .eq('id', user.id)
+        .limit(1);
+    final existingProfile = existingRows.isEmpty ? null : existingRows.first;
+    if (existingProfile != null) {
+      if (existingProfile['role'] != 'customer') {
+        await supabase.auth.signOut();
+        throw StateError('Akun ini bukan akun customer.');
+      }
+      if (existingProfile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        throw StateError('Akun customer sedang dinonaktifkan.');
+      }
+    }
+
+    final metadata = user.userMetadata ?? const <String, dynamic>{};
+    final resolvedPhone =
+        phoneNumber ??
+        user.phone ??
+        existingProfile?['phone_number'] as String? ??
+        state.phoneNumber;
+    final resolvedEmail =
+        user.email ??
+        metadata['email'] as String? ??
+        existingProfile?['email'] as String? ??
+        _syntheticEmailForPhone(resolvedPhone, user.id);
+    final fullName =
+        metadata['full_name'] as String? ??
+        metadata['name'] as String? ??
+        resolvedEmail.split('@').first.replaceAll('.', ' ');
+
+    if (existingProfile == null) {
+      await supabase.from('profiles').insert({
+        'id': user.id,
+        'full_name': fullName,
+        'email': resolvedEmail,
+        'phone_number': resolvedPhone.isEmpty ? null : resolvedPhone,
+        'role': 'customer',
+        'account_status': 'verified',
+        'access_status': 'active',
+        'verified_at': DateTime.now().toIso8601String(),
+      });
+    } else {
+      await supabase
+          .from('profiles')
+          .update({
+            'email': resolvedEmail,
+            'phone_number': resolvedPhone.isEmpty ? null : resolvedPhone,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', user.id);
+    }
+
+    await supabase.from('customers').upsert({
+      'profile_id': user.id,
+    }, onConflict: 'profile_id');
+
+    login(
+      mode: AccountMode.customer,
+      email: resolvedEmail,
+      phoneNumber: resolvedPhone,
+      rememberMe: rememberMe,
+    );
+    await _loadAuthenticatedRoleData(AccountMode.customer);
+  }
+
+  String _syntheticEmailForPhone(String phoneNumber, String userId) {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    final suffix = digits.isEmpty ? userId.replaceAll('-', '') : digits;
+    return 'phone-$suffix@parkircepat.local';
+  }
+
   void login({
     required AccountMode mode,
     required String email,
@@ -2216,6 +2770,14 @@ class AppController extends StateNotifier<AppState> {
     ProviderApplication? providerApplication,
     bool clearProviderApplication = false,
   }) {
+    unawaited(
+      _saveRememberedLoginPreference(
+        mode: mode,
+        email: email,
+        phoneNumber: phoneNumber,
+        rememberMe: rememberMe,
+      ),
+    );
     final accountStatus =
         accountStatusOverride ??
         (mode == AccountMode.provider
@@ -2247,6 +2809,11 @@ class AppController extends StateNotifier<AppState> {
       providerApplication: providerApplication,
       clearProviderApplication: clearProviderApplication,
     );
+    unawaited(registerPushNotificationsForCurrentUser());
+  }
+
+  Future<PushRegistrationStatus> registerPushNotificationsForCurrentUser() {
+    return _pushNotificationService.registerCurrentUserDevice();
   }
 
   void register({
@@ -2310,12 +2877,23 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(passwordResetRequested: true);
   }
 
-  void logout() {
+  Future<void> logout() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_rememberMeKey, false);
+    await preferences.remove(_lastEmailKey);
+    await preferences.remove(_lastPhoneKey);
+    await _pushNotificationService.unregisterCurrentUserDevice().catchError(
+      (_) {},
+    );
+    await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
-    state = state.copyWith(isAuthenticated: false);
+    state = state.copyWith(isAuthenticated: false, rememberMe: false);
   }
 
   Future<void> deleteAccount() async {
+    await _pushNotificationService.unregisterCurrentUserDevice().catchError(
+      (_) {},
+    );
     await Supabase.instance.client.functions.invoke('delete-account');
     await Supabase.instance.client.auth.signOut();
     _stopRealtimeSubscriptions();
@@ -2879,6 +3457,11 @@ class AppController extends StateNotifier<AppState> {
       accountSecurityEnabled: accountSecurityEnabled,
     );
 
+    await _saveAccountPreference(
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+
     state = state.copyWith(
       bookingNotificationEnabled: bookingNotificationEnabled,
       paymentNotificationEnabled: paymentNotificationEnabled,
@@ -2898,11 +3481,19 @@ class AppController extends StateNotifier<AppState> {
     required bool reportNotificationEnabled,
     required String selectedLanguage,
     required bool accountSecurityEnabled,
-  }) {
-    return _profileSettingsService.saveCurrentProfileSettings(
+  }) async {
+    await _profileSettingsService.saveCurrentProfileSettings(
       primaryNotificationEnabled: primaryNotificationEnabled,
       secondaryNotificationEnabled: secondaryNotificationEnabled,
       reportNotificationEnabled: reportNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+    await _saveAccountPreference(
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+    state = state.copyWith(
       selectedLanguage: selectedLanguage,
       accountSecurityEnabled: accountSecurityEnabled,
     );
@@ -2955,6 +3546,22 @@ class AppController extends StateNotifier<AppState> {
   }) {
     for (final room in state.customerChatRooms) {
       if (room.id == id) {
+        state = state.copyWith(
+          customerChatRooms: [
+            for (final item in state.customerChatRooms)
+              if (item.id == id)
+                item.copyWith(
+                  title: title,
+                  participantRole: participantRole,
+                  participantName: participantName,
+                  lastMessage: item.lastMessage == 'Room chat siap digunakan.'
+                      ? initialMessage
+                      : item.lastMessage,
+                )
+              else
+                item,
+          ],
+        );
         return room.id;
       }
     }
@@ -2977,24 +3584,26 @@ class AppController extends StateNotifier<AppState> {
   String createCustomerGuardChatRoomForBooking(Booking booking) {
     return createCustomerChatRoom(
       id: 'customer-guard-${booking.ticketNumber.toLowerCase()}',
-      title: 'Chat Penjaga - ${booking.ticketNumber}',
+      title: 'Penjaga di ${booking.locationName}',
       participantRole: 'Penjaga Parkir',
-      participantName: 'Penjaga Parkir - ${booking.locationName}',
-      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+      participantName: 'Tim penjaga ${booking.locationName}',
+      initialMessage:
+          'Percakapan parkir ${booking.vehicleLabel} ${booking.plateNumber}. Tiket ${booking.ticketNumber}.',
     );
   }
 
   String createCustomerProviderChatRoomForLot(ParkingLot lot) {
     return createCustomerChatRoom(
       id: 'customer-provider-${lot.id}',
-      title: 'Chat Penyedia - ${lot.name}',
+      title: 'Penyedia ${lot.name}',
       participantRole: 'Penyedia Parkir',
-      participantName: 'Penyedia - ${lot.name}',
+      participantName: 'Penyedia ${lot.name}',
       initialMessage: 'Chat terkait lokasi ${lot.name}.',
     );
   }
 
   void markCustomerChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.customer);
     state = state.copyWith(
       customerChatRooms: [
         for (final room in state.customerChatRooms)
@@ -3010,7 +3619,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendCustomerMessage({required String roomId, required String message}) {
+  Future<void> sendCustomerMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3035,7 +3647,7 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
+    await _syncChatMessage(
       localRoomId: roomId,
       title: room.title,
       senderMode: AccountMode.customer,
@@ -3139,14 +3751,18 @@ class AppController extends StateNotifier<AppState> {
     );
     _syncRoleNotification(
       role: AccountMode.superAdmin,
-      title: 'Komplain customer baru',
-      message: '$title - $category dari ${state.customerName}.',
+      title: 'Komplain dari ${state.customerName}',
+      message: '$category: $title',
       type: 'complaint',
     );
   }
 
   void selectLot(ParkingLot lot) {
     state = state.copyWith(selectedLot: lot);
+  }
+
+  void selectVehicle(Vehicle vehicle) {
+    state = state.copyWith(selectedVehicle: vehicle);
   }
 
   String createGuardChatRoom({
@@ -3158,6 +3774,22 @@ class AppController extends StateNotifier<AppState> {
   }) {
     for (final room in state.guardChatRooms) {
       if (room.id == id) {
+        state = state.copyWith(
+          guardChatRooms: [
+            for (final item in state.guardChatRooms)
+              if (item.id == id)
+                item.copyWith(
+                  title: title,
+                  participantRole: participantRole,
+                  participantName: participantName,
+                  lastMessage: item.lastMessage == 'Room chat siap digunakan.'
+                      ? initialMessage
+                      : item.lastMessage,
+                )
+              else
+                item,
+          ],
+        );
         return room.id;
       }
     }
@@ -3178,14 +3810,29 @@ class AppController extends StateNotifier<AppState> {
   String createCustomerChatRoomForBooking(Booking booking) {
     return createGuardChatRoom(
       id: 'guard-customer-${booking.ticketNumber.toLowerCase()}',
-      title: 'Chat Customer - ${booking.ticketNumber}',
+      title: 'Customer ${booking.plateNumber}',
       participantRole: 'Customer',
-      participantName: 'Customer ${booking.ticketNumber}',
-      initialMessage: 'Chat terkait tiket ${booking.ticketNumber}.',
+      participantName: '${booking.vehicleLabel} ${booking.plateNumber}',
+      initialMessage:
+          'Percakapan parkir ${booking.vehicleLabel} ${booking.plateNumber}. Tiket ${booking.ticketNumber}.',
+    );
+  }
+
+  String createGuardProviderChatRoom() {
+    final guard = activeGuard(state);
+    final contextId = guard?.id ?? 'penjaga';
+    return createGuardChatRoom(
+      id: 'guard-provider-$contextId',
+      title: 'Penyedia Parkir',
+      participantRole: 'Penyedia Parkir',
+      participantName: 'Penyedia lahan tugas',
+      initialMessage:
+          'Percakapan operasional antara penjaga dan penyedia parkir.',
     );
   }
 
   void markChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.parkingGuard);
     state = state.copyWith(
       guardChatRooms: [
         for (final room in state.guardChatRooms)
@@ -3201,7 +3848,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendGuardMessage({required String roomId, required String message}) {
+  Future<void> sendGuardMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3227,7 +3877,7 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
+    await _syncChatMessage(
       localRoomId: roomId,
       title: room.title,
       senderMode: AccountMode.parkingGuard,
@@ -3295,6 +3945,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markProviderChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.provider);
     state = state.copyWith(
       providerChatRooms: [
         for (final room in state.providerChatRooms)
@@ -3310,7 +3961,10 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  void sendProviderMessage({required String roomId, required String message}) {
+  Future<void> sendProviderMessage({
+    required String roomId,
+    required String message,
+  }) async {
     final trimmed = message.trim();
     if (trimmed.isEmpty) {
       return;
@@ -3325,21 +3979,24 @@ class AppController extends StateNotifier<AppState> {
     if (room == null) {
       return;
     }
+    final providerName = state.userName.isEmpty
+        ? 'Penyedia Parkir'
+        : state.userName;
     final now = DateTime.now();
     final chatMessage = _outgoingMessage(
       roomId: roomId,
       senderRole: 'Penyedia Parkir',
-      senderName: 'Penyedia - Parkir Plaza Sudirman',
+      senderName: providerName,
       receiverRole: room.participantRole,
       receiverName: room.participantName,
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
+    await _syncChatMessage(
       localRoomId: roomId,
       title: room.title,
       senderMode: AccountMode.provider,
-      senderName: 'Penyedia - Parkir Plaza Sudirman',
+      senderName: providerName,
       participantRole: room.participantRole,
       participantName: room.participantName,
       message: trimmed,
@@ -3407,6 +4064,7 @@ class AppController extends StateNotifier<AppState> {
   }
 
   void markSuperAdminChatAsRead(String roomId) {
+    _markChatRoomAsReadInSupabase(roomId, AccountMode.superAdmin);
     state = state.copyWith(
       superAdminChatRooms: [
         for (final room in state.superAdminChatRooms)
@@ -3450,14 +4108,16 @@ class AppController extends StateNotifier<AppState> {
       message: trimmed,
       createdAt: now,
     );
-    _syncChatMessage(
-      localRoomId: roomId,
-      title: room.title,
-      senderMode: AccountMode.superAdmin,
-      senderName: 'Admin Super Parkir Cepat',
-      participantRole: room.participantRole,
-      participantName: room.participantName,
-      message: trimmed,
+    unawaited(
+      _syncChatMessage(
+        localRoomId: roomId,
+        title: room.title,
+        senderMode: AccountMode.superAdmin,
+        senderName: 'Admin Super Parkir Cepat',
+        participantRole: room.participantRole,
+        participantName: room.participantName,
+        message: trimmed,
+      ).catchError((_) {}),
     );
     final mirrorRoomId = _mirrorRoomId(AccountMode.superAdmin, roomId);
     state = state.copyWith(
@@ -3556,8 +4216,8 @@ class AppController extends StateNotifier<AppState> {
     );
     _syncRoleNotification(
       role: AccountMode.superAdmin,
-      title: 'Komplain penjaga baru',
-      message: '$title - $category dari ${guard?.name ?? 'Penjaga Parkir'}.',
+      title: 'Komplain dari $guardName',
+      message: '$category: $title',
       type: 'complaint',
     );
   }
@@ -3578,39 +4238,52 @@ class AppController extends StateNotifier<AppState> {
     Uint8List? photoBytes,
   }) async {
     final user = Supabase.instance.client.auth.currentUser;
-    String lotId = 'lot-${state.lots.length + 1}';
-    String providerId = 'provider-main';
+    if (user == null) {
+      throw const AuthException(
+        'Sesi penyedia tidak ditemukan. Login ulang sebelum menambah lahan.',
+      );
+    }
+    final provider = await Supabase.instance.client
+        .from('providers')
+        .select('id, status')
+        .eq('profile_id', user.id)
+        .maybeSingle();
+    if (provider == null) {
+      throw StateError(
+        'Data penyedia belum tersedia di Supabase. Selesaikan pendaftaran penyedia atau hubungi super admin.',
+      );
+    }
+    if (provider['status'] != 'verified') {
+      throw StateError(
+        'Akun penyedia belum diverifikasi. Lahan baru dapat ditambahkan setelah disetujui super admin.',
+      );
+    }
+    final providerId = provider['id'] as String;
 
-    if (user != null) {
-      final provider = await Supabase.instance.client
-          .from('providers')
-          .select('id')
-          .eq('profile_id', user.id)
-          .single();
-      providerId = provider['id'] as String;
-
-      final insertedLot = await Supabase.instance.client
-          .from('parking_lots')
-          .insert({
-            'provider_id': providerId,
-            'name': name,
-            'address': address,
-            'price_per_hour': price,
-            'total_slots': capacity,
-            'open_hours': '24 Jam',
-            'latitude': latitude,
-            'longitude': longitude,
-            'map_embed_url': mapEmbedUrl,
-            'photo_url': null,
-            'tariff_type': _tariffTypeToDb(tariffType),
-            'motor_rate': motorRate,
-            'car_rate': carRate,
-            'truck_rate': truckRate,
-            'is_active': true,
-          })
-          .select('id')
-          .single();
-      lotId = insertedLot['id'] as String;
+    final insertedLot = await Supabase.instance.client
+        .from('parking_lots')
+        .insert({
+          'provider_id': providerId,
+          'name': name,
+          'address': address,
+          'price_per_hour': price,
+          'total_slots': capacity,
+          'open_hours': '24 Jam',
+          'latitude': latitude,
+          'longitude': longitude,
+          'map_embed_url': mapEmbedUrl,
+          'photo_url': null,
+          'tariff_type': _tariffTypeToDb(tariffType),
+          'motor_rate': motorRate,
+          'car_rate': carRate,
+          'truck_rate': truckRate,
+          'is_active': true,
+        })
+        .select('id')
+        .single();
+    final lotId = insertedLot['id'] as String;
+    List<dynamic> insertedSlots;
+    try {
       if (photoBytes != null) {
         final photoUrl = await _parkingService.uploadCurrentProviderLotPhoto(
           lotId: lotId,
@@ -3626,23 +4299,35 @@ class AppController extends StateNotifier<AppState> {
         }
       }
 
-      await Supabase.instance.client.from('parking_slots').insert([
-        for (var index = 1; index <= capacity; index++)
-          {
-            'parking_lot_id': lotId,
-            'label': 'A${index.toString().padLeft(3, '0')}',
-            'status': 'available',
-          },
-      ]);
+      insertedSlots = await Supabase.instance.client
+          .from('parking_slots')
+          .insert([
+            for (var index = 1; index <= capacity; index++)
+              {
+                'parking_lot_id': lotId,
+                'label': 'A${index.toString().padLeft(3, '0')}',
+                'status': 'available',
+              },
+          ])
+          .select('id, parking_lot_id, label, status');
+    } catch (error) {
+      try {
+        await Supabase.instance.client
+            .from('parking_lots')
+            .delete()
+            .eq('id', lotId);
+      } catch (_) {
+        // Preserve the original upload/slot error shown to the provider.
+      }
+      rethrow;
     }
-
     final generatedSlots = [
-      for (var index = 1; index <= capacity; index++)
+      for (final row in insertedSlots)
         ParkingSlot(
-          id: '$lotId-slot-$index',
-          lotId: lotId,
-          label: 'A${index.toString().padLeft(3, '0')}',
-          isAvailable: true,
+          id: row['id'] as String,
+          lotId: row['parking_lot_id'] as String,
+          label: row['label'] as String,
+          isAvailable: row['status'] == 'available',
         ),
     ];
 
@@ -3760,11 +4445,45 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
+  Future<String> removeLotFromApp(ParkingLot lot) async {
+    if (!_isSupabaseUuid(lot.id)) {
+      throw StateError(
+        'Lokasi ini masih data demo/lokal. Hapus hanya dapat dilakukan untuk lokasi Supabase.',
+      );
+    }
+
+    final rows = await Supabase.instance.client.rpc(
+      'app_provider_remove_parking_lot',
+      params: {'p_parking_lot_id': lot.id, 'p_delete_if_safe': true},
+    );
+    final row = rows is List && rows.isNotEmpty
+        ? Map<String, dynamic>.from(rows.first as Map)
+        : const <String, dynamic>{};
+    final action = row['action'] as String? ?? 'archived';
+    final remainingLots = state.lots
+        .where((item) => item.id != lot.id)
+        .toList();
+    final replacementLot = remainingLots.firstOrNull;
+
+    state = state.copyWith(
+      lots: remainingLots,
+      slots: state.slots.where((slot) => slot.lotId != lot.id).toList(),
+      selectedLot: state.selectedLot?.id == lot.id
+          ? replacementLot
+          : state.selectedLot,
+      clearSelectedLot:
+          state.selectedLot?.id == lot.id && replacementLot == null,
+    );
+
+    return action == 'deleted'
+        ? 'Lahan berhasil dihapus karena belum memiliki riwayat booking.'
+        : 'Lahan berhasil dinonaktifkan dan disembunyikan dari aplikasi.';
+  }
+
   String _tariffTypeToDb(ParkingTariffType type) => switch (type) {
     ParkingTariffType.hourly => 'hourly',
     ParkingTariffType.flat => 'flat',
     ParkingTariffType.daily => 'daily',
-    ParkingTariffType.progressive => 'progressive',
   };
 
   Future<void> toggleFavoriteLot(String lotId) async {
@@ -3792,50 +4511,47 @@ class AppController extends StateNotifier<AppState> {
     }
   }
 
-  Future<void> saveVehicle({
-    required String plateNumber,
+  Future<void> saveVehicles({
+    required List<String> plateNumbers,
     required VehicleKind kind,
-    required int quantity,
     required int durationHours,
   }) async {
-    final remoteVehicle = await _vehicleService
-        .saveCurrentCustomerVehicle(
-          plateNumber: plateNumber,
-          kind: kind,
-          quantity: quantity,
-          durationHours: durationHours,
-        )
-        .catchError((_) => null);
+    final savedVehicles = await _vehicleService.saveCurrentCustomerVehicles(
+      plateNumbers: plateNumbers,
+      kind: kind,
+      durationHours: durationHours,
+    );
+    if (savedVehicles.isEmpty) {
+      throw StateError('Tidak ada kendaraan yang berhasil disimpan.');
+    }
 
-    final vehicle =
-        remoteVehicle ??
-        Vehicle(
-          id: 'veh-${state.vehicles.length + 1}',
-          plateNumber: plateNumber,
-          kind: kind,
-          quantity: quantity,
-          durationHours: durationHours,
-        );
-
-    final remainingVehicles = state.vehicles
-        .where((item) => item.plateNumber != vehicle.plateNumber)
-        .toList();
+    final savedPlates = {
+      for (final vehicle in savedVehicles) vehicle.plateNumber.toUpperCase(),
+    };
+    final remainingVehicles = state.vehicles.where(
+      (item) => !savedPlates.contains(item.plateNumber.toUpperCase()),
+    );
 
     state = state.copyWith(
-      vehicles: [vehicle, ...remainingVehicles],
-      selectedVehicle: vehicle,
+      vehicles: [...savedVehicles, ...remainingVehicles],
+      selectedVehicle: savedVehicles.first,
     );
   }
 
   Future<void> createBooking({
     required String slotCode,
     required DateTime entryTime,
+    required int durationHours,
   }) async {
     var lot = state.selectedLot ?? state.lots.firstOrNull;
     final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
     if (lot == null || vehicle == null) {
       throw StateError('Lokasi parkir dan kendaraan wajib dipilih.');
     }
+    if (durationHours <= 0) {
+      throw StateError('Durasi parkir harus lebih dari 0 jam.');
+    }
+    final bookingVehicle = vehicle.copyWith(durationHours: durationHours);
     final selectedLotName = lot.name;
     if (!_isSupabaseUuid(lot.id)) {
       await loadParkingDataFromSupabase();
@@ -3875,13 +4591,11 @@ class AppController extends StateNotifier<AppState> {
       throw StateError('Slot $slotCode sudah tidak tersedia.');
     }
 
-    final total = calculateParkingCost(lot, vehicle);
     final remoteBooking = await _bookingService.createCurrentCustomerBooking(
       lot: lot,
       slot: selectedSlot,
-      vehicle: vehicle,
+      vehicle: bookingVehicle,
       entryTime: entryTime,
-      estimatedCost: total,
     );
     final ticketNumber = remoteBooking.ticketNumber;
 
@@ -3890,9 +4604,11 @@ class AppController extends StateNotifier<AppState> {
       slotCode: slotCode,
       locationName: lot.name,
       plateNumber: vehicle.plateNumber,
-      vehicleLabel: vehicle.label,
+      vehicleLabel: bookingVehicle.label,
       entryTime: entryTime,
-      estimatedCost: total,
+      durationHours: remoteBooking.durationHours,
+      estimatedCost: remoteBooking.estimatedCost,
+      amountDue: remoteBooking.estimatedCost,
       paymentMethod: PaymentMethod.qris,
       status: BookingStatus.pendingPayment,
     );
@@ -3916,7 +4632,8 @@ class AppController extends StateNotifier<AppState> {
 
     state = state.copyWith(
       activeBooking: booking,
-      reservationLockedUntil: DateTime.now().add(const Duration(minutes: 15)),
+      selectedVehicle: bookingVehicle,
+      reservationLockedUntil: DateTime.now().add(const Duration(minutes: 30)),
       slots: updatedSlots,
       customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
@@ -3951,12 +4668,20 @@ class AppController extends StateNotifier<AppState> {
     if (booking == null) {
       return;
     }
-    await _paymentService.payCurrentCustomerBooking(
-      booking: booking,
-      method: method,
+    final isParkingOperator =
+        state.currentMode == AccountMode.parkingGuard ||
+        state.currentMode == AccountMode.provider;
+    if (!isParkingOperator || method != PaymentMethod.cash) {
+      throw StateError(
+        'Pembayaran online hanya dapat diselesaikan melalui Midtrans.',
+      );
+    }
+    await _paymentService.confirmCurrentOperatorCashPayment(
+      booking.ticketNumber,
     );
     final updatedBooking = booking.copyWith(
       paymentMethod: method,
+      amountDue: 0,
       status: BookingStatus.paid,
     );
     final transaction = TransactionRecord(
@@ -3968,8 +4693,8 @@ class AppController extends StateNotifier<AppState> {
       timeLabel: formatDateTime(booking.entryTime),
     );
     final customerNotice = NoticeItem(
-      title: 'Pembayaran demo berhasil',
-      message: 'Tiket ${booking.ticketNumber} aktif dari simulasi bayar.',
+      title: 'Pembayaran berhasil',
+      message: 'Tiket ${booking.ticketNumber} sudah aktif dan siap digunakan.',
       timeLabel: 'Baru saja',
       icon: Icons.payments_rounded,
       accent: AppTheme.emerald,
@@ -3981,9 +4706,8 @@ class AppController extends StateNotifier<AppState> {
       customerNotifications: [customerNotice, ...state.customerNotifications],
       adminNotifications: [
         NoticeItem(
-          title: 'Pembayaran demo berhasil',
-          message:
-              '${booking.plateNumber} menyelesaikan simulasi pembayaran parkir.',
+          title: 'Pembayaran berhasil',
+          message: '${booking.plateNumber} menyelesaikan pembayaran parkir.',
           timeLabel: 'Baru saja',
           icon: Icons.verified_rounded,
           accent: AppTheme.emerald,
@@ -4038,12 +4762,65 @@ class AppController extends StateNotifier<AppState> {
     );
   }
 
-  Booking? bookingByTicketNumber(String ticketNumber) {
+  Future<Booking?> simulateCurrentCustomerPayment() async {
     final booking = state.activeBooking;
-    if (booking == null || booking.ticketNumber != ticketNumber) {
+    if (booking == null) {
       return null;
     }
-    return booking;
+
+    final syncedToSupabase = await _paymentService
+        .simulateCurrentCustomerPayment(booking.ticketNumber);
+    if (syncedToSupabase) {
+      await loadActiveBookingFromSupabase().catchError((_) {});
+      unawaited(loadCustomerHistoryFromSupabase().catchError((_) {}));
+      unawaited(loadCurrentUserNotificationsFromSupabase().catchError((_) {}));
+    }
+
+    final updatedBooking = (state.activeBooking?.isPaid ?? false)
+        ? state.activeBooking!
+        : booking.copyWith(
+            paymentMethod: PaymentMethod.qris,
+            amountDue: 0,
+            status: BookingStatus.paid,
+          );
+    final notice = NoticeItem(
+      title: 'Pembayaran simulasi berhasil',
+      message: 'Tiket ${booking.ticketNumber} sudah aktif.',
+      timeLabel: 'Baru saja',
+      icon: Icons.verified_rounded,
+      accent: AppTheme.emerald,
+    );
+    state = state.copyWith(
+      activeBooking: updatedBooking,
+      reservationLockedUntil: null,
+      customerNotifications: [
+        notice,
+        ...state.customerNotifications.where(
+          (item) => item.message != notice.message,
+        ),
+      ],
+    );
+    return updatedBooking;
+  }
+
+  Booking? bookingByTicketNumber(String ticketNumber) {
+    final booking = state.activeBooking;
+    if (booking != null && booking.ticketNumber == ticketNumber) {
+      return booking;
+    }
+    return state.guardBookings
+        .where((item) => item.ticketNumber == ticketNumber)
+        .firstOrNull;
+  }
+
+  Booking? bookingByQrPayload(String qrPayload) {
+    final booking = state.activeBooking;
+    if (booking?.qrPayload == qrPayload) {
+      return booking;
+    }
+    return state.guardBookings
+        .where((item) => item.qrPayload == qrPayload)
+        .firstOrNull;
   }
 
   Future<Booking?> loadBookingByTicketNumberFromSupabase(
@@ -4061,13 +4838,78 @@ class AppController extends StateNotifier<AppState> {
       return null;
     }
 
-    state = state.copyWith(activeBooking: remoteBooking.booking);
+    state = state.copyWith(
+      activeBooking: remoteBooking.booking,
+      guardBookings: state.currentMode == AccountMode.parkingGuard
+          ? [
+              remoteBooking.booking,
+              for (final booking in state.guardBookings)
+                if (booking.ticketNumber != remoteBooking.booking.ticketNumber)
+                  booking,
+            ]
+          : state.guardBookings,
+    );
     return remoteBooking.booking;
+  }
+
+  Future<Booking?> loadBookingByQrPayloadFromSupabase(String qrPayload) async {
+    final localBooking = bookingByQrPayload(qrPayload);
+    if (localBooking != null) {
+      return localBooking;
+    }
+
+    final remoteBooking = await _bookingService.fetchBookingByQrPayload(
+      qrPayload,
+    );
+    if (remoteBooking == null) {
+      return null;
+    }
+
+    state = state.copyWith(
+      activeBooking: remoteBooking.booking,
+      guardBookings: state.currentMode == AccountMode.parkingGuard
+          ? [
+              remoteBooking.booking,
+              for (final booking in state.guardBookings)
+                if (booking.ticketNumber != remoteBooking.booking.ticketNumber)
+                  booking,
+            ]
+          : state.guardBookings,
+    );
+    return remoteBooking.booking;
+  }
+
+  Future<Booking> confirmOperatorCashPaymentForBooking(Booking booking) async {
+    if (state.currentMode != AccountMode.parkingGuard &&
+        state.currentMode != AccountMode.provider) {
+      throw StateError('Hanya operator lokasi yang dapat mengonfirmasi tunai.');
+    }
+    await _paymentService.confirmCurrentOperatorCashPayment(
+      booking.ticketNumber,
+    );
+    final updatedBooking = booking.copyWith(
+      paymentMethod: PaymentMethod.cash,
+      amountDue: 0,
+      status: BookingStatus.paid,
+    );
+    state = state.copyWith(
+      activeBooking: state.activeBooking?.ticketNumber == booking.ticketNumber
+          ? updatedBooking
+          : state.activeBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
+    );
+    return updatedBooking;
   }
 
   Future<bool> verifyVehicleEntry(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
-    if (booking == null || !booking.isPaid) {
+    if (booking == null || booking.status != BookingStatus.paid) {
       return false;
     }
     await _bookingService.checkInBooking(ticketNumber);
@@ -4089,6 +4931,13 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(
       activeBooking: updatedBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
       slots: updatedSlots,
       history: [activity, ...state.history],
       adminNotifications: [
@@ -4108,7 +4957,7 @@ class AppController extends StateNotifier<AppState> {
 
   Future<bool> confirmVehicleExit(String ticketNumber) async {
     final booking = bookingByTicketNumber(ticketNumber);
-    if (booking == null || !booking.isPaid) {
+    if (booking == null || booking.status != BookingStatus.active) {
       return false;
     }
     await _bookingService.checkOutBooking(ticketNumber);
@@ -4130,6 +4979,13 @@ class AppController extends StateNotifier<AppState> {
     );
     state = state.copyWith(
       activeBooking: updatedBooking,
+      guardBookings: [
+        for (final item in state.guardBookings)
+          if (item.ticketNumber == booking.ticketNumber)
+            updatedBooking
+          else
+            item,
+      ],
       slots: updatedSlots,
       reservationLockedUntil: null,
       history: [activity, ...state.history],
@@ -4188,29 +5044,38 @@ class AppController extends StateNotifier<AppState> {
   }
 
   Future<void> addSlotToSelectedLot() async {
-    final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
-    if (lot == null) {
-      throw StateError('Pilih lokasi parkir terlebih dahulu.');
+    var lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
+    if (lot == null && state.currentMode == AccountMode.provider) {
+      await loadParkingDataFromSupabase();
+      lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
     }
-    if (!_isSupabaseUuid(lot.id)) {
+    if (lot == null) {
+      throw StateError(
+        'Belum ada lokasi parkir Supabase. Tambahkan lahan terlebih dahulu.',
+      );
+    }
+    final selectedLot = lot;
+    if (!_isSupabaseUuid(selectedLot.id)) {
       throw StateError(
         'Lokasi ini masih data demo/lokal. Buat lokasi baru dari tombol Tambah lokasi agar slot bisa tersimpan ke Supabase.',
       );
     }
 
-    final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList();
+    final lotSlots = state.slots
+        .where((slot) => slot.lotId == selectedLot.id)
+        .toList();
     final nextNumber = lotSlots.length + 1;
     final prefix = lotSlots.isEmpty
         ? 'A'
         : lotSlots.first.label.split('-').first.replaceAll(RegExp(r'\d'), '');
     final normalizedPrefix = prefix.trim().isEmpty ? 'A' : prefix.trim();
     var label = '$normalizedPrefix-${nextNumber.toString().padLeft(2, '0')}';
-    var slotId = '${lot.id}-slot-$nextNumber';
+    var slotId = '${selectedLot.id}-slot-$nextNumber';
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final remoteSlot = await _parkingService.addCurrentProviderParkingSlot(
-        lot.id,
+        selectedLot.id,
       );
       if (remoteSlot != null) {
         slotId = remoteSlot.id;
@@ -4218,18 +5083,23 @@ class AppController extends StateNotifier<AppState> {
       }
     }
 
-    final updatedLot = lot.copyWith(
-      totalSlots: lot.totalSlots + 1,
-      availableSlots: lot.availableSlots + 1,
+    final updatedLot = selectedLot.copyWith(
+      totalSlots: selectedLot.totalSlots + 1,
+      availableSlots: selectedLot.availableSlots + 1,
     );
     state = state.copyWith(
       slots: [
         ...state.slots,
-        ParkingSlot(id: slotId, lotId: lot.id, label: label, isAvailable: true),
+        ParkingSlot(
+          id: slotId,
+          lotId: selectedLot.id,
+          label: label,
+          isAvailable: true,
+        ),
       ],
       lots: [
         for (final item in state.lots)
-          if (item.id == lot.id) updatedLot else item,
+          if (item.id == selectedLot.id) updatedLot else item,
       ],
       selectedLot: updatedLot,
     );
@@ -4241,8 +5111,9 @@ class AppController extends StateNotifier<AppState> {
     ).hasMatch(value);
   }
 
-  void toggleSlot(String id) {
+  Future<void> toggleSlot(String id) async {
     ParkingSlot? changedSlot;
+    final previousSlots = state.slots;
     final updated = [
       for (final slot in state.slots)
         if (slot.id == id)
@@ -4253,48 +5124,56 @@ class AppController extends StateNotifier<AppState> {
     state = state.copyWith(slots: updated);
 
     if (changedSlot != null) {
-      unawaited(
-        Supabase.instance.client
+      try {
+        await Supabase.instance.client
             .from('parking_slots')
             .update({
               'status': changedSlot.isAvailable ? 'available' : 'occupied',
             })
-            .eq('id', changedSlot.id)
-            .catchError((_) {}),
-      );
+            .eq('id', changedSlot.id);
+      } catch (error) {
+        state = state.copyWith(slots: previousSlots);
+        throw StateError('Gagal memperbarui status slot di Supabase: $error');
+      }
     }
   }
 
-  void extendParkingTime(int additionalHours) {
-    final vehicle = state.selectedVehicle;
+  Future<void> extendParkingTime(int additionalHours) async {
     final booking = state.activeBooking;
-    if (vehicle == null || booking == null) {
+    if (booking == null) {
       return;
+    }
+    if (additionalHours <= 0) {
+      throw StateError('Tambahan durasi harus lebih dari 0 jam.');
     }
 
-    final updatedVehicle = vehicle.copyWith(
-      durationHours: vehicle.durationHours + additionalHours,
+    final extension = await _bookingService.extendCurrentCustomerBooking(
+      ticketNumber: booking.ticketNumber,
+      additionalHours: additionalHours,
     );
-    final updatedVehicles = [
-      for (final item in state.vehicles)
-        if (item.id == vehicle.id) updatedVehicle else item,
-    ];
-    final lot = state.selectedLot ?? state.lots.firstOrNull;
-    if (lot == null) {
-      return;
-    }
-    final currentCost = calculateParkingCost(lot, vehicle);
-    final updatedCost = calculateParkingCost(lot, updatedVehicle);
+    final selectedVehicle = state.selectedVehicle;
+    final updatedVehicle = selectedVehicle?.copyWith(
+      durationHours: extension.durationHours,
+    );
     state = state.copyWith(
-      vehicles: updatedVehicles,
-      selectedVehicle: updatedVehicle,
+      vehicles: updatedVehicle == null
+          ? state.vehicles
+          : [
+              for (final item in state.vehicles)
+                if (item.id == updatedVehicle.id) updatedVehicle else item,
+            ],
+      selectedVehicle: updatedVehicle ?? state.selectedVehicle,
       activeBooking: booking.copyWith(
-        estimatedCost: booking.estimatedCost + (updatedCost - currentCost),
+        durationHours: extension.durationHours,
+        estimatedCost: extension.estimatedCost,
+        amountDue: extension.amountDue,
       ),
       customerNotifications: [
         NoticeItem(
           title: 'Durasi parkir diperpanjang',
-          message: 'Tambahan $additionalHours jam berhasil diterapkan.',
+          message: extension.amountDue > 0
+              ? 'Tambahan $additionalHours jam berhasil diterapkan. Sisa tagihan ${formatCurrency(extension.amountDue)}.'
+              : 'Tambahan $additionalHours jam berhasil diterapkan.',
           timeLabel: 'Baru saja',
           icon: Icons.more_time_rounded,
           accent: AppTheme.emerald,
@@ -4312,13 +5191,17 @@ class AppController extends StateNotifier<AppState> {
 
   void _stopRealtimeSubscriptions() {
     _parkingSlotRealtimeDebounce?.cancel();
+    _guardOperationsRealtimeDebounce?.cancel();
     _notificationRealtimeDebounce?.cancel();
+    _chatRoomsRealtimeDebounce?.cancel();
 
     final channels = [
       _parkingSlotRealtimeChannel,
       _parkingLotRealtimeChannel,
       _parkingGuardRealtimeChannel,
+      _guardOperationsRealtimeChannel,
       _notificationRealtimeChannel,
+      _chatRoomsRealtimeChannel,
     ];
     for (final channel in channels) {
       if (channel != null) {
@@ -4329,8 +5212,11 @@ class AppController extends StateNotifier<AppState> {
     _parkingSlotRealtimeChannel = null;
     _parkingLotRealtimeChannel = null;
     _parkingGuardRealtimeChannel = null;
+    _guardOperationsRealtimeChannel = null;
     _notificationRealtimeChannel = null;
+    _chatRoomsRealtimeChannel = null;
     _notificationRealtimeProfileId = null;
+    _chatRoomsRealtimeProfileId = null;
   }
 }
 
@@ -4416,10 +5302,14 @@ int calculateParkingCost(ParkingLot lot, Vehicle vehicle) {
     ParkingTariffType.hourly => rate * hours,
     ParkingTariffType.flat => rate,
     ParkingTariffType.daily => rate * math.max(1, (hours / 24).ceil()),
-    ParkingTariffType.progressive =>
-      rate + (math.max(0, hours - 1) * rate ~/ 2),
   };
 }
+
+String parkingRateLabel(ParkingLot lot) => switch (lot.tariffType) {
+  ParkingTariffType.hourly => '${formatCurrency(lot.pricePerHour)}/jam',
+  ParkingTariffType.flat => '${formatCurrency(lot.pricePerHour)} flat',
+  ParkingTariffType.daily => '${formatCurrency(lot.pricePerHour)}/hari',
+};
 
 String formatDateTime(DateTime value) {
   final hour = value.hour.toString().padLeft(2, '0');
@@ -4456,30 +5346,448 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
-  Timer? _navigationTimer;
+  Timer? _restoreTimer;
 
   @override
   void initState() {
     super.initState();
-    _navigationTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) {
+    _restoreTimer = Timer(
+      const Duration(milliseconds: 900),
+      () => unawaited(_restoreAndNavigate()),
+    );
+  }
+
+  Future<void> _restoreAndNavigate() async {
+    final updateService = SupabaseAppUpdateService();
+    final updateInfo = await updateService.checkForUpdate();
+
+    if (updateInfo != null && mounted) {
+      if (updateInfo.isRequired) {
+        await _showForceUpdateDialog(updateInfo);
         return;
+      } else if (updateInfo.isAvailable) {
+        final proceed = await _showOptionalUpdateDialog(updateInfo);
+        if (!proceed) {
+          return;
+        }
       }
-      final state = ref.read(appControllerProvider);
-      final controller = ref.read(appControllerProvider.notifier);
-      if (!state.onboardingDone) {
-        context.go('/onboarding');
-      } else if (!state.isAuthenticated) {
-        context.go('/login');
-      } else {
-        context.go(controller.landingRouteFor(state));
-      }
-    });
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.restoreRememberedSession();
+    if (!mounted) {
+      return;
+    }
+    final state = ref.read(appControllerProvider);
+    if (!state.onboardingDone) {
+      context.go('/onboarding');
+    } else if (!state.isAuthenticated) {
+      context.go('/login');
+    } else {
+      context.go(controller.landingRouteFor(state));
+    }
+  }
+
+  Future<void> _showForceUpdateDialog(AppUpdateInfo info) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+            backgroundColor: AppTheme.white,
+            surfaceTintColor: Colors.transparent,
+            titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
+            actionsPadding: const EdgeInsets.only(
+              bottom: 24,
+              left: 24,
+              right: 24,
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFEE2E2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.system_update_rounded,
+                    color: Colors.redAccent,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Update Wajib',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 20,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Versi aplikasi yang Anda gunakan sudah tidak didukung lagi. Harap perbarui aplikasi untuk terus menggunakan layanan Parkir Cepat.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: AppTheme.ink.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.slateSoft,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Versi Saat Ini:',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.slate,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            info.currentVersion,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.ink,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Versi Terbaru:',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.slate,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            info.latestVersion,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.blue,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (info.releaseNotes.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Catatan Rilis:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 100),
+                    width: double.infinity,
+                    child: SingleChildScrollView(
+                      child: Text(
+                        info.releaseNotes,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.ink.withValues(alpha: 0.7),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.blue,
+                    foregroundColor: AppTheme.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () async {
+                    await launchUrl(
+                      Uri.parse(info.downloadUrl),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
+                  child: Text(
+                    'Perbarui Sekarang',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<bool> _showOptionalUpdateDialog(AppUpdateInfo info) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          backgroundColor: AppTheme.white,
+          surfaceTintColor: Colors.transparent,
+          titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 16,
+          ),
+          actionsPadding: const EdgeInsets.only(
+            bottom: 24,
+            left: 24,
+            right: 24,
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: AppTheme.blueSoft,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.system_update_rounded,
+                  color: AppTheme.blue,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Update Tersedia',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    color: AppTheme.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Versi terbaru aplikasi Parkir Cepat telah tersedia. Apakah Anda ingin memperbarui sekarang untuk mendapatkan fitur terbaru?',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppTheme.ink.withValues(alpha: 0.8),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.slateSoft,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Versi Saat Ini:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.slate,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          info.currentVersion,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.ink,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Versi Terbaru:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.slate,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          info.latestVersion,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.blue,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (info.releaseNotes.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Catatan Rilis:',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 100),
+                  width: double.infinity,
+                  child: SingleChildScrollView(
+                    child: Text(
+                      info.releaseNotes,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.ink.withValues(alpha: 0.7),
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppTheme.slate),
+                        foregroundColor: AppTheme.slate,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(context).pop(true);
+                      },
+                      child: Text(
+                        'Nanti',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.blue,
+                        foregroundColor: AppTheme.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () async {
+                        await launchUrl(
+                          Uri.parse(info.downloadUrl),
+                          mode: LaunchMode.externalApplication,
+                        );
+                        if (context.mounted) {
+                          Navigator.of(context).pop(false);
+                        }
+                      },
+                      child: Text(
+                        'Perbarui',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    return result ?? true;
   }
 
   @override
   void dispose() {
-    _navigationTimer?.cancel();
+    _restoreTimer?.cancel();
     super.dispose();
   }
 
@@ -4709,42 +6017,137 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   late final TextEditingController _passwordController;
   bool _rememberMe = true;
   bool _isLoading = false;
-  AccountMode _mode = AccountMode.customer;
 
   Future<void> _submitLogin() async {
     if (_isLoading) {
       return;
     }
 
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
     final controller = ref.read(appControllerProvider.notifier);
 
-    if (_mode == AccountMode.customer) {
-      await _submitCustomerLogin(controller);
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Email dan password wajib diisi.');
       return;
     }
 
-    if (_mode == AccountMode.provider) {
-      await _submitProviderLogin(controller);
-      return;
-    }
+    setState(() => _isLoading = true);
 
-    if (_mode == AccountMode.superAdmin) {
-      await _submitSuperAdminLogin(controller);
-      return;
-    }
+    try {
+      final supabase = Supabase.instance.client;
+      final authResponse = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = authResponse.user;
 
-    if (_mode == AccountMode.parkingGuard) {
-      await _submitGuardLogin(controller);
-      return;
-    }
+      if (user == null) {
+        _showLoginMessage('Login gagal. Coba lagi.');
+        return;
+      }
 
-    controller.login(
-      mode: _mode,
-      email: _emailController.text,
-      phoneNumber: _phoneController.text,
-      rememberMe: _rememberMe,
-    );
-    context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+      final profile = await supabase
+          .from('profiles')
+          .select(
+            'id, email, phone_number, role, access_status, account_status',
+          )
+          .eq('id', user.id)
+          .single();
+      final mode = accountModeFromDbRole(profile['role'] as String?);
+      if (mode == null) {
+        await supabase.auth.signOut();
+        _showLoginMessage('Role akun belum dikenali.');
+        return;
+      }
+
+      if (profile['access_status'] == 'suspended') {
+        await supabase.auth.signOut();
+        _showLoginMessage('Akun sedang dinonaktifkan.');
+        return;
+      }
+
+      final phoneNumber =
+          (profile['phone_number'] as String?) ?? _phoneController.text;
+      final providerApplication = mode == AccountMode.provider
+          ? await _providerApplicationForLogin(user.id)
+          : null;
+      final accountStatus = mode == AccountMode.provider
+          ? await _currentProviderStatusForLogin(
+              user.id,
+              profileStatus: profile['account_status'] as String?,
+            )
+          : AccountStatus.verified;
+
+      controller.login(
+        mode: mode,
+        email: (profile['email'] as String?) ?? email,
+        phoneNumber: phoneNumber,
+        rememberMe: _rememberMe,
+        accountStatusOverride: accountStatus,
+        providerApplication: providerApplication,
+        clearProviderApplication: providerApplication == null,
+      );
+
+      await controller
+          .loadCurrentUserAvatarFromSupabase(
+            forCustomer: mode == AccountMode.customer,
+          )
+          .catchError((_) {});
+      await controller.loadCurrentUserNotificationsFromSupabase().catchError(
+        (_) {},
+      );
+
+      switch (mode) {
+        case AccountMode.customer:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadCustomerVehiclesFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadActiveBookingFromSupabase().catchError((_) {});
+          await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+          await controller.loadCustomerFavoritesFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadCustomerSettingsFromSupabase().catchError(
+            (_) {},
+          );
+        case AccountMode.provider:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+        case AccountMode.parkingGuard:
+          await controller.loadParkingDataFromSupabase().catchError((_) {});
+          await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+          await controller.loadGuardBookingsFromSupabase().catchError((_) {});
+          final guard = activeGuard(ref.read(appControllerProvider));
+          if (guard == null) {
+            await supabase.auth.signOut();
+            _showLoginMessage(
+              'Akun penjaga belum dihubungkan oleh penyedia parkir.',
+            );
+            return;
+          }
+        case AccountMode.superAdmin:
+          await controller.loadComplaintsFromSupabase().catchError((_) {});
+          await controller.loadRegistrationRequestsFromSupabase().catchError(
+            (_) {},
+          );
+          await controller.loadManagedUsersFromSupabase().catchError((_) {});
+      }
+
+      if (!mounted) {
+        return;
+      }
+      context.go(controller.landingRouteFor(ref.read(appControllerProvider)));
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage('Tidak bisa login. Cek email, password, dan koneksi.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _submitCustomerLogin(AppController controller) async {
@@ -5037,6 +6440,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .catchError((_) {});
       await controller.loadParkingDataFromSupabase().catchError((_) {});
       await controller.loadCurrentGuardFromSupabase().catchError((_) {});
+      await controller.loadGuardBookingsFromSupabase().catchError((_) {});
       await controller.loadCurrentUserNotificationsFromSupabase().catchError(
         (_) {},
       );
@@ -5059,6 +6463,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {
       _showLoginMessage(
         'Tidak bisa login penjaga. Cek email, password, dan koneksi.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _submitGoogleLogin() async {
+    if (_isLoading) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final opened = await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'parkircepat://auth/callback',
+      );
+      if (!opened) {
+        _showLoginMessage('Google login belum bisa dibuka.');
+      }
+    } on AuthException catch (error) {
+      _showLoginMessage(error.message);
+    } catch (_) {
+      _showLoginMessage(
+        'Tidak bisa membuka Google login. Cek konfigurasi OAuth Supabase.',
       );
     } finally {
       if (mounted) {
@@ -5164,6 +6595,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _emailController = TextEditingController(text: state.email);
     _phoneController = TextEditingController(text: state.phoneNumber);
     _passwordController = TextEditingController();
+    _rememberMe = state.rememberMe;
+    unawaited(_loadSavedLoginForm());
+  }
+
+  Future<void> _loadSavedLoginForm() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+    final rememberMe = preferences.getBool(AppController._rememberMeKey);
+    final savedEmail = preferences.getString(AppController._lastEmailKey);
+    final savedPhone = preferences.getString(AppController._lastPhoneKey);
+    setState(() {
+      _rememberMe = rememberMe ?? _rememberMe;
+      if (savedEmail != null) {
+        _emailController.text = savedEmail;
+      }
+      if (savedPhone != null) {
+        _phoneController.text = savedPhone;
+      }
+    });
   }
 
   @override
@@ -5184,16 +6636,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Masuk sebagai',
+              'Masuk akun',
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
-          ),
-          const SizedBox(height: 14),
-          RoleSelectionCards(
-            value: _mode,
-            onChanged: (value) => setState(() => _mode = value),
           ),
           const SizedBox(height: 18),
           TextField(
@@ -5203,20 +6650,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
-          if (_mode == AccountMode.customer ||
-              _mode == AccountMode.provider ||
-              _mode == AccountMode.parkingGuard ||
-              _mode == AccountMode.superAdmin) ...[
-            const SizedBox(height: 16),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                prefixIcon: Icon(Icons.lock_outline_rounded),
-              ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _passwordController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Password',
+              prefixIcon: Icon(Icons.lock_outline_rounded),
             ),
-          ],
+          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -5225,7 +6667,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 activeThumbColor: AppTheme.blue,
                 onChanged: (value) => setState(() => _rememberMe = value),
               ),
-              const Text('Remember me'),
+              const Text('Ingat saya'),
               const Spacer(),
               TextButton(
                 onPressed: () => context.push('/forgot-password'),
@@ -5243,13 +6685,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SecondaryButton(
             label: 'Masuk dengan Google',
             icon: Icons.g_mobiledata_rounded,
-            onPressed: _submitLogin,
-          ),
-          const SizedBox(height: 12),
-          SecondaryButton(
-            label: 'Login nomor HP',
-            icon: Icons.sms_rounded,
-            onPressed: _submitLogin,
+            onPressed: _isLoading ? null : _submitGoogleLogin,
           ),
           const SizedBox(height: 18),
           Row(
@@ -5284,7 +6720,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   late final TextEditingController _parkingNameController;
   late final TextEditingController _parkingAddressController;
   late final TextEditingController _parkingPhotoController;
-  late final TextEditingController _locationPointController;
   late final TextEditingController _identityController;
   final SupabaseProviderDocumentService _providerDocumentService =
       SupabaseProviderDocumentService();
@@ -5320,15 +6755,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _parkingPhotoController = TextEditingController(
       text: kReleaseMode ? '' : 'lahan_parkir_sudirman.jpg',
     );
-    _locationPointController = TextEditingController(
-      text: kReleaseMode ? '' : 'Lat -6.2088, Lng 106.8456',
-    );
     _identityController = TextEditingController(
       text: kReleaseMode ? '' : 'ktp_provider_dio.png',
     );
     _parkingNameController.addListener(_refreshProviderMapPreview);
     _parkingAddressController.addListener(_refreshProviderMapPreview);
-    _locationPointController.text = _providerMapLocationQuery;
   }
 
   @override
@@ -5343,16 +6774,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _parkingNameController.dispose();
     _parkingAddressController.dispose();
     _parkingPhotoController.dispose();
-    _locationPointController.dispose();
     _identityController.dispose();
     super.dispose();
   }
 
   void _refreshProviderMapPreview() {
-    final query = _providerMapLocationQuery;
-    if (_locationPointController.text != query) {
-      _locationPointController.text = query;
-    }
     if (mounted) {
       setState(() {});
     }
@@ -5447,7 +6873,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             parkingName: _parkingNameController.text,
             address: _parkingAddressController.text,
             photoLabel: _parkingPhotoController.text,
-            locationLabel: _locationPointController.text,
+            locationLabel: _providerMapLocationQuery,
             capacity: _providerCapacity.toInt(),
             identityLabel: _identityController.text,
           )
@@ -5496,6 +6922,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (_parkingPhotoBytes == null && photoLabel.isEmpty) {
       _showRegisterMessage('Foto lahan parkir wajib diupload.');
+      return;
+    }
+
+    if (_providerCapacity <= 0) {
+      _showRegisterMessage('Kapasitas kendaraan harus lebih dari 0.');
       return;
     }
 
@@ -5813,7 +7244,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   Widget build(BuildContext context) {
     return AuthScaffold(
       title: 'Buat akun baru',
-      subtitle: 'Pilih mode akun sesuai peran Anda di ekosistem smart parking.',
+      subtitle:
+          'Daftar sebagai pelanggan atau penyedia parkir. Akun admin dikelola aplikasi, akun penjaga dibuat oleh penyedia.',
       child: Column(
         children: [
           TextField(
@@ -5870,6 +7302,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           const SizedBox(height: 14),
           RoleSelectionCards(
             value: _mode,
+            allowedModes: const [AccountMode.customer, AccountMode.provider],
             onChanged: (value) => setState(() => _mode = value),
           ),
           if (_mode == AccountMode.provider) ...[
@@ -5949,24 +7382,16 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _locationPointController,
-                    readOnly: true,
+                  TextFormField(
+                    initialValue: _providerCapacity.toInt().toString(),
+                    keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      labelText: 'Titik lokasi',
-                      prefixIcon: Icon(Icons.pin_drop_rounded),
+                      labelText: 'Kapasitas kendaraan',
+                      prefixIcon: Icon(Icons.local_parking_rounded),
+                      suffixText: 'slot',
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  LabeledSlider(
-                    label: 'Kapasitas kendaraan',
-                    value: _providerCapacity,
-                    min: 20,
-                    max: 300,
-                    divisions: 28,
-                    display: '${_providerCapacity.toInt()} slot',
                     onChanged: (value) =>
-                        setState(() => _providerCapacity = value),
+                        _providerCapacity = double.tryParse(value) ?? 0,
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -5997,29 +7422,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
             ),
           ],
-          if (_mode == AccountMode.parkingGuard) ...[
-            const SizedBox(height: 18),
-            const InlineNotice(
-              icon: Icons.security_rounded,
-              accent: Color(0xFFD97706),
-              message:
-                  'Daftar sebagai penjaga, lalu minta penyedia menghubungkan email ini ke lokasi parkir.',
-            ),
-          ],
-          if (_mode == AccountMode.superAdmin) ...[
-            const SizedBox(height: 18),
-            const InlineNotice(
-              icon: Icons.admin_panel_settings_rounded,
-              accent: AppTheme.ink,
-              message:
-                  'Super Admin memverifikasi pengguna, melihat laporan lintas lokasi, dan menangani komplain.',
-            ),
-          ],
           const SizedBox(height: 20),
           PrimaryButton(
             label: _isLoading ? 'Mendaftarkan...' : 'Daftar',
             icon: Icons.person_add_alt_1_rounded,
             onPressed: _isLoading ? null : _submitRegister,
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _isLoading ? null : () => context.go('/login'),
+            icon: const Icon(Icons.login_rounded),
+            label: const Text('Sudah punya akun? Masuk'),
           ),
         ],
       ),
@@ -6059,7 +7472,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     try {
       await Supabase.instance.client.auth.resetPasswordForEmail(
         email,
-        redirectTo: Uri.base.resolve('/reset-password').toString(),
+        redirectTo: 'parkircepat://reset-password',
       );
       ref.read(appControllerProvider.notifier).requestPasswordReset();
 
@@ -6411,10 +7824,6 @@ class ProviderVerificationScreen extends ConsumerWidget {
                     value: application.parkingName,
                   ),
                   SummaryRow(label: 'Alamat lahan', value: application.address),
-                  SummaryRow(
-                    label: 'Titik lokasi',
-                    value: application.locationLabel,
-                  ),
                   SummaryRow(
                     label: 'Kapasitas kendaraan',
                     value: '${application.capacity} slot',
@@ -6993,15 +8402,33 @@ class SuperAdminComplaintsScreen extends ConsumerStatefulWidget {
 
 class _SuperAdminComplaintsScreenState
     extends ConsumerState<SuperAdminComplaintsScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
   @override
   void initState() {
     super.initState();
-    Future.microtask(
-      () => ref
+    Future.microtask(_loadComplaints);
+  }
+
+  Future<void> _loadComplaints() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      await ref
           .read(appControllerProvider.notifier)
-          .loadComplaintsFromSupabase()
-          .catchError((_) {}),
-    );
+          .loadComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Gagal memuat komplain: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -7025,12 +8452,35 @@ class _SuperAdminComplaintsScreenState
                 '${complaints.where((item) => item.status == ComplaintStatus.waiting).length} komplain menunggu balasan admin super.',
           ),
           const SizedBox(height: 18),
-          ...complaints.map(
-            (complaint) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ComplaintCard(complaint: complaint),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Komplain gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadComplaints,
+            )
+          else if (complaints.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada komplain',
+              body:
+                  'Komplain customer, penjaga, dan penyedia akan muncul di sini.',
+              actionLabel: 'Muat ulang',
+              onPressed: _loadComplaints,
+            )
+          else
+            ...complaints.map(
+              (complaint) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ComplaintCard(complaint: complaint),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -7387,14 +8837,14 @@ class ComplaintCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      complaint.subject,
+                      '${complaint.senderName} melaporkan ${complaint.subject}',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${complaint.senderName} - ${roleLabel(complaint.senderRole)} - ${complaint.timeLabel}',
+                      '${roleLabel(complaint.senderRole)} - ${complaint.timeLabel}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppTheme.slate,
                         height: 1.4,
@@ -7406,26 +8856,28 @@ class ComplaintCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Text(
-            complaint.message,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppTheme.slate,
-              height: 1.45,
-            ),
+          _ComplaintThreadBubble(
+            sender: complaint.senderName,
+            roleLabel: roleLabel(complaint.senderRole),
+            message: complaint.message,
+            accent: roleAccent(complaint.senderRole),
+            alignRight: false,
           ),
+          if (complaint.reply != null) ...[
+            const SizedBox(height: 10),
+            _ComplaintThreadBubble(
+              sender: 'Admin Aplikasi',
+              roleLabel: 'Balasan',
+              message: complaint.reply!,
+              accent: AppTheme.emerald,
+              alignRight: true,
+            ),
+          ],
           const SizedBox(height: 14),
           StatusBadge(
             label: complaintStatusLabel(complaint.status),
             color: complaintStatusColor(complaint.status),
           ),
-          if (complaint.reply != null) ...[
-            const SizedBox(height: 14),
-            InlineNotice(
-              icon: Icons.reply_rounded,
-              accent: AppTheme.emerald,
-              message: complaint.reply!,
-            ),
-          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -7456,6 +8908,68 @@ class ComplaintCard extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ComplaintThreadBubble extends StatelessWidget {
+  const _ComplaintThreadBubble({
+    required this.sender,
+    required this.roleLabel,
+    required this.message,
+    required this.accent,
+    required this.alignRight,
+  });
+
+  final String sender;
+  final String roleLabel;
+  final String message;
+  final Color accent;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: alignRight ? 0.10 : 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accent.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          crossAxisAlignment: alignRight
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            Text(
+              sender,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: accent,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              roleLabel,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: AppTheme.slate),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: alignRight ? TextAlign.right : TextAlign.left,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.ink,
+                height: 1.45,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -8121,21 +9635,16 @@ class ParkingDetailScreen extends ConsumerWidget {
               children: [
                 Container(
                   height: 220,
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(
+                  decoration: const BoxDecoration(
+                    borderRadius: BorderRadius.vertical(
                       top: Radius.circular(28),
                     ),
-                    gradient: LinearGradient(
-                      colors: [
-                        lot.accent.withValues(alpha: 0.9),
-                        AppTheme.white,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
                   ),
-                  child: const Center(
-                    child: SmartCityIllustration(height: 160),
+                  clipBehavior: Clip.antiAlias,
+                  child: ParkingLotPhoto(
+                    lot: lot,
+                    height: 220,
+                    borderRadius: BorderRadius.zero,
                   ),
                 ),
                 Padding(
@@ -8193,7 +9702,7 @@ class ParkingDetailScreen extends ConsumerWidget {
                         children: [
                           InfoChip(
                             icon: Icons.payments_rounded,
-                            label: '${formatCurrency(lot.pricePerHour)}/jam',
+                            label: parkingRateLabel(lot),
                           ),
                           InfoChip(
                             icon: Icons.local_parking_rounded,
@@ -8253,24 +9762,41 @@ class AddVehicleScreen extends ConsumerStatefulWidget {
 }
 
 class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
-  late final TextEditingController _plateController;
+  late final TextEditingController _quantityController;
+  final List<TextEditingController> _plateControllers = [];
   VehicleKind _kind = VehicleKind.mobil;
-  double _quantity = 1;
   double _duration = 2;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _plateController = TextEditingController(
-      text: kReleaseMode ? '' : 'B 5678 PCP',
-    );
+    _quantityController = TextEditingController(text: '1');
+    _syncPlateControllers(1);
+    if (!kReleaseMode) {
+      _plateControllers.first.text = 'B 5678 PCP';
+    }
   }
 
   @override
   void dispose() {
-    _plateController.dispose();
+    _quantityController.dispose();
+    for (final controller in _plateControllers) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  int get _quantity => int.tryParse(_quantityController.text.trim()) ?? 0;
+
+  void _syncPlateControllers(int quantity) {
+    final target = quantity.clamp(1, 10).toInt();
+    while (_plateControllers.length < target) {
+      _plateControllers.add(TextEditingController());
+    }
+    while (_plateControllers.length > target) {
+      _plateControllers.removeLast().dispose();
+    }
   }
 
   @override
@@ -8284,14 +9810,6 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
-                  controller: _plateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Plat nomor kendaraan',
-                    prefixIcon: Icon(Icons.directions_car_rounded),
-                  ),
-                ),
-                const SizedBox(height: 18),
                 SegmentedChoice<VehicleKind>(
                   items: const [
                     ChoiceItem(
@@ -8314,24 +9832,46 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   onChanged: (value) => setState(() => _kind = value),
                 ),
                 const SizedBox(height: 20),
-                LabeledSlider(
-                  label: 'Jumlah kendaraan',
-                  value: _quantity,
-                  min: 1,
-                  max: 5,
-                  divisions: 4,
-                  display: _quantity.toInt().toString(),
-                  onChanged: (value) => setState(() => _quantity = value),
+                TextField(
+                  controller: _quantityController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Jumlah kendaraan',
+                    prefixIcon: Icon(Icons.confirmation_number_outlined),
+                    helperText: 'Maksimal 10 kendaraan dalam sekali simpan.',
+                  ),
+                  onChanged: (value) {
+                    final quantity = int.tryParse(value);
+                    if (quantity != null && quantity >= 1 && quantity <= 10) {
+                      setState(() => _syncPlateControllers(quantity));
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Durasi parkir',
-                  value: _duration,
-                  min: 1,
-                  max: 8,
-                  divisions: 7,
-                  display: '${_duration.toInt()} jam',
-                  onChanged: (value) => setState(() => _duration = value),
+                for (
+                  var index = 0;
+                  index < _plateControllers.length;
+                  index++
+                ) ...[
+                  TextField(
+                    controller: _plateControllers[index],
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      labelText: 'Plat kendaraan ${index + 1}',
+                      prefixIcon: const Icon(Icons.directions_car_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                TextFormField(
+                  initialValue: _duration.toInt().toString(),
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Durasi awal parkir',
+                    prefixIcon: Icon(Icons.timer_outlined),
+                    suffixText: 'jam',
+                  ),
+                  onChanged: (value) => _duration = double.tryParse(value) ?? 0,
                 ),
                 const SizedBox(height: 20),
                 PrimaryButton(
@@ -8340,11 +9880,47 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                   onPressed: _isSaving
                       ? null
                       : () async {
-                          final plateNumber = _plateController.text.trim();
-                          if (plateNumber.isEmpty) {
+                          final plateNumbers = _plateControllers
+                              .map((controller) => controller.text.trim())
+                              .toList();
+                          if (_quantity < 1 || _quantity > 10) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Plat nomor wajib diisi.'),
+                                content: Text(
+                                  'Jumlah kendaraan harus antara 1 sampai 10.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          if (plateNumbers.length != _quantity ||
+                              plateNumbers.any((plate) => plate.isEmpty)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Semua plat kendaraan wajib diisi.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          final normalizedPlates = plateNumbers
+                              .map((plate) => plate.toUpperCase())
+                              .toSet();
+                          if (normalizedPlates.length != plateNumbers.length) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Plat kendaraan tidak boleh sama.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          if (_duration <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Durasi harus lebih dari 0 jam.'),
                               ),
                             );
                             return;
@@ -8354,26 +9930,28 @@ class _AddVehicleScreenState extends ConsumerState<AddVehicleScreen> {
                           try {
                             await ref
                                 .read(appControllerProvider.notifier)
-                                .saveVehicle(
-                                  plateNumber: plateNumber,
+                                .saveVehicles(
+                                  plateNumbers: plateNumbers,
                                   kind: _kind,
-                                  quantity: _quantity.toInt(),
                                   durationHours: _duration.toInt(),
                                 );
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Kendaraan berhasil disimpan.'),
+                                content: Text(
+                                  'Semua kendaraan berhasil disimpan.',
+                                ),
                               ),
                             );
                             context.pop();
-                          } catch (_) {
+                          } catch (error) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
+                              SnackBar(
                                 content: Text(
-                                  'Gagal menyimpan kendaraan ke Supabase.',
+                                  'Gagal menyimpan kendaraan ke Supabase: $error',
                                 ),
+                                duration: const Duration(seconds: 6),
                               ),
                             );
                           } finally {
@@ -8400,9 +9978,55 @@ class BookingScreen extends ConsumerStatefulWidget {
 }
 
 class _BookingScreenState extends ConsumerState<BookingScreen> {
+  late final TextEditingController _durationController;
+  late final TextEditingController _entryTimeController;
   String? _selectedSlot;
-  DateTime _entryTime = DateTime.now().add(const Duration(minutes: 15));
   bool _isBooking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final state = ref.read(appControllerProvider);
+    final vehicle = state.selectedVehicle ?? state.vehicles.firstOrNull;
+    _durationController = TextEditingController(
+      text: (vehicle?.durationHours ?? 2).toString(),
+    );
+    _entryTimeController = TextEditingController(
+      text: formatDateTime(DateTime.now().add(const Duration(minutes: 30))),
+    );
+  }
+
+  @override
+  void dispose() {
+    _durationController.dispose();
+    _entryTimeController.dispose();
+    super.dispose();
+  }
+
+  int get _durationHours => int.tryParse(_durationController.text.trim()) ?? 0;
+
+  DateTime? get _entryTime {
+    final match = RegExp(
+      r'^(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})$',
+    ).firstMatch(_entryTimeController.text.trim());
+    if (match == null) {
+      return null;
+    }
+    final day = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final year = int.parse(match.group(3)!);
+    final hour = int.parse(match.group(4)!);
+    final minute = int.parse(match.group(5)!);
+    final value = DateTime(year, month, day, hour, minute);
+    if (value.year != year ||
+        value.month != month ||
+        value.day != day ||
+        value.hour != hour ||
+        value.minute != minute) {
+      return null;
+    }
+    return value;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -8431,7 +10055,10 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
         ),
       );
     }
-    final total = calculateParkingCost(lot, vehicle);
+    final bookingVehicle = vehicle.copyWith(durationHours: _durationHours);
+    final total = _durationHours <= 0
+        ? 0
+        : calculateParkingCost(lot, bookingVehicle);
     final lotSlots = state.slots.where((slot) => slot.lotId == lot.id).toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     final displaySlots = lotSlots;
@@ -8464,18 +10091,41 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  '${vehicle.plateNumber} • ${vehicle.label} • ${vehicle.durationHours} jam',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+                DropdownButtonFormField<String>(
+                  initialValue: vehicle.id,
+                  decoration: const InputDecoration(
+                    labelText: 'Kendaraan yang akan parkir',
+                    prefixIcon: Icon(Icons.directions_car_rounded),
+                  ),
+                  items: [
+                    for (final item in state.vehicles)
+                      DropdownMenuItem(
+                        value: item.id,
+                        child: Text('${item.plateNumber} - ${item.label}'),
+                      ),
+                  ],
+                  onChanged: (vehicleId) {
+                    final selected = state.vehicles
+                        .where((item) => item.id == vehicleId)
+                        .firstOrNull;
+                    if (selected == null) {
+                      return;
+                    }
+                    ref
+                        .read(appControllerProvider.notifier)
+                        .selectVehicle(selected);
+                    setState(
+                      () => _durationController.text = selected.durationHours
+                          .toString(),
+                    );
+                  },
                 ),
                 const SizedBox(height: 18),
                 const InlineNotice(
                   icon: Icons.lock_clock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'Reservasi slot akan dikunci sementara selama 15 menit setelah booking dikonfirmasi.',
+                      'Reservasi slot akan dikunci sementara selama 30 menit setelah booking dikonfirmasi.',
                 ),
                 const SizedBox(height: 18),
                 Text(
@@ -8544,16 +10194,32 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                     ),
                   ),
                 const SizedBox(height: 20),
-                MiniInfoTile(
-                  icon: Icons.schedule_rounded,
-                  iconColor: AppTheme.emerald,
-                  title: 'Waktu masuk',
-                  subtitle: formatDateTime(_entryTime),
-                  onTap: () => setState(
-                    () => _entryTime = _entryTime.add(
-                      const Duration(minutes: 30),
-                    ),
+                TextField(
+                  controller: _entryTimeController,
+                  keyboardType: TextInputType.datetime,
+                  decoration: InputDecoration(
+                    labelText: 'Waktu masuk',
+                    hintText: '22/06/2026 20:33',
+                    prefixIcon: const Icon(Icons.schedule_rounded),
+                    helperText: 'Format: tanggal/bulan/tahun jam:menit',
+                    errorText:
+                        _entryTimeController.text.trim().isNotEmpty &&
+                            _entryTime == null
+                        ? 'Format waktu tidak valid.'
+                        : null,
                   ),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _durationController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Durasi parkir',
+                    prefixIcon: Icon(Icons.timer_outlined),
+                    suffixText: 'jam',
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 12),
                 SummaryRow(
@@ -8563,7 +10229,9 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                 const SizedBox(height: 8),
                 SummaryRow(
                   label: 'Durasi',
-                  value: '${vehicle.durationHours} jam',
+                  value: _durationHours <= 0
+                      ? 'Isi durasi'
+                      : '$_durationHours jam',
                 ),
                 const SizedBox(height: 8),
                 SummaryRow(
@@ -8576,7 +10244,11 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                       ? 'Membuat booking...'
                       : 'Konfirmasi booking',
                   icon: Icons.check_circle_rounded,
-                  onPressed: _selectedSlot == null || _isBooking
+                  onPressed:
+                      _selectedSlot == null ||
+                          _isBooking ||
+                          _durationHours <= 0 ||
+                          _entryTime == null
                       ? null
                       : () async {
                           setState(() => _isBooking = true);
@@ -8585,7 +10257,8 @@ class _BookingScreenState extends ConsumerState<BookingScreen> {
                                 .read(appControllerProvider.notifier)
                                 .createBooking(
                                   slotCode: _selectedSlot!,
-                                  entryTime: _entryTime,
+                                  entryTime: _entryTime!,
+                                  durationHours: _durationHours,
                                 );
                             if (!context.mounted) return;
                             context.go('/customer/payment');
@@ -8647,10 +10320,10 @@ String _bookingErrorMessage(PostgrestException error) {
 
   if (error.code == '42883' ||
       combined.contains('app_create_customer_booking')) {
-    return 'Function booking Supabase belum aktif. Jalankan SQL app_create_customer_booking dari docs/supabase_role_sync_rls_patch.sql.';
+    return 'Function booking aman belum aktif. Jalankan docs/supabase_booking_payment_security_patch.sql di SQL Editor Supabase.';
   }
   if (combined.contains('row-level security') || error.code == '42501') {
-    return 'Booking ditolak RLS Supabase. Jalankan ulang SQL RLS patch terbaru, terutama app_create_customer_booking.';
+    return 'Booking ditolak RLS Supabase. Jalankan docs/supabase_booking_payment_security_patch.sql di SQL Editor Supabase.';
   }
   if (combined.contains('parking slot is no longer available')) {
     return 'Slot ini sudah tidak tersedia. Muat ulang lokasi lalu pilih slot lain.';
@@ -8689,7 +10362,9 @@ class CustomerTicketScreen extends ConsumerWidget {
                 'Gunakan QR ini untuk masuk, bayar, dan verifikasi cepat.',
           ),
           const SizedBox(height: 18),
-          if (booking == null || !booking.canShowTicket)
+          if (booking == null ||
+              booking.status == BookingStatus.cancelled ||
+              booking.status == BookingStatus.completed)
             EmptyStateCard(
               title: 'Belum ada tiket aktif',
               body:
@@ -8702,21 +10377,50 @@ class CustomerTicketScreen extends ConsumerWidget {
               accent: AppTheme.blueSoft,
               child: Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: QrImageView(
-                      data: 'PARKIRCEPAT|ENTRY_EXIT|${booking.ticketNumber}',
-                      size: 210,
-                      eyeStyle: const QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: AppTheme.blue,
+                  if (booking.canShowTicket)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: QrImageView(
+                        data: _parkingTicketQrPayload(booking),
+                        size: 210,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: AppTheme.blue,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.payments_rounded,
+                            color: AppTheme.blue,
+                            size: 52,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Pembayaran belum selesai',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: AppTheme.ink,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
                   const SizedBox(height: 18),
                   Text(
                     booking.ticketNumber,
@@ -8754,6 +10458,15 @@ class CustomerTicketScreen extends ConsumerWidget {
                         ? AppTheme.emerald
                         : AppTheme.blue,
                   ),
+                  if (booking.status == BookingStatus.pendingPayment) ...[
+                    const SizedBox(height: 12),
+                    const InlineNotice(
+                      icon: Icons.schedule_rounded,
+                      accent: AppTheme.blue,
+                      message:
+                          'Reservasi masih menunggu pembayaran. Lanjutkan pembayaran sebelum 30 menit agar slot tidak dilepas.',
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   PrimaryButton(
                     label: 'Chat Penjaga',
@@ -8772,32 +10485,70 @@ class CustomerTicketScreen extends ConsumerWidget {
                         child: SecondaryButton(
                           label: 'Extend 1 jam',
                           icon: Icons.more_time_rounded,
-                          onPressed: () => ref
-                              .read(appControllerProvider.notifier)
-                              .extendParkingTime(1),
+                          onPressed: booking.isPaid
+                              ? () async {
+                                  try {
+                                    await ref
+                                        .read(appControllerProvider.notifier)
+                                        .extendParkingTime(1);
+                                    if (context.mounted) {
+                                      final updatedBooking = ref
+                                          .read(appControllerProvider)
+                                          .activeBooking;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            (updatedBooking?.amountDue ?? 0) > 0
+                                                ? 'Durasi diperpanjang. Selesaikan sisa pembayaran ${formatCurrency(updatedBooking!.amountDue)}.'
+                                                : 'Durasi parkir berhasil diperpanjang.',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Gagal memperpanjang durasi: $error',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                }
+                              : null,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: SecondaryButton(
-                          label: 'QR keluar',
-                          icon: Icons.logout_rounded,
-                          onPressed: booking.isPaid ? () {} : null,
+                          label: 'Lihat nota',
+                          icon: Icons.receipt_long_rounded,
+                          onPressed: booking.isPaid
+                              ? () => context.push(
+                                  '/customer/receipt?ticket=${Uri.encodeQueryComponent(booking.ticketNumber)}',
+                                )
+                              : null,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
                   PrimaryButton(
-                    label: booking.isPaid
-                        ? 'QR sudah aktif'
-                        : 'Scan pembayaran',
-                    icon: booking.isPaid
-                        ? Icons.verified_rounded
-                        : Icons.qr_code_scanner_rounded,
-                    onPressed: booking.isPaid
-                        ? null
-                        : () => context.push('/customer/payment'),
+                    label: booking.status == BookingStatus.pendingPayment
+                        ? 'Lanjutkan pembayaran'
+                        : 'QR sudah aktif',
+                    icon: booking.status == BookingStatus.pendingPayment
+                        ? Icons.open_in_new_rounded
+                        : Icons.verified_rounded,
+                    onPressed: booking.status == BookingStatus.pendingPayment
+                        ? () => context.push('/customer/payment')
+                        : null,
                   ),
                 ],
               ),
@@ -8900,56 +10651,103 @@ class PaymentScreen extends ConsumerStatefulWidget {
   ConsumerState<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends ConsumerState<PaymentScreen> {
+class _PaymentScreenState extends ConsumerState<PaymentScreen>
+    with WidgetsBindingObserver {
   PaymentMethod _method = PaymentMethod.qris;
   String _wallet = 'GoPay';
-  late final TextEditingController _walletPhoneController;
   String? _paymentError;
   bool _isStartingGateway = false;
+  bool _isCheckingPayment = false;
+  bool _isSimulatingPayment = false;
+  bool _gatewayOpened = false;
 
   @override
   void initState() {
     super.initState();
-    _walletPhoneController = TextEditingController();
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    _walletPhoneController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _completePayment(Booking booking) async {
-    await ref.read(appControllerProvider.notifier).payBooking(_method);
-    if (!mounted) {
-      return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _gatewayOpened) {
+      Future<void>.delayed(
+        const Duration(milliseconds: 700),
+        _checkPaymentStatus,
+      );
     }
+  }
+
+  Future<void> _showPaymentSuccess(Booking booking) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => _PaymentSuccessDialog(
         ticketNumber: booking.ticketNumber,
+        qrPayload: booking.qrPayload,
         total: booking.estimatedCost,
         method: _method,
       ),
     );
   }
 
-  Future<void> _payWithEWallet(Booking _) async {
-    setState(() => _paymentError = null);
-    await _startGatewayPayment();
+  Future<void> _checkPaymentStatus() async {
+    if (_isCheckingPayment || !_gatewayOpened) {
+      return;
+    }
+    setState(() {
+      _isCheckingPayment = true;
+      _paymentError = null;
+    });
+
+    try {
+      final controller = ref.read(appControllerProvider.notifier);
+      await controller.loadActiveBookingFromSupabase();
+      if (!mounted) {
+        return;
+      }
+      final booking = ref.read(appControllerProvider).activeBooking;
+      if (booking?.isPaid ?? false) {
+        _gatewayOpened = false;
+        if (mounted) {
+          unawaited(
+            controller.loadCustomerHistoryFromSupabase().catchError((_) {}),
+          );
+          _openPaidTicket();
+        }
+        return;
+      }
+      setState(
+        () => _paymentError =
+            'Pembayaran belum terkonfirmasi. Tunggu beberapa detik lalu periksa lagi.',
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _paymentError = 'Gagal memeriksa status pembayaran: $error',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingPayment = false);
+      }
+    }
   }
 
-  void _requestCashPaymentConfirmation(Booking booking) {
-    final roomId = ref
-        .read(appControllerProvider.notifier)
-        .createCustomerGuardChatRoomForBooking(booking);
+  void _requestCashPaymentConfirmation() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Minta penjaga konfirmasi pembayaran tunai di lokasi.'),
+        content: Text(
+          'Tunjukkan tiket QR kepada penjaga atau operator penyedia di lokasi.',
+        ),
       ),
     );
-    context.push('/customer/chat-room?roomId=$roomId');
+    context.push('/customer/tickets');
   }
 
   Future<void> _startGatewayPayment() async {
@@ -8978,15 +10776,27 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         return;
       }
 
-      final opened = await launchUrl(
-        Uri.parse(redirectUrl),
-        mode: LaunchMode.externalApplication,
-      );
-      if (!opened && mounted) {
-        setState(
-          () => _paymentError =
-              'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.',
+      setState(() => _gatewayOpened = true);
+      if (_supportsPaymentWebView) {
+        await context.push(
+          '/customer/payment-webview?url=${Uri.encodeQueryComponent(redirectUrl)}',
         );
+      } else {
+        final opened = await launchUrl(
+          Uri.parse(redirectUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!opened && mounted) {
+          setState(() {
+            _gatewayOpened = false;
+            _paymentError =
+                'Tidak bisa membuka halaman pembayaran. Coba lagi nanti.';
+          });
+          return;
+        }
+      }
+      if (mounted) {
+        await _checkPaymentStatus();
       }
     } catch (error) {
       if (!mounted) {
@@ -9003,17 +10813,57 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
     }
   }
 
-  Future<void> _handlePayPressed(Booking booking) async {
-    switch (_method) {
-      case PaymentMethod.qris:
-        setState(() => _paymentError = null);
-        await _startGatewayPayment();
-      case PaymentMethod.cash:
-        setState(() => _paymentError = null);
-        _requestCashPaymentConfirmation(booking);
-      case PaymentMethod.ewallet:
-        await _payWithEWallet(booking);
+  Future<void> _simulatePaymentSuccess() async {
+    if (_isSimulatingPayment) {
+      return;
     }
+
+    setState(() {
+      _isSimulatingPayment = true;
+      _paymentError = null;
+    });
+
+    try {
+      final booking = await ref
+          .read(appControllerProvider.notifier)
+          .simulateCurrentCustomerPayment();
+      if (!mounted || booking == null) {
+        return;
+      }
+      _openPaidTicket();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(
+        () => _paymentError =
+            'Simulasi pembayaran gagal. Jalankan docs/supabase_simulate_customer_payment.sql di SQL Editor Supabase. Detail: $error',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSimulatingPayment = false);
+      }
+    }
+  }
+
+  void _openPaidTicket() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Pembayaran berhasil. Tiket QR sudah aktif.'),
+      ),
+    );
+    context.go('/customer/tickets');
+  }
+
+  String get _simulationButtonLabel {
+    if (_isSimulatingPayment) {
+      return 'Memproses simulasi...';
+    }
+    return switch (_method) {
+      PaymentMethod.qris => 'Simulasi QRIS sandbox berhasil',
+      PaymentMethod.ewallet => 'Simulasi e-wallet sandbox berhasil',
+      PaymentMethod.cash => 'Simulasi pembayaran berhasil',
+    };
   }
 
   @override
@@ -9025,7 +10875,12 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
         body: Center(child: Text('Tidak ada booking aktif.')),
       );
     }
-    final isPayable = booking.status == BookingStatus.pendingPayment;
+    final amountDue = booking.amountDue > 0
+        ? booking.amountDue
+        : (booking.status == BookingStatus.pendingPayment
+              ? booking.estimatedCost
+              : 0);
+    final isPayable = amountDue > 0;
     return Scaffold(
       appBar: AppBar(title: const Text('Pembayaran parkir')),
       body: ListView(
@@ -9081,12 +10936,17 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 ),
                 SummaryRow(
                   label: 'Durasi',
-                  value: '${_durationHoursFor(state, booking)} jam',
+                  value: '${booking.durationHours} jam',
                 ),
                 SummaryRow(
-                  label: 'Total pembayaran',
+                  label: 'Total biaya',
                   value: formatCurrency(booking.estimatedCost),
                   valueColor: AppTheme.blue,
+                ),
+                SummaryRow(
+                  label: 'Sisa pembayaran',
+                  value: formatCurrency(amountDue),
+                  valueColor: amountDue > 0 ? AppTheme.blue : AppTheme.emerald,
                 ),
               ],
             ),
@@ -9115,11 +10975,6 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                       label: 'E-wallet',
                       icon: Icons.account_balance_wallet_rounded,
                     ),
-                    ChoiceItem(
-                      value: PaymentMethod.cash,
-                      label: 'Tunai',
-                      icon: Icons.payments_rounded,
-                    ),
                   ],
                   value: _method,
                   onChanged: isPayable
@@ -9134,14 +10989,13 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                   icon: Icons.lock_rounded,
                   accent: AppTheme.blue,
                   message:
-                      'Scan QR dan e-wallet memakai payment gateway setelah Edge Function dideploy. Tunai tetap dikonfirmasi penjaga.',
+                      'Pembayaran online diproses Midtrans. Pembayaran langsung di lokasi tetap harus dikonfirmasi penjaga atau operator.',
                 ),
                 const SizedBox(height: 20),
                 _PaymentInstructionCard(
                   method: _method,
                   booking: booking,
                   wallet: _wallet,
-                  walletPhoneController: _walletPhoneController,
                   onWalletChanged: (value) => setState(() => _wallet = value),
                 ),
                 if (_paymentError != null) ...[
@@ -9160,24 +11014,51 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
                 SummaryRow(label: 'Nomor tiket', value: booking.ticketNumber),
                 SummaryRow(
                   label: 'Total pembayaran',
-                  value: formatCurrency(booking.estimatedCost),
+                  value: formatCurrency(amountDue),
                 ),
                 const SizedBox(height: 22),
                 PrimaryButton(
                   label: _isStartingGateway
                       ? 'Membuka gateway...'
-                      : _method == PaymentMethod.cash
-                      ? 'Hubungi penjaga'
-                      : 'Bayar lewat gateway',
-                  icon: _method == PaymentMethod.cash
-                      ? Icons.support_agent_rounded
-                      : Icons.open_in_new_rounded,
+                      : 'Bayar melalui Midtrans',
+                  icon: Icons.open_in_new_rounded,
                   onPressed: isPayable
                       ? _isStartingGateway
                             ? null
-                            : () => _handlePayPressed(booking)
+                            : _startGatewayPayment
                       : null,
                 ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: _simulationButtonLabel,
+                  icon: _method == PaymentMethod.qris
+                      ? Icons.qr_code_scanner_rounded
+                      : Icons.science_rounded,
+                  onPressed: isPayable && !_isSimulatingPayment
+                      ? _simulatePaymentSuccess
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                SecondaryButton(
+                  label: 'Bayar langsung di lokasi',
+                  icon: Icons.payments_rounded,
+                  onPressed: isPayable
+                      ? () {
+                          setState(() => _paymentError = null);
+                          _requestCashPaymentConfirmation();
+                        }
+                      : null,
+                ),
+                if (_gatewayOpened && isPayable) ...[
+                  const SizedBox(height: 12),
+                  SecondaryButton(
+                    label: _isCheckingPayment
+                        ? 'Memeriksa pembayaran...'
+                        : 'Periksa status pembayaran',
+                    icon: Icons.refresh_rounded,
+                    onPressed: _isCheckingPayment ? null : _checkPaymentStatus,
+                  ),
+                ],
               ],
             ),
           ),
@@ -9187,18 +11068,131 @@ class _PaymentScreenState extends ConsumerState<PaymentScreen> {
   }
 }
 
-int _hourlyRateFor(AppState state, Booking booking) {
-  for (final lot in state.lots) {
-    if (lot.name == booking.locationName) {
-      return lot.pricePerHour;
-    }
-  }
-  return state.selectedLot?.pricePerHour ?? booking.estimatedCost;
+class PaymentWebViewScreen extends ConsumerStatefulWidget {
+  const PaymentWebViewScreen({super.key, required this.url});
+
+  final String url;
+
+  @override
+  ConsumerState<PaymentWebViewScreen> createState() =>
+      _PaymentWebViewScreenState();
 }
 
-int _durationHoursFor(AppState state, Booking booking) {
-  final rate = math.max(1, _hourlyRateFor(state, booking));
-  return math.max(1, booking.estimatedCost ~/ rate);
+bool get _supportsPaymentWebView {
+  if (kIsWeb) {
+    return false;
+  }
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android ||
+    TargetPlatform.iOS ||
+    TargetPlatform.macOS => true,
+    TargetPlatform.fuchsia ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => false,
+  };
+}
+
+class _PaymentWebViewScreenState extends ConsumerState<PaymentWebViewScreen> {
+  late final WebViewController _webViewController;
+  int _progress = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_supportsPaymentWebView) {
+      _error =
+          'WebView pembayaran belum didukung di platform ini. Jalankan di HP Android/iOS untuk pembayaran di dalam aplikasi.';
+      return;
+    }
+    final initialUri = Uri.tryParse(widget.url);
+    _webViewController = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() => _progress = progress);
+            }
+          },
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            if (_isPaymentFinishUri(uri)) {
+              unawaited(_finishPaymentFlow());
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
+          onWebResourceError: (error) {
+            if (mounted && error.isForMainFrame == true) {
+              setState(() => _error = error.description);
+            }
+          },
+        ),
+      );
+
+    if (initialUri == null || !initialUri.hasScheme) {
+      _error = 'URL pembayaran tidak valid.';
+    } else {
+      unawaited(_webViewController.loadRequest(initialUri));
+    }
+  }
+
+  bool _isPaymentFinishUri(Uri? uri) {
+    if (uri == null || uri.scheme != 'parkircepat') {
+      return false;
+    }
+    final target = [
+      uri.host,
+      ...uri.pathSegments,
+    ].where((segment) => segment.isNotEmpty).join('/');
+    return target == 'payment-finish' || target == 'payment/finish';
+  }
+
+  Future<void> _finishPaymentFlow() async {
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadActiveBookingFromSupabase().catchError((_) {});
+    await controller.loadCustomerHistoryFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+    final booking = ref.read(appControllerProvider).activeBooking;
+    context.go(
+      booking?.isPaid ?? false ? '/customer/tickets' : '/customer/payment',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canLoad = _error == null && widget.url.trim().isNotEmpty;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Pembayaran Midtrans'),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: InlineNotice(
+                  icon: Icons.error_outline_rounded,
+                  accent: const Color(0xFFDC2626),
+                  message: 'Halaman pembayaran gagal dimuat: $_error',
+                ),
+              ),
+            )
+          : Stack(
+              children: [
+                if (canLoad) WebViewWidget(controller: _webViewController),
+                if (_progress < 100)
+                  LinearProgressIndicator(value: _progress / 100),
+              ],
+            ),
+    );
+  }
 }
 
 class _PaymentInstructionCard extends StatelessWidget {
@@ -9206,14 +11200,12 @@ class _PaymentInstructionCard extends StatelessWidget {
     required this.method,
     required this.booking,
     required this.wallet,
-    required this.walletPhoneController,
     required this.onWalletChanged,
   });
 
   final PaymentMethod method;
   final Booking booking;
   final String wallet;
-  final TextEditingController walletPhoneController;
   final ValueChanged<String> onWalletChanged;
 
   @override
@@ -9226,21 +11218,23 @@ class _PaymentInstructionCard extends StatelessWidget {
           icon: Icons.qr_code_2_rounded,
           title: 'QRIS Gateway',
           subtitle:
-              'Tekan tombol bayar untuk membuka halaman Midtrans. Status tiket aktif setelah webhook pembayaran diterima.',
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+              'Tekan tombol Bayar melalui Midtrans. QRIS resmi akan muncul di halaman Midtrans, bukan di aplikasi ini.',
+          child: const Column(
+            children: [
+              InlineNotice(
+                icon: Icons.qr_code_scanner_rounded,
+                accent: Color(0xFFD97706),
+                message:
+                    'QRIS sandbox Midtrans tidak bisa dibayar memakai kamera dompet/bank asli. Untuk demo, gunakan tombol simulasi QRIS sandbox di bawah.',
               ),
-              child: QrImageView(
-                data:
-                    'DEMO-PARKIRCEPAT-PAY|${booking.ticketNumber}|${booking.estimatedCost}',
-                size: 150,
-                eyeStyle: const QrEyeStyle(color: AppTheme.blue),
+              SizedBox(height: 12),
+              InlineNotice(
+                icon: Icons.verified_user_rounded,
+                accent: AppTheme.blue,
+                message:
+                    'Setelah pembayaran sandbox berhasil dan webhook diterima, tiket QR aktif otomatis untuk scan masuk dan keluar.',
               ),
-            ),
+            ],
           ),
         ),
         PaymentMethod.ewallet => _PaymentMethodBox(
@@ -9248,7 +11242,7 @@ class _PaymentInstructionCard extends StatelessWidget {
           icon: Icons.account_balance_wallet_rounded,
           title: 'E-Wallet Gateway',
           subtitle:
-              'Pilih dompet digital untuk catatan metode, lalu lanjutkan pembayaran di halaman Midtrans.',
+              'Pilih preferensi dompet digital, lalu selesaikan pembayaran di halaman Midtrans.',
           child: Column(
             children: [
               SegmentedChoice<String>(
@@ -9265,13 +11259,11 @@ class _PaymentInstructionCard extends StatelessWidget {
                 onChanged: onWalletChanged,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: walletPhoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Nomor HP demo $wallet',
-                  prefixIcon: const Icon(Icons.phone_iphone_rounded),
-                ),
+              const InlineNotice(
+                icon: Icons.open_in_new_rounded,
+                accent: AppTheme.blue,
+                message:
+                    'Nomor e-wallet diisi di halaman Midtrans jika dibutuhkan. Aplikasi hanya menyimpan metode pembayaran.',
               ),
             ],
           ),
@@ -9352,11 +11344,13 @@ class _PaymentMethodBox extends StatelessWidget {
 class _PaymentSuccessDialog extends StatelessWidget {
   const _PaymentSuccessDialog({
     required this.ticketNumber,
+    this.qrPayload,
     required this.total,
     required this.method,
   });
 
   final String ticketNumber;
+  final String? qrPayload;
   final int total;
   final PaymentMethod method;
 
@@ -9382,7 +11376,7 @@ class _PaymentSuccessDialog extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'Pembayaran demo berhasil',
+            'Pembayaran berhasil',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -9400,20 +11394,33 @@ class _PaymentSuccessDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: QrImageView(
-              data: 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber',
+              data: _parkingTicketQrPayloadFromValues(
+                ticketNumber: ticketNumber,
+                qrPayload: qrPayload,
+              ),
               size: 150,
               eyeStyle: const QrEyeStyle(color: AppTheme.blue),
             ),
           ),
           const SizedBox(height: 10),
           const Text(
-            'QR demo ini dipakai untuk scan masuk dan keluar oleh penjaga parkir.',
+            'Tunjukkan QR ini kepada penjaga untuk scan masuk dan keluar.',
             textAlign: TextAlign.center,
           ),
         ],
       ),
       actions: [
         TextButton(
+          onPressed: () {
+            final router = GoRouter.of(context);
+            Navigator.of(context).pop();
+            router.go(
+              '/customer/receipt?ticket=${Uri.encodeQueryComponent(ticketNumber)}',
+            );
+          },
+          child: const Text('Lihat Nota'),
+        ),
+        ElevatedButton(
           onPressed: () {
             final router = GoRouter.of(context);
             Navigator.of(context).pop();
@@ -9431,6 +11438,23 @@ String _paymentMethodLabel(PaymentMethod method) => switch (method) {
   PaymentMethod.ewallet => 'E-Wallet',
   PaymentMethod.cash => 'Tunai',
 };
+
+String _parkingTicketQrPayload(Booking booking) =>
+    _parkingTicketQrPayloadFromValues(
+      ticketNumber: booking.ticketNumber,
+      qrPayload: booking.qrPayload,
+    );
+
+String _parkingTicketQrPayloadFromValues({
+  required String ticketNumber,
+  String? qrPayload,
+}) {
+  final payload = qrPayload?.trim();
+  if (payload != null && payload.isNotEmpty) {
+    return payload;
+  }
+  return 'PARKIRCEPAT|ENTRY_EXIT|$ticketNumber';
+}
 
 class ParkingHistoryScreen extends ConsumerStatefulWidget {
   const ParkingHistoryScreen({super.key});
@@ -9645,24 +11669,57 @@ class _ParkingReviewDialogState extends ConsumerState<_ParkingReviewDialog> {
   }
 }
 
-class CustomerChatListScreen extends ConsumerWidget {
+class CustomerChatListScreen extends ConsumerStatefulWidget {
   const CustomerChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    ChatRoom? roomById(String id) {
-      for (final room in state.customerChatRooms) {
-        if (room.id == id) {
-          return room;
-        }
-      }
-      return null;
-    }
+  ConsumerState<CustomerChatListScreen> createState() =>
+      _CustomerChatListScreenState();
+}
 
-    final guardRoom = roomById('customer-guard-tkt-1002');
-    final providerRoom = roomById('customer-provider-lot-1');
-    final adminRoom = roomById('customer-admin-app');
+class _CustomerChatListScreenState
+    extends ConsumerState<CustomerChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_loadChatData());
+    });
+  }
+
+  Future<void> _loadChatData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(AccountMode.customer);
+    try {
+      await controller.loadChatRoomsFromSupabase(AccountMode.customer);
+      await controller.loadCurrentUserComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = [...state.customerChatRooms]
+      ..removeWhere((room) => _isDemoChatRoomId(room.id))
+      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return CustomerShell(
       currentIndex: 3,
       child: ListView(
@@ -9674,31 +11731,37 @@ class CustomerChatListScreen extends ConsumerWidget {
                 'Hubungi penjaga, penyedia parkir, atau laporkan masalah aplikasi.',
           ),
           const SizedBox(height: 18),
-          if (guardRoom != null)
-            _CustomerChatCategoryCard(
-              room: guardRoom,
-              icon: Icons.security_rounded,
-              accent: AppTheme.blue,
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${guardRoom.id}'),
-            ),
-          if (providerRoom != null)
-            _CustomerChatCategoryCard(
-              room: providerRoom,
-              icon: Icons.apartment_rounded,
-              accent: AppTheme.emerald,
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${providerRoom.id}'),
-            ),
-          if (adminRoom != null)
-            _CustomerChatCategoryCard(
-              room: adminRoom,
-              icon: Icons.support_agent_rounded,
-              accent: const Color(0xFFD97706),
-              actionLabel: 'Buka chat',
-              onTap: () =>
-                  context.push('/customer/chat-room?roomId=${adminRoom.id}'),
-            ),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Chat gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadChatData,
+            )
+          else if (rooms.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada chat',
+              body:
+                  'Room chat akan muncul setelah kamu menghubungi penjaga, penyedia, atau admin.',
+              actionLabel: 'Buat Komplain',
+              onPressed: () => context.push('/customer/complaint'),
+            )
+          else
+            for (final room in rooms)
+              _CustomerChatCategoryCard(
+                room: room,
+                icon: _customerChatIcon(room.participantRole),
+                accent: _customerChatAccent(room.participantRole),
+                onTap: () =>
+                    context.push('/customer/chat-room?roomId=${room.id}'),
+              ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => context.push('/customer/complaint'),
@@ -9722,7 +11785,7 @@ class CustomerChatListScreen extends ConsumerWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  complaint.title,
+                                  'Laporan kamu: ${complaint.category}',
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
@@ -9735,10 +11798,18 @@ class CustomerChatListScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            '${complaint.title} - Prioritas ${complaint.priority}',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
+                          if (complaint.reply != null) ...[
+                            const SizedBox(height: 10),
+                            InlineNotice(
+                              icon: Icons.reply_rounded,
+                              accent: AppTheme.emerald,
+                              message: 'Admin: ${complaint.reply!}',
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -9802,25 +11873,39 @@ class _CustomerChatRoomScreenState
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: AccountMode.customer,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: AccountMode.customer,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: AccountMode.customer,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.customer));
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .sendCustomerMessage(roomId: widget.roomId, message: text);
     _messageController.clear();
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .sendCustomerMessage(roomId: widget.roomId, message: text);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -9937,7 +12022,7 @@ class _CustomerChatRoomScreenState
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -9949,7 +12034,7 @@ class _CustomerChatRoomScreenState
                   width: 52,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _sendMessage,
+                    onPressed: () => unawaited(_sendMessage()),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.zero,
                       backgroundColor: AppTheme.blue,
@@ -9970,7 +12055,7 @@ class _CustomerChatRoomScreenState
   }
 }
 
-class RoleChatListScreen extends ConsumerWidget {
+class RoleChatListScreen extends ConsumerStatefulWidget {
   const RoleChatListScreen({
     super.key,
     required this.mode,
@@ -9983,15 +12068,56 @@ class RoleChatListScreen extends ConsumerWidget {
   final String subtitle;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RoleChatListScreen> createState() => _RoleChatListScreenState();
+}
+
+class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_loadChatRooms());
+    });
+  }
+
+  Future<void> _loadChatRooms() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(widget.mode);
+    try {
+      await controller.loadChatRoomsFromSupabase(widget.mode);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final rooms = switch (mode) {
-      AccountMode.provider => state.providerChatRooms,
-      AccountMode.superAdmin => state.superAdminChatRooms,
-      AccountMode.customer => state.customerChatRooms,
-      AccountMode.parkingGuard => state.guardChatRooms,
-    };
-    final routePrefix = switch (mode) {
+    final rooms =
+        switch (widget.mode) {
+            AccountMode.provider => state.providerChatRooms,
+            AccountMode.superAdmin => state.superAdminChatRooms,
+            AccountMode.customer => state.customerChatRooms,
+            AccountMode.parkingGuard => state.guardChatRooms,
+          }.where((room) => !_isDemoChatRoomId(room.id)).toList()
+          ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+    final routePrefix = switch (widget.mode) {
       AccountMode.provider => '/provider',
       AccountMode.superAdmin => '/super-admin',
       AccountMode.customer => '/customer',
@@ -10000,18 +12126,40 @@ class RoleChatListScreen extends ConsumerWidget {
     final child = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
       children: [
-        HeaderSection(title: title, subtitle: subtitle),
+        HeaderSection(title: widget.title, subtitle: widget.subtitle),
         const SizedBox(height: 18),
-        for (final room in rooms)
-          _RoleChatCard(
-            room: room,
-            onTap: () =>
-                context.push('$routePrefix/chat-room?roomId=${room.id}'),
-          ),
+        if (_isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else if (_loadError != null)
+          EmptyStateCard(
+            title: 'Chat gagal dimuat',
+            body: _loadError!,
+            actionLabel: 'Coba lagi',
+            onPressed: _loadChatRooms,
+          )
+        else if (rooms.isEmpty)
+          EmptyStateCard(
+            title: 'Belum ada chat',
+            body: 'Percakapan baru akan muncul setelah ada pesan masuk.',
+            actionLabel: 'Muat ulang',
+            onPressed: _loadChatRooms,
+          )
+        else
+          for (final room in rooms)
+            _RoleChatCard(
+              room: room,
+              onTap: () =>
+                  context.push('$routePrefix/chat-room?roomId=${room.id}'),
+            ),
       ],
     );
 
-    return switch (mode) {
+    return switch (widget.mode) {
       AccountMode.provider => AdminShell(currentIndex: 3, child: child),
       AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
       AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
@@ -10077,33 +12225,59 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: widget.mode,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: widget.mode,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: widget.mode,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(widget.mode));
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
     final controller = ref.read(appControllerProvider.notifier);
-    switch (widget.mode) {
-      case AccountMode.provider:
-        controller.sendProviderMessage(roomId: widget.roomId, message: text);
-      case AccountMode.superAdmin:
-        controller.sendSuperAdminMessage(roomId: widget.roomId, message: text);
-      case AccountMode.customer:
-        controller.sendCustomerMessage(roomId: widget.roomId, message: text);
-      case AccountMode.parkingGuard:
-        controller.sendGuardMessage(roomId: widget.roomId, message: text);
-    }
     _messageController.clear();
+    try {
+      switch (widget.mode) {
+        case AccountMode.provider:
+          await controller.sendProviderMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+        case AccountMode.superAdmin:
+          controller.sendSuperAdminMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+        case AccountMode.customer:
+          await controller.sendCustomerMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+        case AccountMode.parkingGuard:
+          await controller.sendGuardMessage(
+            roomId: widget.roomId,
+            message: text,
+          );
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -10198,7 +12372,7 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -10207,7 +12381,7 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(
-                  onPressed: _sendMessage,
+                  onPressed: () => unawaited(_sendMessage()),
                   icon: const Icon(Icons.send_rounded),
                 ),
               ],
@@ -10544,14 +12718,12 @@ class _CustomerChatCategoryCard extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.onTap,
-    this.actionLabel = 'Buka chat',
   });
 
   final ChatRoom room;
   final IconData icon;
   final Color accent;
   final VoidCallback onTap;
-  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -10620,7 +12792,7 @@ class _CustomerChatCategoryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_customerChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      '${_customerChatTimeLabel(room.lastMessageAt)} - Buka chat',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w700,
@@ -10952,8 +13124,9 @@ class CustomerProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -11263,6 +13436,7 @@ class _CustomerAccountSettingsScreenState
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
+    final text = appText(_selectedLanguage);
 
     try {
       await ref
@@ -11279,20 +13453,18 @@ class _CustomerAccountSettingsScreenState
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saved)));
       context.go('/customer/profile');
     } catch (_) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal menyimpan pengaturan ke Supabase.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.customerSettingsFailure)));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -11302,8 +13474,9 @@ class _CustomerAccountSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final text = appText(_selectedLanguage);
     return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan Akun')),
+      appBar: AppBar(title: Text(text.accountSettingsTitle)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -11312,7 +13485,7 @@ class _CustomerAccountSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Notifikasi',
+                  text.notificationSection,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -11322,7 +13495,7 @@ class _CustomerAccountSettingsScreenState
                   value: _bookingNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _bookingNotificationEnabled = value),
-                  title: const Text('Notifikasi booking'),
+                  title: Text(text.bookingNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.blue,
                 ),
@@ -11330,7 +13503,7 @@ class _CustomerAccountSettingsScreenState
                   value: _paymentNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _paymentNotificationEnabled = value),
-                  title: const Text('Notifikasi pembayaran'),
+                  title: Text(text.paymentNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.emerald,
                 ),
@@ -11338,7 +13511,7 @@ class _CustomerAccountSettingsScreenState
                   value: _promoNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _promoNotificationEnabled = value),
-                  title: const Text('Notifikasi promo'),
+                  title: Text(text.promoNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.blue,
                 ),
@@ -11351,7 +13524,7 @@ class _CustomerAccountSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Preferensi akun',
+                  text.accountPreferenceSection,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -11359,9 +13532,9 @@ class _CustomerAccountSettingsScreenState
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedLanguage,
-                  decoration: const InputDecoration(
-                    labelText: 'Bahasa aplikasi',
-                    prefixIcon: Icon(Icons.language_rounded),
+                  decoration: InputDecoration(
+                    labelText: text.appLanguage,
+                    prefixIcon: const Icon(Icons.language_rounded),
                   ),
                   items: const [
                     DropdownMenuItem(
@@ -11378,8 +13551,8 @@ class _CustomerAccountSettingsScreenState
                   value: _accountSecurityEnabled,
                   onChanged: (value) =>
                       setState(() => _accountSecurityEnabled = value),
-                  title: const Text('Mode keamanan akun'),
-                  subtitle: const Text('Aktifkan perlindungan akun tambahan.'),
+                  title: Text(text.accountSecurityMode),
+                  subtitle: Text(text.accountSecuritySubtitle),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.emerald,
                 ),
@@ -11388,7 +13561,7 @@ class _CustomerAccountSettingsScreenState
           ),
           const SizedBox(height: 18),
           _CustomerCompactButton(
-            label: _isSaving ? 'Menyimpan...' : 'Simpan Pengaturan',
+            label: _isSaving ? text.saving : text.saveSettings,
             icon: Icons.save_rounded,
             onPressed: _isSaving ? null : _save,
           ),
@@ -11449,6 +13622,7 @@ class _RoleAccountSettingsScreenState
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
+    final text = appText(_selectedLanguage);
 
     try {
       await ref
@@ -11463,9 +13637,9 @@ class _RoleAccountSettingsScreenState
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan akun berhasil disimpan.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saved)));
       context.go(
         widget.mode == AccountMode.parkingGuard
             ? '/guard/profile'
@@ -11475,13 +13649,9 @@ class _RoleAccountSettingsScreenState
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Gagal menyimpan pengaturan. Pastikan SQL profile_settings sudah dijalankan.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.roleSettingsFailure)));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -11492,33 +13662,33 @@ class _RoleAccountSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final isGuard = widget.mode == AccountMode.parkingGuard;
-    final title = isGuard ? 'Pengaturan Penjaga' : 'Pengaturan Penyedia';
+    final text = appText(_selectedLanguage);
+    final title = isGuard
+        ? text.guardSettingsTitle
+        : text.providerSettingsTitle;
     final firstLabel = isGuard
-        ? 'Notifikasi tugas lokasi'
-        : 'Notifikasi booking masuk';
+        ? text.guardPrimaryNotification
+        : text.providerPrimaryNotification;
     final secondLabel = isGuard
-        ? 'Notifikasi scan QR'
-        : 'Notifikasi pembayaran';
+        ? text.guardSecondaryNotification
+        : text.providerSecondaryNotification;
     final reportLabel = isGuard
-        ? 'Notifikasi aktivitas shift'
-        : 'Notifikasi laporan harian';
+        ? text.guardReportNotification
+        : text.providerReportNotification;
 
     final content = _isLoading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
-              HeaderSection(
-                title: title,
-                subtitle: 'Preferensi akun ini disimpan di Supabase.',
-              ),
+              HeaderSection(title: title, subtitle: text.roleSettingsSubtitle),
               const SizedBox(height: 18),
               PremiumCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Notifikasi',
+                      text.notificationSection,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -11557,7 +13727,7 @@ class _RoleAccountSettingsScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Preferensi akun',
+                      text.accountPreferenceSection,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -11565,9 +13735,9 @@ class _RoleAccountSettingsScreenState
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
                       initialValue: _selectedLanguage,
-                      decoration: const InputDecoration(
-                        labelText: 'Bahasa aplikasi',
-                        prefixIcon: Icon(Icons.language_rounded),
+                      decoration: InputDecoration(
+                        labelText: text.appLanguage,
+                        prefixIcon: const Icon(Icons.language_rounded),
                       ),
                       items: const [
                         DropdownMenuItem(
@@ -11588,10 +13758,8 @@ class _RoleAccountSettingsScreenState
                       value: _accountSecurityEnabled,
                       onChanged: (value) =>
                           setState(() => _accountSecurityEnabled = value),
-                      title: const Text('Mode keamanan akun'),
-                      subtitle: const Text(
-                        'Aktifkan perlindungan akun tambahan.',
-                      ),
+                      title: Text(text.accountSecurityMode),
+                      subtitle: Text(text.accountSecuritySubtitle),
                       contentPadding: EdgeInsets.zero,
                       activeThumbColor: AppTheme.emerald,
                     ),
@@ -11600,7 +13768,7 @@ class _RoleAccountSettingsScreenState
               ),
               const SizedBox(height: 18),
               PrimaryButton(
-                label: _isSaving ? 'Menyimpan...' : 'Simpan pengaturan',
+                label: _isSaving ? text.saving : text.saveSettings,
                 icon: Icons.save_rounded,
                 onPressed: _isSaving ? null : _save,
               ),
@@ -11975,6 +14143,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                 onTap: () => context.push('/provider/manage-slots'),
               ),
               ActionCard(
+                label: 'Operator scan QR',
+                icon: Icons.qr_code_scanner_rounded,
+                accent: AppTheme.blueSoft,
+                onTap: () => context.push('/provider/scan-qr'),
+              ),
+              ActionCard(
                 label: 'Akun penjaga',
                 icon: Icons.badge_rounded,
                 accent: AppTheme.emeraldSoft,
@@ -12125,6 +14299,70 @@ class AdminMapScreen extends ConsumerWidget {
                       },
                       icon: const Icon(Icons.view_module_rounded),
                     ),
+                    PopupMenuButton<String>(
+                      tooltip: 'Opsi lokasi',
+                      onSelected: (value) async {
+                        if (value != 'remove') {
+                          return;
+                        }
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Nonaktifkan atau hapus lahan?'),
+                            content: Text(
+                              'Lahan ${lot.name} akan dihapus jika belum memiliki riwayat booking. Jika sudah ada riwayat, lahan akan dinonaktifkan agar data transaksi tetap aman.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(false),
+                                child: const Text('Batal'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(true),
+                                child: const Text('Lanjutkan'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !context.mounted) {
+                          return;
+                        }
+                        try {
+                          final message = await ref
+                              .read(appControllerProvider.notifier)
+                              .removeLotFromApp(lot);
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(message)));
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              duration: const Duration(seconds: 6),
+                              content: Text(_removeParkingLotError(error)),
+                            ),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: Color(0xFFDC2626),
+                              ),
+                              SizedBox(width: 10),
+                              Text('Nonaktifkan/hapus'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -12134,6 +14372,31 @@ class AdminMapScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _removeParkingLotError(Object error) {
+  if (error is PostgrestException) {
+    final lower = error.message.toLowerCase();
+    if (lower.contains('active bookings') ||
+        lower.contains('booking aktif') ||
+        lower.contains('still has active bookings')) {
+      return 'Lahan masih memiliki booking aktif. Selesaikan, batalkan, atau tunggu expired dulu.';
+    }
+    if (lower.contains('app_provider_remove_parking_lot')) {
+      return 'Function hapus/nonaktif lahan belum aktif. Jalankan docs/supabase_provider_remove_parking_lot.sql di SQL Editor Supabase.';
+    }
+    if (error.code == '42501' || lower.contains('row-level security')) {
+      return 'Akses ditolak Supabase. Pastikan login sebagai penyedia pemilik lahan.';
+    }
+    return error.message;
+  }
+  if (error is AuthException) {
+    return error.message;
+  }
+  if (error is StateError) {
+    return error.message;
+  }
+  return 'Gagal menonaktifkan/menghapus lahan: $error';
 }
 
 class AddParkingLotScreen extends ConsumerStatefulWidget {
@@ -12152,12 +14415,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
 
   late final TextEditingController _nameController;
   late final TextEditingController _addressController;
-  double _capacity = 60;
-  double _price = 12000;
+  late final TextEditingController _capacityController;
+  late final TextEditingController _priceController;
+  late final TextEditingController _motorRateController;
+  late final TextEditingController _carRateController;
+  late final TextEditingController _truckRateController;
   ParkingTariffType _tariffType = ParkingTariffType.hourly;
-  double _motorRate = 5000;
-  double _carRate = 12000;
-  double _truckRate = 20000;
   Uint8List? _photoBytes;
   String? _photoLabel;
   String? _formError;
@@ -12176,6 +14439,11 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController = TextEditingController(
       text: kReleaseMode ? '' : 'Jl. Gatot Subroto Smart Gate 8',
     );
+    _capacityController = TextEditingController(text: '60');
+    _priceController = TextEditingController(text: '12000');
+    _motorRateController = TextEditingController(text: '5000');
+    _carRateController = TextEditingController(text: '12000');
+    _truckRateController = TextEditingController(text: '20000');
     _nameController.addListener(_refreshMapPreview);
     _addressController.addListener(_refreshMapPreview);
   }
@@ -12198,18 +14466,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     }
     _nameController.text = lot.name;
     _addressController.text = lot.address;
-    _capacity = lot.totalSlots.toDouble().clamp(20, 200);
-    _price = lot.pricePerHour.toDouble().clamp(5000, 25000);
+    _capacityController.text = lot.totalSlots.toString();
+    _priceController.text = lot.pricePerHour.toString();
     _tariffType = lot.tariffType;
-    _motorRate = (lot.motorRate ?? lot.pricePerHour).toDouble().clamp(
-      2000,
-      20000,
-    );
-    _carRate = (lot.carRate ?? lot.pricePerHour).toDouble().clamp(5000, 40000);
-    _truckRate = (lot.truckRate ?? lot.pricePerHour).toDouble().clamp(
-      10000,
-      60000,
-    );
+    _motorRateController.text = (lot.motorRate ?? lot.pricePerHour).toString();
+    _carRateController.text = (lot.carRate ?? lot.pricePerHour).toString();
+    _truckRateController.text = (lot.truckRate ?? lot.pricePerHour).toString();
     _photoLabel = lot.photoLabel;
   }
 
@@ -12219,7 +14481,52 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _addressController.removeListener(_refreshMapPreview);
     _nameController.dispose();
     _addressController.dispose();
+    _capacityController.dispose();
+    _priceController.dispose();
+    _motorRateController.dispose();
+    _carRateController.dispose();
+    _truckRateController.dispose();
     super.dispose();
+  }
+
+  int get _capacity => int.tryParse(_capacityController.text.trim()) ?? 0;
+  int get _price => int.tryParse(_priceController.text.trim()) ?? 0;
+  int get _motorRate => int.tryParse(_motorRateController.text.trim()) ?? 0;
+  int get _carRate => int.tryParse(_carRateController.text.trim()) ?? 0;
+  int get _truckRate => int.tryParse(_truckRateController.text.trim()) ?? 0;
+
+  String get _basePriceLabel => switch (_tariffType) {
+    ParkingTariffType.hourly => 'Harga dasar per jam',
+    ParkingTariffType.flat => 'Harga dasar flat',
+    ParkingTariffType.daily => 'Harga dasar per hari',
+  };
+
+  String _vehicleRateLabel(String vehicle) => switch (_tariffType) {
+    ParkingTariffType.hourly => 'Tarif $vehicle per jam',
+    ParkingTariffType.flat => 'Tarif flat $vehicle',
+    ParkingTariffType.daily => 'Tarif $vehicle per hari',
+  };
+
+  Widget _numberField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    String? suffixText,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixText: suffixText,
+      ),
+      onChanged: (_) {
+        if (_formError != null) {
+          setState(() => _formError = null);
+        }
+      },
+    );
   }
 
   void _refreshMapPreview() {
@@ -12257,18 +14564,39 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     if (_addressController.text.trim().isEmpty) {
       return 'Alamat lahan parkir wajib diisi.';
     }
-    if (_capacity.toInt() <= 0) {
+    if (_capacity <= 0) {
       return 'Kapasitas kendaraan harus lebih dari 0.';
     }
-    if (_motorRate.toInt() <= 0 ||
-        _carRate.toInt() <= 0 ||
-        _truckRate.toInt() <= 0) {
+    if (_price <= 0 || _motorRate <= 0 || _carRate <= 0 || _truckRate <= 0) {
       return 'Tarif motor, mobil, dan truk harus lebih dari 0.';
     }
     if (!_isEditing && _photoBytes == null) {
       return 'Foto lahan parkir wajib diupload.';
     }
     return null;
+  }
+
+  String _lotSaveError(Object error) {
+    if (error is PostgrestException) {
+      if (error.code == '42501' ||
+          error.message.toLowerCase().contains('row-level security')) {
+        return 'Lahan ditolak RLS Supabase. Pastikan akun ini memiliki data provider dan sudah login sebagai penyedia.';
+      }
+      return error.message;
+    }
+    if (error is StorageException) {
+      if (error.message.toLowerCase().contains('bucket not found')) {
+        return 'Bucket foto lahan belum dibuat. Jalankan docs/supabase_storage_parking_lot_photos.sql di SQL Editor Supabase.';
+      }
+      return 'Upload foto lahan gagal: ${error.message}';
+    }
+    if (error is AuthException) {
+      return error.message;
+    }
+    if (error is StateError) {
+      return error.message;
+    }
+    return 'Gagal menyimpan lahan ke Supabase: $error';
   }
 
   Future<void> _pickPhoto() async {
@@ -12347,30 +14675,24 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                 Text(
                   _mapLocationQuery.isEmpty
                       ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
-                      : 'Map diarahkan ke: $_mapLocationQuery',
+                      : 'Map diarahkan ke: $_mapLocationQuery. Koordinat dicari dari alamat saat lahan disimpan.',
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                 ),
                 const SizedBox(height: 18),
-                LabeledSlider(
+                _numberField(
+                  controller: _capacityController,
                   label: 'Kapasitas kendaraan',
-                  value: _capacity,
-                  min: 20,
-                  max: 200,
-                  divisions: 18,
-                  display: _capacity.toInt().toString(),
-                  onChanged: (value) => setState(() => _capacity = value),
+                  icon: Icons.local_parking_rounded,
+                  suffixText: 'slot',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Harga parkir per jam',
-                  value: _price,
-                  min: 5000,
-                  max: 25000,
-                  divisions: 20,
-                  display: formatCurrency(_price.toInt()),
-                  onChanged: (value) => setState(() => _price = value),
+                _numberField(
+                  controller: _priceController,
+                  label: _basePriceLabel,
+                  icon: Icons.payments_outlined,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
                 SegmentedChoice<ParkingTariffType>(
@@ -12390,44 +14712,30 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                       label: 'Harian',
                       icon: Icons.calendar_today_rounded,
                     ),
-                    ChoiceItem(
-                      value: ParkingTariffType.progressive,
-                      label: 'Progresif',
-                      icon: Icons.trending_up_rounded,
-                    ),
                   ],
                   value: _tariffType,
                   onChanged: (value) => setState(() => _tariffType = value),
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif motor',
-                  value: _motorRate,
-                  min: 2000,
-                  max: 20000,
-                  divisions: 18,
-                  display: formatCurrency(_motorRate.toInt()),
-                  onChanged: (value) => setState(() => _motorRate = value),
+                _numberField(
+                  controller: _motorRateController,
+                  label: _vehicleRateLabel('motor'),
+                  icon: Icons.two_wheeler_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif mobil',
-                  value: _carRate,
-                  min: 5000,
-                  max: 40000,
-                  divisions: 35,
-                  display: formatCurrency(_carRate.toInt()),
-                  onChanged: (value) => setState(() => _carRate = value),
+                _numberField(
+                  controller: _carRateController,
+                  label: _vehicleRateLabel('mobil'),
+                  icon: Icons.directions_car_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 16),
-                LabeledSlider(
-                  label: 'Tarif truk',
-                  value: _truckRate,
-                  min: 10000,
-                  max: 60000,
-                  divisions: 50,
-                  display: formatCurrency(_truckRate.toInt()),
-                  onChanged: (value) => setState(() => _truckRate = value),
+                _numberField(
+                  controller: _truckRateController,
+                  label: _vehicleRateLabel('truk'),
+                  icon: Icons.local_shipping_rounded,
+                  suffixText: 'Rp',
                 ),
                 const SizedBox(height: 18),
                 MiniInfoTile(
@@ -12473,20 +14781,24 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                                 'Lokasi yang akan diedit tidak ditemukan. Buka ulang daftar lokasi lalu pilih edit lagi.',
                               );
                             }
+                            final coordinates = await controller
+                                .geocodeParkingAddress(
+                                  _addressController.text.trim(),
+                                );
                             if (editingLot != null) {
                               await controller.updateLot(
                                 lot: editingLot,
                                 name: _nameController.text.trim(),
                                 address: _addressController.text.trim(),
-                                capacity: _capacity.toInt(),
-                                price: _price.toInt(),
+                                capacity: _capacity,
+                                price: _price,
                                 mapEmbedUrl: _mapEmbedUrl,
-                                latitude: _defaultMapLatitude,
-                                longitude: _defaultMapLongitude,
+                                latitude: coordinates.latitude,
+                                longitude: coordinates.longitude,
                                 tariffType: _tariffType,
-                                motorRate: _motorRate.toInt(),
-                                carRate: _carRate.toInt(),
-                                truckRate: _truckRate.toInt(),
+                                motorRate: _motorRate,
+                                carRate: _carRate,
+                                truckRate: _truckRate,
                                 photoLabel: _photoLabel,
                                 photoBytes: _photoBytes,
                               );
@@ -12494,15 +14806,15 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                               await controller.addLot(
                                 name: _nameController.text.trim(),
                                 address: _addressController.text.trim(),
-                                capacity: _capacity.toInt(),
-                                price: _price.toInt(),
+                                capacity: _capacity,
+                                price: _price,
                                 mapEmbedUrl: _mapEmbedUrl,
-                                latitude: _defaultMapLatitude,
-                                longitude: _defaultMapLongitude,
+                                latitude: coordinates.latitude,
+                                longitude: coordinates.longitude,
                                 tariffType: _tariffType,
-                                motorRate: _motorRate.toInt(),
-                                carRate: _carRate.toInt(),
-                                truckRate: _truckRate.toInt(),
+                                motorRate: _motorRate,
+                                carRate: _carRate,
+                                truckRate: _truckRate,
                                 photoLabel: _photoLabel,
                                 photoBytes: _photoBytes,
                               );
@@ -12520,18 +14832,12 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                             context.pop();
                           } catch (error) {
                             if (!context.mounted) return;
-                            setState(
-                              () => _formError = error is StateError
-                                  ? error.message
-                                  : 'Gagal menyimpan lahan ke Supabase. Pastikan koneksi, SQL lahan, dan bucket foto lahan sudah siap.',
-                            );
+                            final message = _lotSaveError(error);
+                            setState(() => _formError = message);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  error is StateError
-                                      ? error.message
-                                      : 'Gagal menyimpan lahan ke Supabase.',
-                                ),
+                                content: Text(message),
+                                duration: const Duration(seconds: 6),
                               ),
                             );
                           } finally {
@@ -12565,8 +14871,10 @@ class _ParkingGuardManagementScreenState
   late final TextEditingController _phoneController;
   late final TextEditingController _passwordController;
   final Set<String> _selectedLotIds = {};
+  bool _usesGuards = true;
   bool _canConfirmCash = true;
   bool _canManageSlots = true;
+  bool _isLoadingGuardContext = false;
   bool _isSavingGuard = false;
   String? _editingGuardId;
   String? _formError;
@@ -12584,15 +14892,11 @@ class _ParkingGuardManagementScreenState
       text: kReleaseMode ? '' : '+62 812 4455 6677',
     );
     _passwordController = TextEditingController();
-    final lots = visibleLotsFor(ref.read(appControllerProvider));
+    final lots = _providerSupabaseLots(ref.read(appControllerProvider));
     if (lots.isNotEmpty) {
       _selectedLotIds.add(lots.first.id);
     }
-    Future.microtask(() async {
-      final controller = ref.read(appControllerProvider.notifier);
-      await controller.loadParkingDataFromSupabase().catchError((_) {});
-      await controller.loadProviderGuardsFromSupabase().catchError((_) {});
-    });
+    Future.microtask(_reloadGuardContext);
   }
 
   @override
@@ -12618,6 +14922,9 @@ class _ParkingGuardManagementScreenState
     if (_editingGuardId == null && _passwordController.text.length < 6) {
       return 'Password awal penjaga minimal 6 karakter.';
     }
+    if (!_usesGuards) {
+      return 'Aktifkan opsi pakai penjaga dulu untuk membuat akun penjaga.';
+    }
     if (lots.isEmpty) {
       return 'Tambahkan lahan parkir terlebih dahulu.';
     }
@@ -12625,6 +14932,35 @@ class _ParkingGuardManagementScreenState
       return 'Pilih minimal satu lokasi untuk penjaga.';
     }
     return null;
+  }
+
+  List<ParkingLot> _providerSupabaseLots(AppState state) {
+    return visibleLotsFor(state)
+        .where(
+          (lot) => RegExp(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+          ).hasMatch(lot.id),
+        )
+        .toList();
+  }
+
+  String _guardSaveError(Object error) {
+    if (error is FunctionException) {
+      final details = error.details;
+      if (details is Map && details['error'] != null) {
+        return details['error'].toString();
+      }
+      if (details != null) {
+        return details.toString();
+      }
+    }
+    if (error is PostgrestException) {
+      return error.message;
+    }
+    if (error is AuthException) {
+      return error.message;
+    }
+    return 'Gagal menyimpan akun penjaga. Pastikan akun penyedia sudah aktif dan lahan Supabase tersedia.';
   }
 
   void _resetGuardForm(List<ParkingLot> lots) {
@@ -12637,9 +14973,33 @@ class _ParkingGuardManagementScreenState
       _selectedLotIds
         ..clear()
         ..addAll(lots.isEmpty ? const [] : [lots.first.id]);
+      _usesGuards = true;
       _canConfirmCash = true;
       _canManageSlots = true;
       _formError = null;
+    });
+  }
+
+  Future<void> _reloadGuardContext() async {
+    if (_isLoadingGuardContext) {
+      return;
+    }
+    setState(() => _isLoadingGuardContext = true);
+    final controller = ref.read(appControllerProvider.notifier);
+    await controller.loadParkingDataFromSupabase().catchError((_) {});
+    await controller.loadProviderGuardsFromSupabase().catchError((_) {});
+    if (!mounted) {
+      return;
+    }
+    final remoteLots = _providerSupabaseLots(ref.read(appControllerProvider));
+    setState(() {
+      _selectedLotIds.removeWhere(
+        (id) => !remoteLots.any((lot) => lot.id == id),
+      );
+      if (_selectedLotIds.isEmpty && remoteLots.isNotEmpty) {
+        _selectedLotIds.add(remoteLots.first.id);
+      }
+      _isLoadingGuardContext = false;
     });
   }
 
@@ -12658,6 +15018,7 @@ class _ParkingGuardManagementScreenState
     _phoneController.text = guard.phoneNumber;
     setState(() {
       _editingGuardId = guard.id;
+      _usesGuards = true;
       _selectedLotIds
         ..clear()
         ..addAll(guard.assignedLotIds);
@@ -12672,7 +15033,16 @@ class _ParkingGuardManagementScreenState
       return;
     }
 
-    final error = _guardFormError(lots);
+    var availableLots = lots;
+    if (availableLots.isEmpty) {
+      await _reloadGuardContext();
+      if (!mounted) {
+        return;
+      }
+      availableLots = _providerSupabaseLots(ref.read(appControllerProvider));
+    }
+
+    final error = _guardFormError(availableLots);
     if (error != null) {
       setState(() => _formError = error);
       ScaffoldMessenger.of(
@@ -12694,7 +15064,9 @@ class _ParkingGuardManagementScreenState
           email: _emailController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
           password: _passwordController.text,
-          assignedLotIds: _selectedLotIds.toList(),
+          assignedLotIds: _selectedLotIds
+              .where((id) => availableLots.any((lot) => lot.id == id))
+              .toList(),
           canScanQr: true,
           canConfirmCash: _canConfirmCash,
           canManageSlots: _canManageSlots,
@@ -12709,7 +15081,9 @@ class _ParkingGuardManagementScreenState
           name: _nameController.text.trim(),
           email: _emailController.text.trim(),
           phoneNumber: _phoneController.text.trim(),
-          assignedLotIds: _selectedLotIds.toList(),
+          assignedLotIds: _selectedLotIds
+              .where((id) => availableLots.any((lot) => lot.id == id))
+              .toList(),
           canConfirmCash: _canConfirmCash,
           canManageSlots: _canManageSlots,
         );
@@ -12719,18 +15093,12 @@ class _ParkingGuardManagementScreenState
         );
       }
       _resetGuardForm(lots);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(
-        () => _formError =
-            'Gagal menyimpan akun penjaga. Pastikan Edge Function create-guard-account, secret service role, dan SQL guard sudah dijalankan.',
-      );
+      final message = _guardSaveError(error);
+      setState(() => _formError = message);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Gagal menyimpan. Pastikan Edge Function create-guard-account dan SQL guard sudah dijalankan.',
-          ),
-        ),
+        SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
       );
     } finally {
       if (mounted) {
@@ -12775,7 +15143,7 @@ class _ParkingGuardManagementScreenState
       return;
     }
     if (_editingGuardId == guard.id) {
-      _resetGuardForm(visibleLotsFor(ref.read(appControllerProvider)));
+      _resetGuardForm(_providerSupabaseLots(ref.read(appControllerProvider)));
     }
     messenger.showSnackBar(
       SnackBar(content: Text('Akun ${guard.name} berhasil dihapus.')),
@@ -12785,7 +15153,7 @@ class _ParkingGuardManagementScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
-    final lots = visibleLotsFor(state);
+    final lots = _providerSupabaseLots(state);
     return Scaffold(
       appBar: AppBar(title: const Text('Akun penjaga parkir')),
       body: ListView(
@@ -12806,7 +15174,7 @@ class _ParkingGuardManagementScreenState
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _editingGuardId == null
-                        ? 'Hubungkan akun penjaga'
+                        ? 'Buat akun penjaga'
                         : 'Edit akun penjaga',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
@@ -12814,117 +15182,163 @@ class _ParkingGuardManagementScreenState
                   ),
                 ),
                 const SizedBox(height: 14),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nama penjaga',
-                    prefixIcon: Icon(Icons.badge_outlined),
+                SwitchListTile(
+                  value: _usesGuards,
+                  title: const Text('Pakai penjaga parkir'),
+                  subtitle: const Text(
+                    'Matikan jika lahan dioperasikan sendiri oleh penyedia.',
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email login penjaga',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
+                  onChanged: _editingGuardId == null
+                      ? (value) {
+                          setState(() {
+                            _usesGuards = value;
+                            _formError = null;
+                          });
+                        }
+                      : null,
                 ),
                 const SizedBox(height: 10),
-                const InlineNotice(
-                  icon: Icons.info_outline_rounded,
-                  accent: Color(0xFFD97706),
-                  message:
-                      'Penyedia bisa membuat akun login penjaga langsung, lalu memberikan email dan password awal ke penjaga.',
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Nomor HP',
-                    prefixIcon: Icon(Icons.phone_iphone_rounded),
+                if (!_usesGuards) ...[
+                  const InlineNotice(
+                    icon: Icons.storefront_rounded,
+                    accent: AppTheme.emerald,
+                    message:
+                        'Tidak wajib membuat penjaga. Untuk lahan tanpa penjaga aktif, penyedia bisa memakai mode operator untuk scan QR dan konfirmasi tunai.',
                   ),
-                ),
-                if (_editingGuardId == null) ...[
+                  const SizedBox(height: 16),
+                ],
+                if (_usesGuards) ...[
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nama penjaga',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: _passwordController,
-                    obscureText: true,
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
-                      labelText: 'Password awal penjaga',
-                      prefixIcon: Icon(Icons.lock_outline_rounded),
+                      labelText: 'Email akun penjaga baru',
+                      prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
-                ],
-                const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Lokasi yang boleh diakses',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (lots.isEmpty)
+                  const SizedBox(height: 10),
                   const InlineNotice(
                     icon: Icons.info_outline_rounded,
                     accent: Color(0xFFD97706),
                     message:
-                        'Belum ada lahan aktif. Tambahkan lahan parkir sebelum membuat akun penjaga.',
-                  )
-                else
-                  for (final lot in lots)
-                    CheckboxListTile(
-                      value: _selectedLotIds.contains(lot.id),
-                      title: Text(lot.name),
-                      subtitle: Text(lot.address),
-                      activeColor: AppTheme.emerald,
-                      onChanged: (value) {
-                        setState(() {
-                          if (value ?? false) {
-                            _selectedLotIds.add(lot.id);
-                          } else {
-                            _selectedLotIds.remove(lot.id);
-                          }
-                        });
-                      },
-                    ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  value: _canConfirmCash,
-                  title: const Text('Konfirmasi pembayaran tunai'),
-                  onChanged: (value) => setState(() => _canConfirmCash = value),
-                ),
-                SwitchListTile(
-                  value: _canManageSlots,
-                  title: const Text('Update status slot parkir'),
-                  onChanged: (value) => setState(() => _canManageSlots = value),
-                ),
-                const SizedBox(height: 18),
-                PrimaryButton(
-                  label: _isSavingGuard
-                      ? 'Menyimpan...'
-                      : _editingGuardId == null
-                      ? 'Hubungkan akun penjaga'
-                      : 'Simpan perubahan',
-                  icon: _editingGuardId == null
-                      ? Icons.person_add_alt_1_rounded
-                      : Icons.save_rounded,
-                  onPressed: _isSavingGuard ? null : () => _saveGuard(lots),
-                ),
-                if (_editingGuardId != null) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _resetGuardForm(lots),
-                      icon: const Icon(Icons.close_rounded),
-                      label: const Text('Batal edit'),
+                        'Penyedia membuat akun login baru untuk penjaga, lalu memberikan email dan password awal ke penjaga.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Nomor HP',
+                      prefixIcon: Icon(Icons.phone_iphone_rounded),
                     ),
                   ),
+                  if (_editingGuardId == null) ...[
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password awal penjaga',
+                        prefixIcon: Icon(Icons.lock_outline_rounded),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Lokasi yang boleh diakses',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (lots.isEmpty)
+                    Column(
+                      children: [
+                        InlineNotice(
+                          icon: _isLoadingGuardContext
+                              ? Icons.sync_rounded
+                              : Icons.info_outline_rounded,
+                          accent: const Color(0xFFD97706),
+                          message: _isLoadingGuardContext
+                              ? 'Memuat lahan parkir penyedia dari Supabase...'
+                              : 'Belum ada lahan aktif yang terbaca. Muat ulang lahan atau tambahkan lahan parkir sebelum membuat akun penjaga.',
+                        ),
+                        const SizedBox(height: 10),
+                        SecondaryButton(
+                          label: _isLoadingGuardContext
+                              ? 'Memuat lahan...'
+                              : 'Muat ulang lahan',
+                          icon: Icons.refresh_rounded,
+                          onPressed: _isLoadingGuardContext
+                              ? null
+                              : _reloadGuardContext,
+                        ),
+                      ],
+                    )
+                  else
+                    for (final lot in lots)
+                      CheckboxListTile(
+                        value: _selectedLotIds.contains(lot.id),
+                        title: Text(lot.name),
+                        subtitle: Text(lot.address),
+                        activeColor: AppTheme.emerald,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value ?? false) {
+                              _selectedLotIds.add(lot.id);
+                            } else {
+                              _selectedLotIds.remove(lot.id);
+                            }
+                          });
+                        },
+                      ),
+                  const SizedBox(height: 12),
+                  SwitchListTile(
+                    value: _canConfirmCash,
+                    title: const Text('Konfirmasi pembayaran tunai'),
+                    onChanged: (value) =>
+                        setState(() => _canConfirmCash = value),
+                  ),
+                  SwitchListTile(
+                    value: _canManageSlots,
+                    title: const Text('Update status slot parkir'),
+                    onChanged: (value) =>
+                        setState(() => _canManageSlots = value),
+                  ),
+                  const SizedBox(height: 18),
+                  PrimaryButton(
+                    label: _isSavingGuard
+                        ? 'Menyimpan...'
+                        : _editingGuardId == null
+                        ? 'Buat akun penjaga'
+                        : 'Simpan perubahan',
+                    icon: _editingGuardId == null
+                        ? Icons.person_add_alt_1_rounded
+                        : Icons.save_rounded,
+                    onPressed: _isSavingGuard ? null : () => _saveGuard(lots),
+                  ),
+                  if (_editingGuardId != null) ...[
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _resetGuardForm(lots),
+                        icon: const Icon(Icons.close_rounded),
+                        label: const Text('Batal edit'),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -12936,8 +15350,8 @@ class _ParkingGuardManagementScreenState
             const EmptyStateCard(
               title: 'Belum ada penjaga',
               body:
-                  'Akun penjaga yang dibuat penyedia akan tampil di daftar ini.',
-              actionLabel: 'Isi data penjaga',
+                  'Jika lahan memakai penjaga, akun yang dibuat penyedia akan tampil di daftar ini. Jika tidak, penyedia tetap bisa menjadi operator.',
+              actionLabel: 'Opsional',
               onPressed: _noop,
             )
           else
@@ -13267,19 +15681,17 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
   }
 
   Future<void> _handleDetectedCode(String rawCode) async {
-    final ticketNumber = _extractTicketNumber(rawCode);
+    final scanCode = _normalizeScanCode(rawCode);
     await _stopCamera();
     if (!mounted) {
       return;
     }
-    final booking = await ref
-        .read(appControllerProvider.notifier)
-        .loadBookingByTicketNumberFromSupabase(ticketNumber);
+    final booking = await _loadBookingFromScanCode(scanCode);
     if (!mounted) {
       return;
     }
     setState(() {
-      _lastScannedTicket = ticketNumber;
+      _lastScannedTicket = booking?.ticketNumber ?? scanCode;
       _lastScanTime = DateTime.now();
       _scannedBooking = booking;
       _lastScanStatus = booking == null
@@ -13295,7 +15707,7 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
             borderRadius: BorderRadius.circular(24),
           ),
           title: const Text('QR Ticket tidak ditemukan'),
-          content: Text('Kode "$ticketNumber" tidak cocok dengan tiket aktif.'),
+          content: Text('Kode "$scanCode" tidak cocok dengan tiket aktif.'),
           actions: [
             TextButton(
               onPressed: () {
@@ -13319,10 +15731,34 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     await _showScanResultDialog(booking);
   }
 
-  String _extractTicketNumber(String rawCode) {
+  String _normalizeScanCode(String rawCode) {
     final trimmed = rawCode.trim();
-    final match = RegExp(r'TKT-\d+').firstMatch(trimmed);
-    return match?.group(0) ?? trimmed;
+    final legacyMatch = RegExp(r'TKT-\d+').firstMatch(trimmed);
+    return legacyMatch?.group(0) ?? trimmed;
+  }
+
+  Future<Booking?> _loadBookingFromScanCode(String scanCode) async {
+    final controller = ref.read(appControllerProvider.notifier);
+    if (_looksLikeTicketNumber(scanCode)) {
+      return controller.loadBookingByTicketNumberFromSupabase(scanCode);
+    }
+
+    final booking = await controller.loadBookingByQrPayloadFromSupabase(
+      scanCode,
+    );
+    if (booking != null) {
+      return booking;
+    }
+
+    final legacyTicket = RegExp(r'TKT-\d+').firstMatch(scanCode)?.group(0);
+    if (legacyTicket != null) {
+      return controller.loadBookingByTicketNumberFromSupabase(legacyTicket);
+    }
+    return null;
+  }
+
+  bool _looksLikeTicketNumber(String value) {
+    return RegExp(r'^TKT-\d+$').hasMatch(value.trim());
   }
 
   void _onDetect(BarcodeCapture capture) {
@@ -13379,6 +15815,12 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     if (!mounted) {
       return;
     }
+    final appState = ref.read(appControllerProvider);
+    final guard = activeGuard(appState);
+    final canConfirmCash =
+        appState.currentMode == AccountMode.provider ||
+        (appState.currentMode == AccountMode.parkingGuard &&
+            (guard?.canConfirmCash ?? false));
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -13413,18 +15855,32 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
             },
             child: const Text('Scan Lagi'),
           ),
+          if (booking.status == BookingStatus.pendingPayment)
+            OutlinedButton(
+              onPressed: canConfirmCash
+                  ? () {
+                      Navigator.of(dialogContext).pop();
+                      _confirmCashPayment();
+                    }
+                  : null,
+              child: const Text('Konfirmasi Tunai'),
+            ),
           OutlinedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _confirmExit();
-            },
+            onPressed: booking.status == BookingStatus.active
+                ? () {
+                    Navigator.of(dialogContext).pop();
+                    _confirmExit();
+                  }
+                : null,
             child: const Text('Konfirmasi Keluar'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.of(dialogContext).pop();
-              _verifyEntry();
-            },
+            onPressed: booking.status == BookingStatus.paid
+                ? () {
+                    Navigator.of(dialogContext).pop();
+                    _verifyEntry();
+                  }
+                : null,
             child: const Text('Verifikasi Masuk'),
           ),
         ],
@@ -13432,14 +15888,69 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     );
   }
 
+  Future<void> _confirmCashPayment() async {
+    final booking = _scannedBooking;
+    if (booking == null) {
+      return;
+    }
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .confirmOperatorCashPaymentForBooking(booking);
+      if (!mounted) {
+        return;
+      }
+      final updatedBooking = ref
+          .read(appControllerProvider.notifier)
+          .bookingByTicketNumber(booking.ticketNumber);
+      setState(() {
+        _scannedBooking =
+            updatedBooking ??
+            booking.copyWith(
+              status: BookingStatus.paid,
+              paymentMethod: PaymentMethod.cash,
+            );
+        _lastScanStatus = 'Pembayaran tunai terkonfirmasi';
+        _lastScanTime = DateTime.now();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pembayaran tunai berhasil dikonfirmasi.'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_operatorActionError('Konfirmasi tunai', error)),
+        ),
+      );
+    }
+  }
+
   Future<void> _verifyEntry() async {
     final booking = _scannedBooking;
     if (booking == null) {
       return;
     }
-    final success = await ref
-        .read(appControllerProvider.notifier)
-        .verifyVehicleEntry(booking.ticketNumber);
+    late final bool success;
+    try {
+      success = await ref
+          .read(appControllerProvider.notifier)
+          .verifyVehicleEntry(booking.ticketNumber);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_operatorActionError('Verifikasi masuk', error)),
+        ),
+      );
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -13469,9 +15980,22 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     if (booking == null) {
       return;
     }
-    final success = await ref
-        .read(appControllerProvider.notifier)
-        .confirmVehicleExit(booking.ticketNumber);
+    late final bool success;
+    try {
+      success = await ref
+          .read(appControllerProvider.notifier)
+          .confirmVehicleExit(booking.ticketNumber);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_operatorActionError('Konfirmasi keluar', error)),
+        ),
+      );
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -13500,10 +16024,34 @@ class _ScanQrScreenState extends ConsumerState<ScanQrScreen> {
     );
   }
 
+  String _operatorActionError(String action, Object error) {
+    final raw = error.toString();
+    if (raw.contains('Guard is not allowed to scan tickets for this lot') ||
+        raw.contains('Guard is not allowed to confirm cash for this lot')) {
+      return '$action ditolak: penjaga belum ditugaskan ke lahan pada tiket ini. Buka akun penyedia > Akun penjaga, pilih lahan yang sama, lalu simpan ulang.';
+    }
+    if (raw.contains('An active guard is assigned to this parking lot')) {
+      return '$action ditolak: lahan ini sudah punya penjaga aktif, gunakan akun penjaga yang ditugaskan.';
+    }
+    if (raw.contains('Only paid bookings can check in')) {
+      return '$action ditolak: tiket belum lunas.';
+    }
+    if (raw.contains('Only active bookings can check out')) {
+      return '$action ditolak: kendaraan belum tercatat masuk.';
+    }
+    if (error is PostgrestException) {
+      return '$action ditolak: ${error.message}';
+    }
+    return '$action ditolak: $error';
+  }
+
   @override
   Widget build(BuildContext context) {
     final booking = _scannedBooking;
-    final scanContextLot = _selectedGuardLot(ref.watch(appControllerProvider));
+    final appState = ref.watch(appControllerProvider);
+    final scanContextLot = appState.currentMode == AccountMode.provider
+        ? appState.selectedLot
+        : _selectedGuardLot(appState);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -13770,7 +16318,9 @@ class TransactionDetailScreen extends ConsumerWidget {
 }
 
 class ReceiptScreen extends ConsumerStatefulWidget {
-  const ReceiptScreen({super.key});
+  const ReceiptScreen({super.key, this.ticketNumber});
+
+  final String? ticketNumber;
 
   @override
   ConsumerState<ReceiptScreen> createState() => _ReceiptScreenState();
@@ -13784,12 +16334,13 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
     super.initState();
     _receiptFuture = ref
         .read(appControllerProvider.notifier)
-        .fetchLatestReceiptFromSupabase();
+        .fetchReceiptFromSupabase(ticketNumber: widget.ticketNumber);
   }
 
   Future<Uint8List> _buildReceiptPdf({
     required String receiptNumber,
     required String ticketNumber,
+    String? qrPayload,
     required String locationName,
     required String plateNumber,
     required String paymentStatus,
@@ -13830,7 +16381,10 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
               pw.Center(
                 child: pw.BarcodeWidget(
                   barcode: pw.Barcode.qrCode(),
-                  data: receiptNumber,
+                  data: _parkingTicketQrPayloadFromValues(
+                    ticketNumber: ticketNumber,
+                    qrPayload: qrPayload,
+                  ),
                   width: 120,
                   height: 120,
                 ),
@@ -13884,7 +16438,11 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
         future: _receiptFuture,
         builder: (context, snapshot) {
           final receipt = snapshot.data;
-          final fallbackTransaction = history.isEmpty ? null : history.first;
+          final fallbackTransaction = widget.ticketNumber == null
+              ? history.firstOrNull
+              : history
+                    .where((item) => item.id == widget.ticketNumber)
+                    .firstOrNull;
           if (snapshot.connectionState == ConnectionState.waiting &&
               fallbackTransaction == null) {
             return const Center(child: CircularProgressIndicator());
@@ -13896,6 +16454,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
           final receiptNumber =
               receipt?.receiptNumber ?? 'RCT-${fallbackTransaction!.id}';
           final ticketNumber = receipt?.ticketNumber ?? fallbackTransaction!.id;
+          final qrPayload = receipt?.qrPayload;
           final locationName =
               receipt?.locationName ?? fallbackTransaction!.locationName;
           final plateNumber =
@@ -13911,6 +16470,7 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
             return _buildReceiptPdf(
               receiptNumber: receiptNumber,
               ticketNumber: ticketNumber,
+              qrPayload: qrPayload,
               locationName: locationName,
               plateNumber: plateNumber,
               paymentStatus: paymentStatus,
@@ -13933,7 +16493,10 @@ class _ReceiptScreenState extends ConsumerState<ReceiptScreen> {
                     ),
                     const SizedBox(height: 16),
                     QrImageView(
-                      data: receiptNumber,
+                      data: _parkingTicketQrPayloadFromValues(
+                        ticketNumber: ticketNumber,
+                        qrPayload: qrPayload,
+                      ),
                       size: 150,
                       eyeStyle: const QrEyeStyle(color: AppTheme.emerald),
                     ),
@@ -14019,6 +16582,7 @@ class _ProviderFinancialReportScreenState
                 availableSlots: 0,
                 occupiedSlots: 0,
                 chartPoints: [],
+                guardSalaryShares: [],
               );
           final recentTransactions = report.transactions.take(5).toList();
 
@@ -14041,7 +16605,7 @@ class _ProviderFinancialReportScreenState
                       valueColor: AppTheme.emerald,
                     ),
                     SummaryRow(
-                      label: 'Estimasi pengeluaran',
+                      label: 'Gaji penjaga bulan ini',
                       value: formatCurrency(report.estimatedExpense),
                       valueColor: const Color(0xFFDC2626),
                     ),
@@ -14066,6 +16630,81 @@ class _ProviderFinancialReportScreenState
                         );
                       },
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Gaji penjaga',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const InlineNotice(
+                      icon: Icons.percent_rounded,
+                      accent: AppTheme.emerald,
+                      message:
+                          'Gaji dihitung 15% dari pendapatan lahan yang punya penjaga. Jika satu lahan punya beberapa penjaga, bagian 15% dibagi rata.',
+                    ),
+                    const SizedBox(height: 14),
+                    SummaryRow(
+                      label: 'Gaji hari ini',
+                      value: formatCurrency(report.guardSalaryDailyTotal),
+                    ),
+                    SummaryRow(
+                      label: 'Gaji bulan ini',
+                      value: formatCurrency(report.guardSalaryMonthlyTotal),
+                      valueColor: const Color(0xFFDC2626),
+                    ),
+                    if (report.guardSalaryShares.isEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Belum ada penjaga yang ditugaskan ke lahan penyedia.',
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 14),
+                      ...report.guardSalaryShares.map(
+                        (share) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppTheme.blueSoft,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  share.guardName,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 6),
+                                SummaryRow(
+                                  label: 'Lahan tugas',
+                                  value: share.assignedLotNames.join(', '),
+                                ),
+                                SummaryRow(
+                                  label: 'Revenue bagian bulan ini',
+                                  value: formatCurrency(share.monthlyRevenue),
+                                ),
+                                SummaryRow(
+                                  label: 'Gaji 15% bulan ini',
+                                  value: formatCurrency(share.monthlySalary),
+                                  valueColor: AppTheme.emerald,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -14247,6 +16886,7 @@ class _StatisticsScreenState extends ConsumerState<StatisticsScreen> {
                 availableSlots: 0,
                 occupiedSlots: 0,
                 chartPoints: [],
+                guardSalaryShares: [],
               );
           return ProviderStatisticsContent(report: report);
         },
@@ -14413,16 +17053,47 @@ class _ProviderDailyRevenueScreenState
   }
 }
 
-class ManageSlotsScreen extends ConsumerWidget {
+class ManageSlotsScreen extends ConsumerStatefulWidget {
   const ManageSlotsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ManageSlotsScreen> createState() => _ManageSlotsScreenState();
+}
+
+class _ManageSlotsScreenState extends ConsumerState<ManageSlotsScreen> {
+  bool _isLoadingLots = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadLots);
+  }
+
+  Future<void> _loadLots() async {
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .loadParkingDataFromSupabase();
+      if (!mounted) return;
+      setState(() => _loadError = null);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loadError = 'Gagal memuat lokasi Supabase: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingLots = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final lot = state.selectedLot ?? visibleLotsFor(state).firstOrNull;
     final slots =
         lot == null
-              ? const <ParkingSlot>[]
+              ? <ParkingSlot>[]
               : state.slots.where((slot) => slot.lotId == lot.id).toList()
           ..sort((a, b) => a.label.compareTo(b.label));
     return Scaffold(
@@ -14430,6 +17101,18 @@ class ManageSlotsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (_isLoadingLots) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+          ],
+          if (_loadError != null) ...[
+            InlineNotice(
+              icon: Icons.error_outline_rounded,
+              accent: const Color(0xFFD97706),
+              message: _loadError!,
+            ),
+            const SizedBox(height: 14),
+          ],
           if (lot != null) ...[
             InlineNotice(
               icon: Icons.local_parking_rounded,
@@ -14438,32 +17121,46 @@ class ManageSlotsScreen extends ConsumerWidget {
                   'Mengelola ${slots.length} slot untuk ${lot.name}. Slot baru langsung tersimpan ke Supabase.',
             ),
             const SizedBox(height: 14),
+          ] else if (!_isLoadingLots) ...[
+            const InlineNotice(
+              icon: Icons.info_outline_rounded,
+              accent: Color(0xFFD97706),
+              message:
+                  'Belum ada lahan Supabase. Tambahkan lahan parkir sebelum mengelola slot.',
+            ),
+            const SizedBox(height: 14),
           ],
           PrimaryButton(
-            label: 'Tambah slot',
+            label: lot == null
+                ? 'Tambahkan lahan terlebih dahulu'
+                : 'Tambah slot',
             icon: Icons.add_rounded,
-            onPressed: () async {
-              try {
-                await ref
-                    .read(appControllerProvider.notifier)
-                    .addSlotToSelectedLot();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Slot baru berhasil ditambah.')),
-                );
-              } catch (error) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      error is StateError
-                          ? error.message
-                          : 'Gagal menambah slot ke Supabase. Jalankan SQL function app_provider_add_parking_slot dan pastikan lokasi ini milik akun penyedia.',
-                    ),
-                  ),
-                );
-              }
-            },
+            onPressed: lot == null || _isLoadingLots
+                ? null
+                : () async {
+                    try {
+                      await ref
+                          .read(appControllerProvider.notifier)
+                          .addSlotToSelectedLot();
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Slot baru berhasil ditambah.'),
+                        ),
+                      );
+                    } catch (error) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            error is StateError
+                                ? error.message
+                                : 'Gagal menambah slot ke Supabase. Jalankan SQL function app_provider_add_parking_slot dan pastikan lokasi ini milik akun penyedia.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
           ),
           const SizedBox(height: 18),
           ...slots.map(
@@ -14497,9 +17194,18 @@ class ManageSlotsScreen extends ConsumerWidget {
                     Switch(
                       value: slot.isAvailable,
                       activeThumbColor: AppTheme.emerald,
-                      onChanged: (_) => ref
-                          .read(appControllerProvider.notifier)
-                          .toggleSlot(slot.id),
+                      onChanged: (_) async {
+                        try {
+                          await ref
+                              .read(appControllerProvider.notifier)
+                              .toggleSlot(slot.id);
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error.toString())),
+                          );
+                        }
+                      },
                     ),
                   ],
                 ),
@@ -14650,8 +17356,9 @@ class AdminProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -14737,8 +17444,9 @@ class SuperAdminProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -15084,6 +17792,11 @@ class _ParkingGuardDashboardScreenState
       } catch (_) {
         failures.add('akun penjaga');
       }
+      try {
+        await controller.loadGuardBookingsFromSupabase();
+      } catch (_) {
+        failures.add('booking aktif');
+      }
       if (mounted && failures.isNotEmpty) {
         setState(
           () => _loadError =
@@ -15107,6 +17820,9 @@ class _ParkingGuardDashboardScreenState
       (total, lot) => total + lot.totalSlots,
     );
     final occupiedSlots = math.max(0, totalSlots - availableSlots);
+    final pendingPayments = state.guardBookings
+        .where((booking) => booking.status == BookingStatus.pendingPayment)
+        .length;
     return GuardShell(
       currentIndex: 0,
       floatingActionButton: FloatingActionButton.extended(
@@ -15168,7 +17884,7 @@ class _ParkingGuardDashboardScreenState
               ),
               StatCard(
                 label: 'Cek Pembayaran',
-                value: state.activeBooking?.isPaid ?? false ? 'Lunas' : 'Cek',
+                value: '$pendingPayments pending',
                 accent: AppTheme.ink,
                 icon: Icons.payments_rounded,
                 onTap: () => context.push('/guard/check-payment'),
@@ -15573,6 +18289,7 @@ class _GuardCheckPaymentScreenState
   final TextEditingController _plateController = TextEditingController();
   Booking? _result;
   String? _errorMessage;
+  bool _isChecking = false;
 
   @override
   void dispose() {
@@ -15581,31 +18298,59 @@ class _GuardCheckPaymentScreenState
     super.dispose();
   }
 
-  void _checkPayment() {
+  Future<void> _checkPayment() async {
     final ticket = _ticketController.text.trim();
     final plate = _plateController.text.trim().toUpperCase();
-    final booking = ref.read(appControllerProvider).activeBooking;
-    final ticketMatches = ticket.isEmpty || booking?.ticketNumber == ticket;
-    final plateMatches =
-        plate.isEmpty || booking?.plateNumber.toUpperCase() == plate;
-
-    if (booking != null && ticketMatches && plateMatches) {
+    if (ticket.isEmpty && plate.isEmpty) {
       setState(() {
-        _result = booking;
-        _errorMessage = null;
+        _result = null;
+        _errorMessage = 'Isi nomor tiket atau plat kendaraan terlebih dahulu.';
       });
       return;
     }
 
     setState(() {
-      _result = null;
-      _errorMessage =
-          'Tiket tidak ditemukan. Periksa nomor tiket atau plat kendaraan.';
+      _isChecking = true;
+      _errorMessage = null;
     });
+    try {
+      final booking = await ref
+          .read(appControllerProvider.notifier)
+          .searchGuardBookingFromSupabase(
+            ticketNumber: ticket,
+            plateNumber: plate,
+          );
+      if (!mounted) return;
+      setState(() {
+        _result = booking;
+        _errorMessage = booking == null
+            ? 'Tiket tidak ditemukan pada lokasi tugas Anda.'
+            : null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _result = null;
+        _errorMessage = 'Gagal memeriksa pembayaran: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final result = _result == null
+        ? null
+        : state.guardBookings
+                  .where(
+                    (booking) => booking.ticketNumber == _result!.ticketNumber,
+                  )
+                  .firstOrNull ??
+              _result;
     return GuardShell(
       currentIndex: 0,
       child: _GuardSubPage(
@@ -15636,9 +18381,9 @@ class _GuardCheckPaymentScreenState
                 ),
                 const SizedBox(height: 18),
                 PrimaryButton(
-                  label: 'Cek Status Pembayaran',
+                  label: _isChecking ? 'Memeriksa...' : 'Cek Status Pembayaran',
                   icon: Icons.search_rounded,
-                  onPressed: _checkPayment,
+                  onPressed: _isChecking ? null : _checkPayment,
                 ),
               ],
             ),
@@ -15651,37 +18396,31 @@ class _GuardCheckPaymentScreenState
               message: _errorMessage!,
             ),
           ],
-          if (_result != null) ...[
+          if (result != null) ...[
             const SizedBox(height: 14),
             PremiumCard(
               accent: AppTheme.blueSoft,
               child: Column(
                 children: [
-                  SummaryRow(
-                    label: 'Nomor tiket',
-                    value: _result!.ticketNumber,
-                  ),
-                  SummaryRow(
-                    label: 'Nama lokasi',
-                    value: _result!.locationName,
-                  ),
+                  SummaryRow(label: 'Nomor tiket', value: result.ticketNumber),
+                  SummaryRow(label: 'Nama lokasi', value: result.locationName),
                   SummaryRow(
                     label: 'Plat kendaraan',
-                    value: _result!.plateNumber,
+                    value: result.plateNumber,
                   ),
                   SummaryRow(
                     label: 'Total bayar',
-                    value: formatCurrency(_result!.estimatedCost),
+                    value: formatCurrency(result.estimatedCost),
                     valueColor: AppTheme.blue,
                   ),
                   SummaryRow(
                     label: 'Metode pembayaran',
-                    value: _paymentMethodLabel(_result!.paymentMethod),
+                    value: _paymentMethodLabel(result.paymentMethod),
                   ),
                   SummaryRow(
                     label: 'Status pembayaran',
-                    value: _result!.isPaid ? 'Sudah Bayar' : 'Belum Bayar',
-                    valueColor: _result!.isPaid
+                    value: result.isPaid ? 'Sudah Bayar' : 'Belum Bayar',
+                    valueColor: result.isPaid
                         ? AppTheme.emerald
                         : const Color(0xFFD97706),
                   ),
@@ -15802,20 +18541,87 @@ ParkingLot? _selectedGuardLot(AppState state) {
   return null;
 }
 
-class GuardVehiclesScreen extends ConsumerWidget {
+class GuardVehiclesScreen extends ConsumerStatefulWidget {
   const GuardVehiclesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GuardVehiclesScreen> createState() =>
+      _GuardVehiclesScreenState();
+}
+
+class _GuardVehiclesScreenState extends ConsumerState<GuardVehiclesScreen> {
+  final Set<String> _confirmingCashTickets = {};
+  bool _isRefreshing = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_refresh);
+  }
+
+  Future<void> _refresh() async {
+    if (_isRefreshing) return;
+    setState(() {
+      _isRefreshing = true;
+      _loadError = null;
+    });
+    try {
+      final controller = ref.read(appControllerProvider.notifier);
+      if (activeGuard(ref.read(appControllerProvider)) == null) {
+        await controller.loadCurrentGuardFromSupabase();
+      }
+      await controller.loadGuardBookingsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Gagal memuat kendaraan aktif: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
+  }
+
+  Future<void> _confirmCash(Booking booking) async {
+    setState(() => _confirmingCashTickets.add(booking.ticketNumber));
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .confirmOperatorCashPaymentForBooking(booking);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Pembayaran tunai ${booking.ticketNumber} berhasil dikonfirmasi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Konfirmasi tunai ditolak: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _confirmingCashTickets.remove(booking.ticketNumber));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(appControllerProvider);
     final selectedLot = _selectedGuardLot(state);
+    final assignedLots = visibleLotsFor(state);
     final guard = activeGuard(state);
     final canConfirmCash = guard?.canConfirmCash ?? false;
-    final activeBooking = state.activeBooking;
-    final booking =
-        selectedLot == null || activeBooking?.locationName == selectedLot.name
-        ? activeBooking
-        : null;
+    final bookings = state.guardBookings.where((booking) {
+      if (selectedLot == null) return true;
+      return booking.parkingLotId == selectedLot.id ||
+          (booking.parkingLotId == null &&
+              booking.locationName == selectedLot.name);
+    }).toList();
     return GuardShell(
       currentIndex: 2,
       child: ListView(
@@ -15824,10 +18630,63 @@ class GuardVehiclesScreen extends ConsumerWidget {
           HeaderSection(
             title: 'Kendaraan aktif',
             subtitle:
-                'Verifikasi masuk, keluar, dan status pembayaran pelanggan.',
+                '${bookings.length} booking operasional pada lokasi tugas.',
           ),
           const SizedBox(height: 18),
-          if (booking == null)
+          if (assignedLots.isNotEmpty) ...[
+            DropdownButtonFormField<String>(
+              initialValue: selectedLot?.id,
+              decoration: const InputDecoration(
+                labelText: 'Lokasi tugas',
+                prefixIcon: Icon(Icons.local_parking_rounded),
+              ),
+              items: [
+                for (final lot in assignedLots)
+                  DropdownMenuItem(value: lot.id, child: Text(lot.name)),
+              ],
+              onChanged: (lotId) {
+                final lot = assignedLots
+                    .where((item) => item.id == lotId)
+                    .firstOrNull;
+                if (lot != null) {
+                  ref.read(appControllerProvider.notifier).selectLot(lot);
+                }
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (_loadError != null) ...[
+            InlineNotice(
+              icon: Icons.wifi_off_rounded,
+              accent: const Color(0xFFD97706),
+              message: _loadError!,
+            ),
+            const SizedBox(height: 14),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  selectedLot?.name ?? 'Semua lokasi tugas',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Muat ulang kendaraan',
+                onPressed: _isRefreshing ? null : _refresh,
+                icon: _isRefreshing
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (bookings.isEmpty)
             EmptyStateCard(
               title: 'Belum ada kendaraan aktif',
               body: selectedLot == null
@@ -15837,55 +18696,62 @@ class GuardVehiclesScreen extends ConsumerWidget {
               onPressed: () => context.push('/guard/scan-qr'),
             )
           else
-            PremiumCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SummaryRow(label: 'Tiket', value: booking.ticketNumber),
-                  SummaryRow(label: 'Plat nomor', value: booking.plateNumber),
-                  SummaryRow(label: 'Lokasi', value: booking.locationName),
-                  SummaryRow(label: 'Slot', value: booking.slotCode),
-                  SummaryRow(
-                    label: 'Pembayaran',
-                    value: booking.isPaid ? 'Lunas' : 'Belum lunas',
-                    valueColor: booking.isPaid
-                        ? AppTheme.emerald
-                        : const Color(0xFFD97706),
+            ...bookings.map(
+              (booking) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: PremiumCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SummaryRow(label: 'Tiket', value: booking.ticketNumber),
+                      SummaryRow(
+                        label: 'Plat nomor',
+                        value: booking.plateNumber,
+                      ),
+                      SummaryRow(label: 'Lokasi', value: booking.locationName),
+                      SummaryRow(label: 'Slot', value: booking.slotCode),
+                      SummaryRow(
+                        label: 'Status',
+                        value: _guardBookingStatusLabel(booking.status),
+                        valueColor: booking.isPaid
+                            ? AppTheme.emerald
+                            : const Color(0xFFD97706),
+                      ),
+                      const SizedBox(height: 16),
+                      PrimaryButton(
+                        label: 'Chat Customer',
+                        icon: Icons.chat_bubble_rounded,
+                        onPressed: () {
+                          final roomId = ref
+                              .read(appControllerProvider.notifier)
+                              .createCustomerChatRoomForBooking(booking);
+                          context.push('/guard/chat-room?roomId=$roomId');
+                        },
+                      ),
+                      if (booking.status == BookingStatus.pendingPayment) ...[
+                        const SizedBox(height: 10),
+                        SecondaryButton(
+                          label:
+                              _confirmingCashTickets.contains(
+                                booking.ticketNumber,
+                              )
+                              ? 'Mengonfirmasi...'
+                              : canConfirmCash
+                              ? 'Konfirmasi pembayaran tunai'
+                              : 'Tidak punya izin tunai',
+                          icon: Icons.payments_rounded,
+                          onPressed:
+                              !canConfirmCash ||
+                                  _confirmingCashTickets.contains(
+                                    booking.ticketNumber,
+                                  )
+                              ? null
+                              : () => _confirmCash(booking),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  PrimaryButton(
-                    label: 'Chat Customer',
-                    icon: Icons.chat_bubble_rounded,
-                    onPressed: () {
-                      final roomId = ref
-                          .read(appControllerProvider.notifier)
-                          .createCustomerChatRoomForBooking(booking);
-                      context.push('/guard/chat-room?roomId=$roomId');
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  SecondaryButton(
-                    label: canConfirmCash
-                        ? 'Konfirmasi pembayaran tunai'
-                        : 'Tidak punya izin tunai',
-                    icon: Icons.payments_rounded,
-                    onPressed: booking.isPaid || !canConfirmCash
-                        ? null
-                        : () async {
-                            await ref
-                                .read(appControllerProvider.notifier)
-                                .payBooking(PaymentMethod.cash);
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Pembayaran tunai berhasil dikonfirmasi.',
-                                ),
-                              ),
-                            );
-                          },
-                  ),
-                ],
+                ),
               ),
             ),
         ],
@@ -15894,24 +18760,64 @@ class GuardVehiclesScreen extends ConsumerWidget {
   }
 }
 
-class GuardChatListScreen extends ConsumerWidget {
+String _guardBookingStatusLabel(BookingStatus status) => switch (status) {
+  BookingStatus.pendingPayment => 'Menunggu pembayaran',
+  BookingStatus.paid => 'Lunas, menunggu masuk',
+  BookingStatus.active => 'Sedang parkir',
+  BookingStatus.completed => 'Selesai',
+  BookingStatus.cancelled => 'Dibatalkan',
+};
+
+class GuardChatListScreen extends ConsumerStatefulWidget {
   const GuardChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(appControllerProvider);
-    ChatRoom? roomById(String id) {
-      for (final room in state.guardChatRooms) {
-        if (room.id == id) {
-          return room;
-        }
-      }
-      return null;
-    }
+  ConsumerState<GuardChatListScreen> createState() =>
+      _GuardChatListScreenState();
+}
 
-    final customerRoom = roomById('guard-customer-tkt-1002');
-    final providerRoom = roomById('guard-provider-main');
-    final adminRoom = roomById('guard-admin-app');
+class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
+  bool _isLoading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_loadChatData());
+    });
+  }
+
+  Future<void> _loadChatData() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    final controller = ref.read(appControllerProvider.notifier);
+    controller.startChatRoomsRealtime(AccountMode.parkingGuard);
+    try {
+      await controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard);
+      await controller.loadCurrentUserComplaintsFromSupabase();
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loadError = 'Chat gagal dimuat: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    final rooms = [...state.guardChatRooms]
+      ..removeWhere((room) => _isDemoChatRoomId(room.id))
+      ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return GuardShell(
       currentIndex: 3,
       child: ListView(
@@ -15923,30 +18829,47 @@ class GuardChatListScreen extends ConsumerWidget {
                 'Hubungi customer, penyedia parkir, atau admin aplikasi dari satu tempat.',
           ),
           const SizedBox(height: 18),
-          if (customerRoom != null)
-            _GuardChatCategoryCard(
-              room: customerRoom,
-              icon: Icons.person_rounded,
-              accent: AppTheme.blue,
-              onTap: () =>
-                  context.push('/guard/chat-room?roomId=${customerRoom.id}'),
-            ),
-          if (providerRoom != null)
-            _GuardChatCategoryCard(
-              room: providerRoom,
-              icon: Icons.apartment_rounded,
-              accent: AppTheme.emerald,
-              onTap: () =>
-                  context.push('/guard/chat-room?roomId=${providerRoom.id}'),
-            ),
-          if (adminRoom != null)
-            _GuardChatCategoryCard(
-              room: adminRoom,
-              icon: Icons.support_agent_rounded,
-              accent: const Color(0xFFD97706),
-              actionLabel: 'Kirim komplain',
-              onTap: () => context.push('/guard/complaint'),
-            ),
+          if (_isLoading)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_loadError != null)
+            EmptyStateCard(
+              title: 'Chat gagal dimuat',
+              body: _loadError!,
+              actionLabel: 'Coba lagi',
+              onPressed: _loadChatData,
+            )
+          else if (rooms.isEmpty)
+            EmptyStateCard(
+              title: 'Belum ada chat',
+              body:
+                  'Chat customer, penyedia, dan admin akan tampil setelah ada percakapan aktif.',
+              actionLabel: 'Buat Komplain',
+              onPressed: () => context.push('/guard/complaint'),
+            )
+          else
+            for (final room in rooms)
+              _GuardChatCategoryCard(
+                room: room,
+                icon: _guardChatIcon(room.participantRole),
+                accent: _guardChatAccent(room.participantRole),
+                onTap: () => context.push('/guard/chat-room?roomId=${room.id}'),
+              ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              final roomId = ref
+                  .read(appControllerProvider.notifier)
+                  .createGuardProviderChatRoom();
+              context.push('/guard/chat-room?roomId=$roomId');
+            },
+            icon: const Icon(Icons.apartment_rounded),
+            label: const Text('Chat / Komplain Penyedia'),
+          ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () => context.push('/guard/complaint'),
@@ -15970,7 +18893,7 @@ class GuardChatListScreen extends ConsumerWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  complaint.title,
+                                  'Laporan penjaga: ${complaint.category}',
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
@@ -15983,10 +18906,18 @@ class GuardChatListScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${complaint.category} - Prioritas ${complaint.priority}',
+                            '${complaint.title} - Prioritas ${complaint.priority}',
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: AppTheme.slate, height: 1.4),
                           ),
+                          if (complaint.reply != null) ...[
+                            const SizedBox(height: 10),
+                            InlineNotice(
+                              icon: Icons.reply_rounded,
+                              accent: AppTheme.emerald,
+                              message: 'Admin: ${complaint.reply!}',
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -16047,25 +18978,39 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
       if (!mounted) {
         return;
       }
-      ref
-          .read(appControllerProvider.notifier)
-          .replaceChatMessagesFromSupabase(
-            mode: AccountMode.parkingGuard,
-            roomId: widget.roomId,
-            messages: messages,
-          );
+      final controller = ref.read(appControllerProvider.notifier);
+      controller.replaceChatMessagesFromSupabase(
+        mode: AccountMode.parkingGuard,
+        roomId: widget.roomId,
+        messages: messages,
+      );
+      controller.markChatRoomReadForMode(
+        mode: AccountMode.parkingGuard,
+        roomId: widget.roomId,
+      );
+      unawaited(controller.loadChatRoomsFromSupabase(AccountMode.parkingGuard));
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) {
       return;
     }
-    ref
-        .read(appControllerProvider.notifier)
-        .sendGuardMessage(roomId: widget.roomId, message: text);
     _messageController.clear();
+    try {
+      await ref
+          .read(appControllerProvider.notifier)
+          .sendGuardMessage(roomId: widget.roomId, message: text);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Chat gagal tersimpan ke Supabase: $error')),
+      );
+    }
   }
 
   @override
@@ -16182,7 +19127,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
                     minLines: 1,
                     maxLines: 4,
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: (_) => unawaited(_sendMessage()),
                     decoration: const InputDecoration(
                       hintText: 'Tulis pesan...',
                       prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
@@ -16194,7 +19139,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
                   width: 52,
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _sendMessage,
+                    onPressed: () => unawaited(_sendMessage()),
                     style: ElevatedButton.styleFrom(
                       padding: EdgeInsets.zero,
                       backgroundColor: AppTheme.blue,
@@ -16413,14 +19358,12 @@ class _GuardChatCategoryCard extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.onTap,
-    this.actionLabel = 'Buka chat',
   });
 
   final ChatRoom room;
   final IconData icon;
   final Color accent;
   final VoidCallback onTap;
-  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -16489,7 +19432,7 @@ class _GuardChatCategoryCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${_guardChatTimeLabel(room.lastMessageAt)} - $actionLabel',
+                      '${_guardChatTimeLabel(room.lastMessageAt)} - Buka chat',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontWeight: FontWeight.w700,
@@ -16681,8 +19624,9 @@ class GuardProfileScreen extends ConsumerWidget {
             label: 'Logout',
             icon: Icons.logout_rounded,
             color: AppTheme.ink,
-            onPressed: () {
-              ref.read(appControllerProvider.notifier).logout();
+            onPressed: () async {
+              await ref.read(appControllerProvider.notifier).logout();
+              if (!context.mounted) return;
               context.go('/login');
             },
           ),
@@ -16692,7 +19636,7 @@ class GuardProfileScreen extends ConsumerWidget {
   }
 }
 
-class CustomerShell extends StatelessWidget {
+class CustomerShell extends ConsumerWidget {
   const CustomerShell({
     super.key,
     required this.currentIndex,
@@ -16705,22 +19649,26 @@ class CustomerShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.customer,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.home_rounded,
           route: '/customer/home',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Map',
           icon: Icons.map_rounded,
           route: '/customer/map',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Tiket',
           icon: Icons.confirmation_num_rounded,
           route: '/customer/tickets',
@@ -16729,8 +19677,9 @@ class CustomerShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/customer/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/customer/profile',
@@ -16741,7 +19690,7 @@ class CustomerShell extends StatelessWidget {
   }
 }
 
-class AdminShell extends StatelessWidget {
+class AdminShell extends ConsumerWidget {
   const AdminShell({
     super.key,
     required this.currentIndex,
@@ -16754,22 +19703,26 @@ class AdminShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.provider,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.space_dashboard_rounded,
           route: '/provider/dashboard',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Map',
           icon: Icons.map_rounded,
           route: '/provider/map',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Monitor',
           icon: Icons.radar_rounded,
           route: '/provider/monitoring',
@@ -16778,8 +19731,9 @@ class AdminShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/provider/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/provider/profile',
@@ -16809,6 +19763,7 @@ class SuperAdminShell extends ConsumerWidget {
     final waitingComplaints = state.complaints
         .where((complaint) => complaint.status == ComplaintStatus.waiting)
         .length;
+    final chatUnread = unreadChatCountFor(state, AccountMode.superAdmin);
     return AppShell(
       currentIndex: currentIndex,
       destinations: [
@@ -16834,10 +19789,11 @@ class SuperAdminShell extends ConsumerWidget {
           route: '/super-admin/complaints',
           badgeCount: waitingComplaints,
         ),
-        const ShellDestination(
+        ShellDestination(
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/super-admin/chat',
+          badgeCount: chatUnread,
         ),
         const ShellDestination(
           label: 'Profil',
@@ -16850,7 +19806,7 @@ class SuperAdminShell extends ConsumerWidget {
   }
 }
 
-class GuardShell extends StatelessWidget {
+class GuardShell extends ConsumerWidget {
   const GuardShell({
     super.key,
     required this.currentIndex,
@@ -16863,22 +19819,26 @@ class GuardShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chatUnread = unreadChatCountFor(
+      ref.watch(appControllerProvider),
+      AccountMode.parkingGuard,
+    );
     return AppShell(
       currentIndex: currentIndex,
       floatingActionButton: floatingActionButton,
-      destinations: const [
-        ShellDestination(
+      destinations: [
+        const ShellDestination(
           label: 'Home',
           icon: Icons.space_dashboard_rounded,
           route: '/guard/dashboard',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Scan',
           icon: Icons.qr_code_scanner_rounded,
           route: '/guard/scan-qr',
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Kendaraan',
           icon: Icons.directions_car_rounded,
           route: '/guard/vehicles',
@@ -16887,8 +19847,9 @@ class GuardShell extends StatelessWidget {
           label: 'Chat',
           icon: Icons.chat_bubble_rounded,
           route: '/guard/chat',
+          badgeCount: chatUnread,
         ),
-        ShellDestination(
+        const ShellDestination(
           label: 'Profil',
           icon: Icons.person_rounded,
           route: '/guard/profile',
@@ -17266,14 +20227,16 @@ class RoleSelectionCards extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.allowedModes,
   });
 
   final AccountMode value;
   final ValueChanged<AccountMode> onChanged;
+  final List<AccountMode>? allowedModes;
 
   @override
   Widget build(BuildContext context) {
-    const roles = [
+    const roleOptions = [
       (
         mode: AccountMode.customer,
         title: 'Pelanggan',
@@ -17299,6 +20262,11 @@ class RoleSelectionCards extends StatelessWidget {
         accent: AppTheme.ink,
       ),
     ];
+    final roles = allowedModes == null
+        ? roleOptions
+        : roleOptions
+              .where((role) => allowedModes!.contains(role.mode))
+              .toList();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -17515,6 +20483,8 @@ class ParkingLotCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ParkingLotPhoto(lot: lot, height: 150),
+          const SizedBox(height: 16),
           Row(
             children: [
               Container(
@@ -17568,7 +20538,7 @@ class ParkingLotCard extends StatelessWidget {
               Expanded(
                 child: MetricColumn(
                   label: 'Harga',
-                  value: '${formatCurrency(lot.pricePerHour)}/jam',
+                  value: parkingRateLabel(lot),
                 ),
               ),
               Expanded(
@@ -17606,6 +20576,126 @@ class ParkingLotCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class ParkingLotPhoto extends StatelessWidget {
+  const ParkingLotPhoto({
+    super.key,
+    required this.lot,
+    required this.height,
+    this.borderRadius = const BorderRadius.all(Radius.circular(18)),
+  });
+
+  final ParkingLot lot;
+  final double height;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final photoUrl = lot.photoLabel?.trim();
+    final hasNetworkPhoto =
+        photoUrl != null &&
+        photoUrl.isNotEmpty &&
+        (photoUrl.startsWith('http://') || photoUrl.startsWith('https://'));
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: SizedBox(
+        width: double.infinity,
+        height: height,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (lot.photoBytes != null)
+              Image.memory(lot.photoBytes!, fit: BoxFit.cover)
+            else if (hasNetworkPhoto)
+              Image.network(
+                photoUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _ParkingLotPhotoFallback(lot: lot),
+              )
+            else
+              _ParkingLotPhotoFallback(lot: lot),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.32),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              left: 14,
+              bottom: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.48),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.local_parking_rounded,
+                      color: AppTheme.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${lot.availableSlots}/${lot.totalSlots} slot',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppTheme.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ParkingLotPhotoFallback extends StatelessWidget {
+  const _ParkingLotPhotoFallback({required this.lot});
+
+  final ParkingLot lot;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            lot.accent.withValues(alpha: 0.9),
+            AppTheme.blueSoft,
+            AppTheme.white,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.local_parking_rounded,
+          size: 64,
+          color: AppTheme.white.withValues(alpha: 0.92),
+        ),
       ),
     );
   }

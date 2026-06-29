@@ -6,6 +6,7 @@ class SupabaseReceiptRecord {
   const SupabaseReceiptRecord({
     required this.receiptNumber,
     required this.ticketNumber,
+    this.qrPayload,
     required this.locationName,
     required this.plateNumber,
     required this.paymentStatus,
@@ -16,6 +17,7 @@ class SupabaseReceiptRecord {
 
   final String receiptNumber;
   final String ticketNumber;
+  final String? qrPayload;
   final String locationName;
   final String plateNumber;
   final String paymentStatus;
@@ -46,13 +48,18 @@ class SupabasePaymentService {
     required Booking booking,
     required PaymentMethod method,
   }) async {
-    final response = await _client.functions.invoke(
-      'create-midtrans-payment',
-      body: {
-        'ticketNumber': booking.ticketNumber,
-        'method': _methodToDb(method),
-      },
-    );
+    final FunctionResponse response;
+    try {
+      response = await _client.functions.invoke(
+        'create-midtrans-payment',
+        body: {
+          'ticketNumber': booking.ticketNumber,
+          'method': _methodToDb(method),
+        },
+      );
+    } catch (_) {
+      return null;
+    }
 
     final data = response.data;
     if (data is! Map) {
@@ -73,70 +80,52 @@ class SupabasePaymentService {
     );
   }
 
-  Future<void> payCurrentCustomerBooking({
-    required Booking booking,
-    required PaymentMethod method,
-  }) async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      return;
-    }
-
-    final customerId = await _currentCustomerId(user.id);
-    if (customerId == null) {
-      return;
-    }
-
-    final bookingRow = await _client
-        .from('bookings')
-        .select('id')
-        .eq('ticket_number', booking.ticketNumber)
-        .eq('customer_id', customerId)
-        .limit(1)
-        .maybeSingle();
-
-    if (bookingRow == null) {
-      return;
-    }
-
-    final bookingId = bookingRow['id'] as String;
-    final now = DateTime.now();
-    final paymentRow = await _client
-        .from('payments')
-        .insert({
-          'booking_id': bookingId,
-          'customer_id': customerId,
-          'method': _methodToDb(method),
-          'status': 'paid',
-          'amount': booking.estimatedCost,
-          'provider_reference': 'DEMO-${booking.ticketNumber}',
-          'paid_at': now.toIso8601String(),
-        })
-        .select('id')
-        .single();
-
-    await _client
-        .from('bookings')
-        .update({'status': 'paid', 'final_cost': booking.estimatedCost})
-        .eq('id', bookingId);
-
-    await _createReceiptIfAvailable(
-      bookingId: bookingId,
-      paymentId: paymentRow['id'] as String,
-      ticketNumber: booking.ticketNumber,
-      issuedBy: user.id,
+  Future<void> confirmCurrentOperatorCashPayment(String ticketNumber) async {
+    final rows = await _client.rpc(
+      'app_operator_confirm_cash_payment',
+      params: {'p_ticket_number': ticketNumber},
     );
+    if (rows is! List || rows.isEmpty) {
+      throw StateError('RPC pembayaran tunai tidak mengembalikan hasil.');
+    }
   }
 
-  Future<SupabaseReceiptRecord?> fetchLatestReceipt() async {
+  Future<bool> simulateCurrentCustomerPayment(String ticketNumber) async {
     try {
+      final rows = await _client.rpc(
+        'app_simulate_customer_payment',
+        params: {'p_ticket_number': ticketNumber},
+      );
+      return rows is List && rows.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<SupabaseReceiptRecord?> fetchReceipt({String? ticketNumber}) async {
+    try {
+      String? bookingId;
+      if (ticketNumber != null && ticketNumber.trim().isNotEmpty) {
+        final booking = await _client
+            .from('bookings')
+            .select('id')
+            .eq('ticket_number', ticketNumber.trim())
+            .limit(1)
+            .maybeSingle();
+        bookingId = booking?['id'] as String?;
+        if (bookingId == null) {
+          return null;
+        }
+      }
+
       final rows = await _client
           .from('receipts')
           .select(
             'receipt_number, issued_at, '
-            'bookings(ticket_number, estimated_cost, final_cost, parking_lots(name), vehicles(plate_number)), '
+            'bookings(ticket_number, qr_payload, estimated_cost, final_cost, parking_lots(name), vehicles(plate_number)), '
             'payments(method, status, amount)',
           )
+          .match(bookingId == null ? const {} : {'booking_id': bookingId})
           .order('issued_at', ascending: false)
           .limit(1);
 
@@ -150,40 +139,6 @@ class SupabasePaymentService {
         return null;
       }
       rethrow;
-    }
-  }
-
-  Future<String?> _currentCustomerId(String profileId) async {
-    final rows = await _client
-        .from('customers')
-        .select('id')
-        .eq('profile_id', profileId)
-        .limit(1);
-
-    if (rows.isEmpty) {
-      return null;
-    }
-
-    return rows.first['id'] as String?;
-  }
-
-  Future<void> _createReceiptIfAvailable({
-    required String bookingId,
-    required String paymentId,
-    required String ticketNumber,
-    required String issuedBy,
-  }) async {
-    try {
-      await _client.from('receipts').upsert({
-        'booking_id': bookingId,
-        'payment_id': paymentId,
-        'receipt_number': 'RCT-$ticketNumber',
-        'issued_by': issuedBy,
-      }, onConflict: 'booking_id');
-    } on PostgrestException catch (error) {
-      if (!_isMissingReceiptsTable(error)) {
-        rethrow;
-      }
     }
   }
 
@@ -203,6 +158,7 @@ class SupabasePaymentService {
     return SupabaseReceiptRecord(
       receiptNumber: row['receipt_number'] as String? ?? '-',
       ticketNumber: booking?['ticket_number'] as String? ?? '-',
+      qrPayload: booking?['qr_payload'] as String?,
       locationName: _nestedValue(booking, 'parking_lots', 'name') ?? '-',
       plateNumber: _nestedValue(booking, 'vehicles', 'plate_number') ?? '-',
       paymentStatus: _paymentStatusLabel(payment?['status'] as String?),

@@ -14,12 +14,12 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const serviceRoleKey =
-      Deno.env.get("SERVICE_ROLE_KEY") ??
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const midtransServerKey = Deno.env.get("MIDTRANS_SERVER_KEY");
     const isProduction = Deno.env.get("MIDTRANS_IS_PRODUCTION") === "true";
-    const finishUrl = Deno.env.get("APP_PAYMENT_FINISH_URL") ?? "";
+    const finishUrl = Deno.env.get("APP_PAYMENT_FINISH_URL") ??
+      "parkircepat://payment-finish";
     const authorization = req.headers.get("Authorization");
 
     if (
@@ -65,7 +65,9 @@ Deno.serve(async (req) => {
 
     const { data: booking, error: bookingError } = await adminClient
       .from("bookings")
-      .select("id, ticket_number, customer_id, estimated_cost, status")
+      .select(
+        "id, ticket_number, customer_id, estimated_cost, status, created_at, payments(amount, status)",
+      )
       .eq("ticket_number", ticketNumber)
       .eq("customer_id", customer.id)
       .single();
@@ -74,16 +76,32 @@ Deno.serve(async (req) => {
       return json({ error: "Booking was not found." }, 404);
     }
 
-    if (booking.status !== "pending_payment") {
-      return json({ error: "Booking is not waiting for payment." }, 400);
+    if (!["pending_payment", "paid", "active"].includes(booking.status)) {
+      return json({ error: "Booking is not payable." }, 400);
     }
 
-    const amount = Number(booking.estimated_cost ?? 0);
+    const expiresAt = new Date(booking.created_at).getTime() + 30 * 60 * 1000;
+    if (
+      booking.status === "pending_payment" &&
+      (!Number.isFinite(expiresAt) || Date.now() >= expiresAt)
+    ) {
+      return json({ error: "Booking reservation has expired." }, 410);
+    }
+
+    const amount = Math.max(
+      0,
+      Number(booking.estimated_cost ?? 0) - paidAmount(booking.payments),
+    );
     if (!Number.isFinite(amount) || amount <= 0) {
       return json({ error: "Invalid payment amount." }, 400);
     }
 
     const orderId = `PC-${booking.ticket_number}-${Date.now()}`;
+    const finishCallbackUrl = paymentFinishUrl(finishUrl, {
+      ticket: booking.ticket_number,
+      order_id: orderId,
+      method,
+    });
     const { data: payment, error: paymentError } = await adminClient
       .from("payments")
       .insert({
@@ -130,7 +148,9 @@ Deno.serve(async (req) => {
           email: profile.email ?? user.email,
           phone: profile.phone_number ?? undefined,
         },
-        callbacks: finishUrl ? { finish: finishUrl } : undefined,
+        callbacks: finishCallbackUrl
+          ? { finish: finishCallbackUrl }
+          : undefined,
       }),
     });
 
@@ -153,7 +173,10 @@ Deno.serve(async (req) => {
       redirectUrl: snapBody.redirect_url,
     });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error" },
+      500,
+    );
   }
 });
 
@@ -170,8 +193,47 @@ function paymentMethod(value: string) {
 
 function map(value: unknown) {
   return value && typeof value === "object"
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : {};
+}
+
+function paidAmount(value: unknown) {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+
+  return value.reduce((total, item) => {
+    const payment = map(item);
+    if (payment.status !== "paid") {
+      return total;
+    }
+    const amount = Number(payment.amount ?? 0);
+    return Number.isFinite(amount) ? total + amount : total;
+  }, 0);
+}
+
+function paymentFinishUrl(
+  baseUrl: string,
+  params: Record<string, string>,
+) {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const url = new URL(trimmed);
+    for (const [key, value] of Object.entries(params)) {
+      if (value) {
+        url.searchParams.set(key, value);
+      }
+    }
+    return url.toString();
+  } catch {
+    const separator = trimmed.includes("?") ? "&" : "?";
+    const query = new URLSearchParams(params).toString();
+    return `${trimmed}${separator}${query}`;
+  }
 }
 
 function json(body: Record<string, unknown>, status = 200) {

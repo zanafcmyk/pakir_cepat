@@ -14,8 +14,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    const serviceRoleKey =
-      Deno.env.get("SERVICE_ROLE_KEY") ??
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const authorization = req.headers.get("Authorization");
 
@@ -67,22 +66,33 @@ Deno.serve(async (req) => {
       callerProfile?.account_status !== "verified" ||
       callerProfile?.access_status !== "active"
     ) {
-      return json({ error: "Only active verified providers can create guards." }, 403);
+      return json({
+        error: "Only active verified providers can create guards.",
+      }, 403);
     }
 
-    const { data: created, error: createError } =
-      await adminClient.auth.admin.createUser({
+    const { data: created, error: createError } = await adminClient.auth.admin
+      .createUser({
         email,
         password,
         email_confirm: true,
         user_metadata: { full_name: name, role: "parking_guard" },
       });
 
-    if (createError && !createError.message.toLowerCase().includes("already")) {
+    if (createError) {
+      if (createError.message.toLowerCase().includes("already")) {
+        return json(
+          {
+            error:
+              "Email ini sudah dipakai. Buat email login baru khusus penjaga.",
+          },
+          400,
+        );
+      }
       return json({ error: createError.message }, 400);
     }
 
-    const guardUser = created.user ?? (await findUserByEmail(adminClient, email));
+    const guardUser = created.user;
     if (!guardUser) {
       return json({ error: "Guard Auth user could not be created." }, 400);
     }
@@ -134,18 +144,15 @@ Deno.serve(async (req) => {
 
     return json({ guard: guardRows?.[0] ?? null });
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Error" }, 500);
+    return json(
+      { error: error instanceof Error ? error.message : "Error" },
+      500,
+    );
   }
 });
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-async function findUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
-  const { data, error } = await adminClient.auth.admin.listUsers();
-  if (error) return null;
-  return data.users.find((user) => user.email?.toLowerCase() === email) ?? null;
 }
 
 function json(body: Record<string, unknown>, status = 200) {

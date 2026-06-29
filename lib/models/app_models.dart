@@ -8,7 +8,7 @@ enum AccountStatus { pending, verified, rejected }
 
 enum VehicleKind { motor, mobil, truk }
 
-enum ParkingTariffType { hourly, flat, daily, progressive }
+enum ParkingTariffType { hourly, flat, daily }
 
 enum PaymentMethod { qris, ewallet, cash }
 
@@ -156,24 +156,32 @@ class Vehicle {
 
 class Booking {
   const Booking({
+    this.parkingLotId,
     required this.ticketNumber,
+    this.qrPayload,
     required this.slotCode,
     required this.locationName,
     required this.plateNumber,
     required this.vehicleLabel,
     required this.entryTime,
+    required this.durationHours,
     required this.estimatedCost,
+    this.amountDue = 0,
     required this.paymentMethod,
     required this.status,
   });
 
+  final String? parkingLotId;
   final String ticketNumber;
+  final String? qrPayload;
   final String slotCode;
   final String locationName;
   final String plateNumber;
   final String vehicleLabel;
   final DateTime entryTime;
+  final int durationHours;
   final int estimatedCost;
+  final int amountDue;
   final PaymentMethod paymentMethod;
   final BookingStatus status;
 
@@ -186,24 +194,32 @@ class Booking {
       status == BookingStatus.paid || status == BookingStatus.active;
 
   Booking copyWith({
+    String? parkingLotId,
     String? ticketNumber,
+    String? qrPayload,
     String? slotCode,
     String? locationName,
     String? plateNumber,
     String? vehicleLabel,
     DateTime? entryTime,
+    int? durationHours,
     int? estimatedCost,
+    int? amountDue,
     PaymentMethod? paymentMethod,
     BookingStatus? status,
   }) {
     return Booking(
+      parkingLotId: parkingLotId ?? this.parkingLotId,
       ticketNumber: ticketNumber ?? this.ticketNumber,
+      qrPayload: qrPayload ?? this.qrPayload,
       slotCode: slotCode ?? this.slotCode,
       locationName: locationName ?? this.locationName,
       plateNumber: plateNumber ?? this.plateNumber,
       vehicleLabel: vehicleLabel ?? this.vehicleLabel,
       entryTime: entryTime ?? this.entryTime,
+      durationHours: durationHours ?? this.durationHours,
       estimatedCost: estimatedCost ?? this.estimatedCost,
+      amountDue: amountDue ?? this.amountDue,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       status: status ?? this.status,
     );
@@ -503,6 +519,7 @@ class Complaint {
     required this.priority,
     required this.status,
     required this.createdAt,
+    this.reply,
   });
 
   final String id;
@@ -514,6 +531,7 @@ class Complaint {
   final String priority;
   final String status;
   final DateTime createdAt;
+  final String? reply;
 }
 
 class ProviderApplication {

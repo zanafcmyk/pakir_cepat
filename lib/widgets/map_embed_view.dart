@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import 'map_embed_view_platform.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class MapEmbedView extends StatelessWidget {
   const MapEmbedView({
@@ -23,71 +22,111 @@ class MapEmbedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (supportsMapIframe && _canEmbedMap(embedUrl)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: SizedBox(
-          height: height,
-          width: double.infinity,
-          child: buildPlatformMapEmbed(embedUrl),
+    final center = LatLng(latitude, longitude);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: center,
+                initialZoom: 15,
+                interactionOptions: const InteractionOptions(
+                  flags:
+                      InteractiveFlag.drag |
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ti23a4.parkircepat',
+                  retinaMode: RetinaMode.isHighDensity(context),
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: center,
+                      width: 56,
+                      height: 56,
+                      child: const _MapPin(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.94),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_rounded,
+                            color: Color(0xFF1F6BFF),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _locationText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-      );
-    }
-
-    return Container(
-      height: height,
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F7FB),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.map_rounded, color: Color(0xFF1F6BFF), size: 34),
-          const Spacer(),
-          Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _fallbackLocationText,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF64748B),
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 44,
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _openGoogleMaps(latitude, longitude),
-              icon: const Icon(Icons.open_in_new_rounded, size: 18),
-              label: const Text('Buka di Google Maps'),
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  bool _canEmbedMap(String value) {
-    return value.startsWith('https://www.google.com/maps/embed?') ||
-        (value.startsWith('https://maps.google.com/maps?') &&
-            value.contains('output=embed'));
-  }
-
-  String get _fallbackLocationText {
+  String get _locationText {
     final query = _mapSearchQuery;
     if (query != null && query.isNotEmpty) {
       return query;
     }
-    return 'Latitude: $latitude\nLongitude: $longitude';
+    return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
   }
 
   String? get _mapSearchQuery {
@@ -102,13 +141,32 @@ class MapEmbedView extends StatelessWidget {
     }
     return null;
   }
+}
 
-  Future<void> _openGoogleMaps(double latitude, double longitude) async {
-    final query = _mapSearchQuery;
-    final uri = Uri.https('www.google.com', '/maps/search/', {
-      'api': '1',
-      'query': query == null || query.isEmpty ? '$latitude,$longitude' : query,
-    });
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+class _MapPin extends StatelessWidget {
+  const _MapPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.location_on_rounded,
+          color: Color(0xFF10B981),
+          size: 34,
+        ),
+      ),
+    );
   }
 }
