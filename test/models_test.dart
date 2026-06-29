@@ -82,7 +82,7 @@ void main() {
   });
 
   group('Booking', () {
-    Booking _booking({BookingStatus status = BookingStatus.paid}) => Booking(
+    Booking booking({BookingStatus status = BookingStatus.paid}) => Booking(
       parkingLotId: 'lot-1',
       ticketNumber: 'TKT-ABC123',
       slotCode: 'A-12',
@@ -97,28 +97,28 @@ void main() {
     );
 
     test('isPaid true untuk paid/active/completed', () {
-      expect(_booking(status: BookingStatus.paid).isPaid, isTrue);
-      expect(_booking(status: BookingStatus.active).isPaid, isTrue);
-      expect(_booking(status: BookingStatus.completed).isPaid, isTrue);
+      expect(booking(status: BookingStatus.paid).isPaid, isTrue);
+      expect(booking(status: BookingStatus.active).isPaid, isTrue);
+      expect(booking(status: BookingStatus.completed).isPaid, isTrue);
     });
 
     test('isPaid false untuk pendingPayment dan cancelled', () {
-      expect(_booking(status: BookingStatus.pendingPayment).isPaid, isFalse);
-      expect(_booking(status: BookingStatus.cancelled).isPaid, isFalse);
+      expect(booking(status: BookingStatus.pendingPayment).isPaid, isFalse);
+      expect(booking(status: BookingStatus.cancelled).isPaid, isFalse);
     });
 
     test('canShowTicket hanya untuk paid/active', () {
-      expect(_booking(status: BookingStatus.paid).canShowTicket, isTrue);
-      expect(_booking(status: BookingStatus.active).canShowTicket, isTrue);
-      expect(_booking(status: BookingStatus.completed).canShowTicket, isFalse);
+      expect(booking(status: BookingStatus.paid).canShowTicket, isTrue);
+      expect(booking(status: BookingStatus.active).canShowTicket, isTrue);
+      expect(booking(status: BookingStatus.completed).canShowTicket, isFalse);
       expect(
-        _booking(status: BookingStatus.pendingPayment).canShowTicket,
+        booking(status: BookingStatus.pendingPayment).canShowTicket,
         isFalse,
       );
     });
 
     test('copyWith status dan amountDue', () {
-      final b = _booking();
+      final b = booking();
       final extended = b.copyWith(
         status: BookingStatus.active,
         amountDue: 5000,

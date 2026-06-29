@@ -9,6 +9,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -638,9 +639,15 @@ class _ParkirCepatAppState extends ConsumerState<ParkirCepatApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final selectedLanguage = ref.watch(
+      appControllerProvider.select((state) => state.selectedLanguage),
+    );
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
-      title: 'Parkir Cepat',
+      title: appText(selectedLanguage).appTitle,
+      locale: appLocaleForLanguage(selectedLanguage),
+      supportedLocales: const [Locale('id'), Locale('en')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
       theme: AppTheme.theme,
     );
@@ -1263,6 +1270,136 @@ Color roleAccent(AccountMode mode) => switch (mode) {
   AccountMode.customer => AppTheme.blue,
 };
 
+bool isEnglishLanguage(String language) {
+  return language.trim().toLowerCase().startsWith('english');
+}
+
+Locale appLocaleForLanguage(String language) {
+  return isEnglishLanguage(language) ? const Locale('en') : const Locale('id');
+}
+
+AppPreferenceText appText(String language) {
+  return isEnglishLanguage(language)
+      ? AppPreferenceText.english()
+      : AppPreferenceText.indonesia();
+}
+
+class AppPreferenceText {
+  const AppPreferenceText({
+    required this.appTitle,
+    required this.accountSettingsTitle,
+    required this.notificationSection,
+    required this.accountPreferenceSection,
+    required this.bookingNotification,
+    required this.paymentNotification,
+    required this.promoNotification,
+    required this.appLanguage,
+    required this.accountSecurityMode,
+    required this.accountSecuritySubtitle,
+    required this.saveSettings,
+    required this.saving,
+    required this.saved,
+    required this.customerSettingsFailure,
+    required this.roleSettingsSubtitle,
+    required this.providerSettingsTitle,
+    required this.guardSettingsTitle,
+    required this.providerPrimaryNotification,
+    required this.providerSecondaryNotification,
+    required this.providerReportNotification,
+    required this.guardPrimaryNotification,
+    required this.guardSecondaryNotification,
+    required this.guardReportNotification,
+    required this.roleSettingsFailure,
+  });
+
+  final String appTitle;
+  final String accountSettingsTitle;
+  final String notificationSection;
+  final String accountPreferenceSection;
+  final String bookingNotification;
+  final String paymentNotification;
+  final String promoNotification;
+  final String appLanguage;
+  final String accountSecurityMode;
+  final String accountSecuritySubtitle;
+  final String saveSettings;
+  final String saving;
+  final String saved;
+  final String customerSettingsFailure;
+  final String roleSettingsSubtitle;
+  final String providerSettingsTitle;
+  final String guardSettingsTitle;
+  final String providerPrimaryNotification;
+  final String providerSecondaryNotification;
+  final String providerReportNotification;
+  final String guardPrimaryNotification;
+  final String guardSecondaryNotification;
+  final String guardReportNotification;
+  final String roleSettingsFailure;
+
+  factory AppPreferenceText.indonesia() {
+    return const AppPreferenceText(
+      appTitle: 'Parkir Cepat',
+      accountSettingsTitle: 'Pengaturan Akun',
+      notificationSection: 'Notifikasi',
+      accountPreferenceSection: 'Preferensi akun',
+      bookingNotification: 'Notifikasi booking',
+      paymentNotification: 'Notifikasi pembayaran',
+      promoNotification: 'Notifikasi promo',
+      appLanguage: 'Bahasa aplikasi',
+      accountSecurityMode: 'Mode keamanan akun',
+      accountSecuritySubtitle:
+          'Saat aktif, sesi tersimpan hanya dipulihkan jika Ingat saya juga aktif.',
+      saveSettings: 'Simpan Pengaturan',
+      saving: 'Menyimpan...',
+      saved: 'Pengaturan akun berhasil disimpan.',
+      customerSettingsFailure: 'Gagal menyimpan pengaturan ke Supabase.',
+      roleSettingsSubtitle: 'Preferensi akun ini disimpan di Supabase.',
+      providerSettingsTitle: 'Pengaturan Penyedia',
+      guardSettingsTitle: 'Pengaturan Penjaga',
+      providerPrimaryNotification: 'Notifikasi booking masuk',
+      providerSecondaryNotification: 'Notifikasi pembayaran',
+      providerReportNotification: 'Notifikasi laporan harian',
+      guardPrimaryNotification: 'Notifikasi tugas lokasi',
+      guardSecondaryNotification: 'Notifikasi scan QR',
+      guardReportNotification: 'Notifikasi aktivitas shift',
+      roleSettingsFailure:
+          'Gagal menyimpan pengaturan. Pastikan SQL profile_settings sudah dijalankan.',
+    );
+  }
+
+  factory AppPreferenceText.english() {
+    return const AppPreferenceText(
+      appTitle: 'Fast Parking',
+      accountSettingsTitle: 'Account Settings',
+      notificationSection: 'Notifications',
+      accountPreferenceSection: 'Account preferences',
+      bookingNotification: 'Booking notifications',
+      paymentNotification: 'Payment notifications',
+      promoNotification: 'Promo notifications',
+      appLanguage: 'App language',
+      accountSecurityMode: 'Account security mode',
+      accountSecuritySubtitle:
+          'When enabled, saved sessions are restored only when Remember me is also enabled.',
+      saveSettings: 'Save Settings',
+      saving: 'Saving...',
+      saved: 'Account settings saved.',
+      customerSettingsFailure: 'Failed to save settings to Supabase.',
+      roleSettingsSubtitle: 'These account preferences are stored in Supabase.',
+      providerSettingsTitle: 'Provider Settings',
+      guardSettingsTitle: 'Guard Settings',
+      providerPrimaryNotification: 'Incoming booking notifications',
+      providerSecondaryNotification: 'Payment notifications',
+      providerReportNotification: 'Daily report notifications',
+      guardPrimaryNotification: 'Location task notifications',
+      guardSecondaryNotification: 'QR scan notifications',
+      guardReportNotification: 'Shift activity notifications',
+      roleSettingsFailure:
+          'Failed to save settings. Make sure profile_settings SQL has been run.',
+    );
+  }
+}
+
 AccountStatus accountStatusFromDb(String? value) => switch (value) {
   'verified' => AccountStatus.verified,
   'rejected' => AccountStatus.rejected,
@@ -1407,28 +1544,33 @@ class AppController extends StateNotifier<AppState> {
   static const _lastModeKey = 'parkir_cepat_last_mode';
   static const _lastEmailKey = 'parkir_cepat_last_email';
   static const _lastPhoneKey = 'parkir_cepat_last_phone';
+  static const _selectedLanguageKey = 'parkir_cepat_selected_language';
+  static const _accountSecurityEnabledKey =
+      'parkir_cepat_account_security_enabled';
 
-  final SupabaseChatService _chatService = SupabaseChatService();
-  final SupabaseComplaintService _complaintService = SupabaseComplaintService();
-  final SupabaseCustomerSettingsService _customerSettingsService =
+  late final SupabaseChatService _chatService = SupabaseChatService();
+  late final SupabaseComplaintService _complaintService =
+      SupabaseComplaintService();
+  late final SupabaseCustomerSettingsService _customerSettingsService =
       SupabaseCustomerSettingsService();
-  final SupabaseProfileSettingsService _profileSettingsService =
+  late final SupabaseProfileSettingsService _profileSettingsService =
       SupabaseProfileSettingsService();
-  final SupabaseParkingService _parkingService = SupabaseParkingService();
-  final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
-  final SupabaseBookingService _bookingService = SupabaseBookingService();
-  final SupabasePaymentService _paymentService = SupabasePaymentService();
-  final SupabaseNotificationService _notificationService =
+  late final SupabaseParkingService _parkingService = SupabaseParkingService();
+  late final SupabaseVehicleService _vehicleService = SupabaseVehicleService();
+  late final SupabaseBookingService _bookingService = SupabaseBookingService();
+  late final SupabasePaymentService _paymentService = SupabasePaymentService();
+  late final SupabaseNotificationService _notificationService =
       SupabaseNotificationService();
-  final SupabaseGuardService _guardService = SupabaseGuardService();
-  final SupabaseFavoriteService _favoriteService = SupabaseFavoriteService();
-  final SupabaseProfileService _profileService = SupabaseProfileService();
-  final SupabaseReviewService _reviewService = SupabaseReviewService();
-  final SupabaseSuperAdminService _superAdminService =
+  late final SupabaseGuardService _guardService = SupabaseGuardService();
+  late final SupabaseFavoriteService _favoriteService =
+      SupabaseFavoriteService();
+  late final SupabaseProfileService _profileService = SupabaseProfileService();
+  late final SupabaseReviewService _reviewService = SupabaseReviewService();
+  late final SupabaseSuperAdminService _superAdminService =
       SupabaseSuperAdminService();
   final CustomerLocationService _customerLocationService =
       const CustomerLocationService();
-  final FirebasePushNotificationService _pushNotificationService =
+  late final FirebasePushNotificationService _pushNotificationService =
       FirebasePushNotificationService();
   RealtimeChannel? _parkingSlotRealtimeChannel;
   RealtimeChannel? _parkingLotRealtimeChannel;
@@ -1873,6 +2015,23 @@ class AppController extends StateNotifier<AppState> {
       currentMode: mode,
       email: preferences.getString(_lastEmailKey) ?? state.email,
       phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
+      selectedLanguage:
+          preferences.getString(_selectedLanguageKey) ?? state.selectedLanguage,
+      accountSecurityEnabled:
+          preferences.getBool(_accountSecurityEnabledKey) ??
+          state.accountSecurityEnabled,
+    );
+  }
+
+  Future<void> _saveAccountPreference({
+    required String selectedLanguage,
+    required bool accountSecurityEnabled,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_selectedLanguageKey, selectedLanguage);
+    await preferences.setBool(
+      _accountSecurityEnabledKey,
+      accountSecurityEnabled,
     );
   }
 
@@ -2136,6 +2295,23 @@ class AppController extends StateNotifier<AppState> {
       selectedLanguage: settings.selectedLanguage,
       accountSecurityEnabled: settings.accountSecurityEnabled,
     );
+    await _saveAccountPreference(
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
+  }
+
+  Future<void> loadCurrentProfileSettingsFromSupabase() async {
+    final settings = await _profileSettingsService
+        .fetchCurrentProfileSettings();
+    state = state.copyWith(
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
+    await _saveAccountPreference(
+      selectedLanguage: settings.selectedLanguage,
+      accountSecurityEnabled: settings.accountSecurityEnabled,
+    );
   }
 
   Future<void> submitParkingReview({
@@ -2384,9 +2560,30 @@ class AppController extends StateNotifier<AppState> {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
     final rememberMe = preferences.getBool(_rememberMeKey) ?? (user != null);
+    final selectedLanguage =
+        preferences.getString(_selectedLanguageKey) ?? state.selectedLanguage;
+    final accountSecurityEnabled =
+        preferences.getBool(_accountSecurityEnabledKey) ??
+        state.accountSecurityEnabled;
 
     if (user == null) {
-      state = state.copyWith(isAuthenticated: false, rememberMe: rememberMe);
+      state = state.copyWith(
+        isAuthenticated: false,
+        rememberMe: rememberMe,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
+      );
+      return false;
+    }
+
+    if (accountSecurityEnabled && !rememberMe) {
+      await supabase.auth.signOut();
+      state = state.copyWith(
+        isAuthenticated: false,
+        rememberMe: false,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
+      );
       return false;
     }
 
@@ -2443,6 +2640,8 @@ class AppController extends StateNotifier<AppState> {
         email: user.email,
         phoneNumber: preferences.getString(_lastPhoneKey) ?? state.phoneNumber,
         rememberMe: rememberMe,
+        selectedLanguage: selectedLanguage,
+        accountSecurityEnabled: accountSecurityEnabled,
       );
       return true;
     }
@@ -2465,10 +2664,12 @@ class AppController extends StateNotifier<AppState> {
       case AccountMode.provider:
         await loadParkingDataFromSupabase().catchError((_) {});
         await loadProviderGuardsFromSupabase().catchError((_) {});
+        await loadCurrentProfileSettingsFromSupabase().catchError((_) {});
       case AccountMode.parkingGuard:
         await loadParkingDataFromSupabase().catchError((_) {});
         await loadCurrentGuardFromSupabase().catchError((_) {});
         await loadGuardBookingsFromSupabase().catchError((_) {});
+        await loadCurrentProfileSettingsFromSupabase().catchError((_) {});
       case AccountMode.superAdmin:
         await loadComplaintsFromSupabase().catchError((_) {});
         await loadRegistrationRequestsFromSupabase().catchError((_) {});
@@ -3256,6 +3457,11 @@ class AppController extends StateNotifier<AppState> {
       accountSecurityEnabled: accountSecurityEnabled,
     );
 
+    await _saveAccountPreference(
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+
     state = state.copyWith(
       bookingNotificationEnabled: bookingNotificationEnabled,
       paymentNotificationEnabled: paymentNotificationEnabled,
@@ -3275,11 +3481,19 @@ class AppController extends StateNotifier<AppState> {
     required bool reportNotificationEnabled,
     required String selectedLanguage,
     required bool accountSecurityEnabled,
-  }) {
-    return _profileSettingsService.saveCurrentProfileSettings(
+  }) async {
+    await _profileSettingsService.saveCurrentProfileSettings(
       primaryNotificationEnabled: primaryNotificationEnabled,
       secondaryNotificationEnabled: secondaryNotificationEnabled,
       reportNotificationEnabled: reportNotificationEnabled,
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+    await _saveAccountPreference(
+      selectedLanguage: selectedLanguage,
+      accountSecurityEnabled: accountSecurityEnabled,
+    );
+    state = state.copyWith(
       selectedLanguage: selectedLanguage,
       accountSecurityEnabled: accountSecurityEnabled,
     );
@@ -5192,8 +5406,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
             backgroundColor: AppTheme.white,
             surfaceTintColor: Colors.transparent,
             titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            actionsPadding: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 16,
+            ),
+            actionsPadding: const EdgeInsets.only(
+              bottom: 24,
+              left: 24,
+              right: 24,
+            ),
             title: Row(
               children: [
                 Container(
@@ -5364,8 +5585,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           backgroundColor: AppTheme.white,
           surfaceTintColor: Colors.transparent,
           titlePadding: const EdgeInsets.only(top: 24, left: 24, right: 24),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          actionsPadding: const EdgeInsets.only(bottom: 24, left: 24, right: 24),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 16,
+          ),
+          actionsPadding: const EdgeInsets.only(
+            bottom: 24,
+            left: 24,
+            right: 24,
+          ),
           title: Row(
             children: [
               Container(
@@ -13208,6 +13436,7 @@ class _CustomerAccountSettingsScreenState
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
+    final text = appText(_selectedLanguage);
 
     try {
       await ref
@@ -13224,20 +13453,18 @@ class _CustomerAccountSettingsScreenState
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan akun berhasil disimpan')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saved)));
       context.go('/customer/profile');
     } catch (_) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Gagal menyimpan pengaturan ke Supabase.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.customerSettingsFailure)));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -13247,8 +13474,9 @@ class _CustomerAccountSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final text = appText(_selectedLanguage);
     return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan Akun')),
+      appBar: AppBar(title: Text(text.accountSettingsTitle)),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -13257,7 +13485,7 @@ class _CustomerAccountSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Notifikasi',
+                  text.notificationSection,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -13267,7 +13495,7 @@ class _CustomerAccountSettingsScreenState
                   value: _bookingNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _bookingNotificationEnabled = value),
-                  title: const Text('Notifikasi booking'),
+                  title: Text(text.bookingNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.blue,
                 ),
@@ -13275,7 +13503,7 @@ class _CustomerAccountSettingsScreenState
                   value: _paymentNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _paymentNotificationEnabled = value),
-                  title: const Text('Notifikasi pembayaran'),
+                  title: Text(text.paymentNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.emerald,
                 ),
@@ -13283,7 +13511,7 @@ class _CustomerAccountSettingsScreenState
                   value: _promoNotificationEnabled,
                   onChanged: (value) =>
                       setState(() => _promoNotificationEnabled = value),
-                  title: const Text('Notifikasi promo'),
+                  title: Text(text.promoNotification),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.blue,
                 ),
@@ -13296,7 +13524,7 @@ class _CustomerAccountSettingsScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Preferensi akun',
+                  text.accountPreferenceSection,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -13304,9 +13532,9 @@ class _CustomerAccountSettingsScreenState
                 const SizedBox(height: 14),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedLanguage,
-                  decoration: const InputDecoration(
-                    labelText: 'Bahasa aplikasi',
-                    prefixIcon: Icon(Icons.language_rounded),
+                  decoration: InputDecoration(
+                    labelText: text.appLanguage,
+                    prefixIcon: const Icon(Icons.language_rounded),
                   ),
                   items: const [
                     DropdownMenuItem(
@@ -13323,8 +13551,8 @@ class _CustomerAccountSettingsScreenState
                   value: _accountSecurityEnabled,
                   onChanged: (value) =>
                       setState(() => _accountSecurityEnabled = value),
-                  title: const Text('Mode keamanan akun'),
-                  subtitle: const Text('Aktifkan perlindungan akun tambahan.'),
+                  title: Text(text.accountSecurityMode),
+                  subtitle: Text(text.accountSecuritySubtitle),
                   contentPadding: EdgeInsets.zero,
                   activeThumbColor: AppTheme.emerald,
                 ),
@@ -13333,7 +13561,7 @@ class _CustomerAccountSettingsScreenState
           ),
           const SizedBox(height: 18),
           _CustomerCompactButton(
-            label: _isSaving ? 'Menyimpan...' : 'Simpan Pengaturan',
+            label: _isSaving ? text.saving : text.saveSettings,
             icon: Icons.save_rounded,
             onPressed: _isSaving ? null : _save,
           ),
@@ -13394,6 +13622,7 @@ class _RoleAccountSettingsScreenState
 
   Future<void> _save() async {
     setState(() => _isSaving = true);
+    final text = appText(_selectedLanguage);
 
     try {
       await ref
@@ -13408,9 +13637,9 @@ class _RoleAccountSettingsScreenState
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengaturan akun berhasil disimpan.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.saved)));
       context.go(
         widget.mode == AccountMode.parkingGuard
             ? '/guard/profile'
@@ -13420,13 +13649,9 @@ class _RoleAccountSettingsScreenState
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Gagal menyimpan pengaturan. Pastikan SQL profile_settings sudah dijalankan.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(text.roleSettingsFailure)));
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -13437,33 +13662,33 @@ class _RoleAccountSettingsScreenState
   @override
   Widget build(BuildContext context) {
     final isGuard = widget.mode == AccountMode.parkingGuard;
-    final title = isGuard ? 'Pengaturan Penjaga' : 'Pengaturan Penyedia';
+    final text = appText(_selectedLanguage);
+    final title = isGuard
+        ? text.guardSettingsTitle
+        : text.providerSettingsTitle;
     final firstLabel = isGuard
-        ? 'Notifikasi tugas lokasi'
-        : 'Notifikasi booking masuk';
+        ? text.guardPrimaryNotification
+        : text.providerPrimaryNotification;
     final secondLabel = isGuard
-        ? 'Notifikasi scan QR'
-        : 'Notifikasi pembayaran';
+        ? text.guardSecondaryNotification
+        : text.providerSecondaryNotification;
     final reportLabel = isGuard
-        ? 'Notifikasi aktivitas shift'
-        : 'Notifikasi laporan harian';
+        ? text.guardReportNotification
+        : text.providerReportNotification;
 
     final content = _isLoading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
             children: [
-              HeaderSection(
-                title: title,
-                subtitle: 'Preferensi akun ini disimpan di Supabase.',
-              ),
+              HeaderSection(title: title, subtitle: text.roleSettingsSubtitle),
               const SizedBox(height: 18),
               PremiumCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Notifikasi',
+                      text.notificationSection,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -13502,7 +13727,7 @@ class _RoleAccountSettingsScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Preferensi akun',
+                      text.accountPreferenceSection,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -13510,9 +13735,9 @@ class _RoleAccountSettingsScreenState
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
                       initialValue: _selectedLanguage,
-                      decoration: const InputDecoration(
-                        labelText: 'Bahasa aplikasi',
-                        prefixIcon: Icon(Icons.language_rounded),
+                      decoration: InputDecoration(
+                        labelText: text.appLanguage,
+                        prefixIcon: const Icon(Icons.language_rounded),
                       ),
                       items: const [
                         DropdownMenuItem(
@@ -13533,10 +13758,8 @@ class _RoleAccountSettingsScreenState
                       value: _accountSecurityEnabled,
                       onChanged: (value) =>
                           setState(() => _accountSecurityEnabled = value),
-                      title: const Text('Mode keamanan akun'),
-                      subtitle: const Text(
-                        'Aktifkan perlindungan akun tambahan.',
-                      ),
+                      title: Text(text.accountSecurityMode),
+                      subtitle: Text(text.accountSecuritySubtitle),
                       contentPadding: EdgeInsets.zero,
                       activeThumbColor: AppTheme.emerald,
                     ),
@@ -13545,7 +13768,7 @@ class _RoleAccountSettingsScreenState
               ),
               const SizedBox(height: 18),
               PrimaryButton(
-                label: _isSaving ? 'Menyimpan...' : 'Simpan pengaturan',
+                label: _isSaving ? text.saving : text.saveSettings,
                 icon: Icons.save_rounded,
                 onPressed: _isSaving ? null : _save,
               ),

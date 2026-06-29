@@ -11,6 +11,20 @@ void main() {
     );
   }
 
+  group('app language preferences', () {
+    test('maps saved language to runtime locale', () {
+      expect(appLocaleForLanguage('Indonesia').languageCode, 'id');
+      expect(appLocaleForLanguage('English').languageCode, 'en');
+      expect(appLocaleForLanguage('english').languageCode, 'en');
+    });
+
+    test('returns localized account settings labels', () {
+      expect(appText('Indonesia').accountSettingsTitle, 'Pengaturan Akun');
+      expect(appText('English').accountSettingsTitle, 'Account Settings');
+      expect(appText('English').saveSettings, 'Save Settings');
+    });
+  });
+
   group('guardedRedirect', () {
     test('redirects unauthenticated private routes to login', () {
       final redirect = guardedRedirect(
