@@ -1,0 +1,319 @@
+﻿{
+  "packages": [
+    {
+      "package": "app_links",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "7.0.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "7.2.0"
+      }
+    },
+    {
+      "package": "app_links_platform_interface",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.0.2"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "2.0.3"
+      }
+    },
+    {
+      "package": "flutter_riverpod",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.6.1"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "3.3.2"
+      }
+    },
+    {
+      "package": "image",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "4.8.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "4.9.1"
+      }
+    },
+    {
+      "package": "image_picker_android",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "0.8.13+17"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "0.8.13+19"
+      }
+    },
+    {
+      "package": "intl",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "0.20.2"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "0.20.3"
+      }
+    },
+    {
+      "package": "latlong2",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "0.9.1"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "0.10.1"
+      }
+    },
+    {
+      "package": "matcher",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "0.12.19"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "0.12.20"
+      }
+    },
+    {
+      "package": "meta",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "1.17.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "1.18.3"
+      }
+    },
+    {
+      "package": "package_config",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.2.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "3.0.0"
+      }
+    },
+    {
+      "package": "pdf",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "3.12.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "3.13.0"
+      }
+    },
+    {
+      "package": "printing",
+      "kind": "direct",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "5.14.3"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "5.15.0"
+      }
+    },
+    {
+      "package": "qr",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "3.0.2"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "4.0.0"
+      }
+    },
+    {
+      "package": "riverpod",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.6.1"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "3.3.2"
+      }
+    },
+    {
+      "package": "shared_preferences_android",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.4.23"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "2.4.26"
+      }
+    },
+    {
+      "package": "test_api",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "0.7.10"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "0.7.13"
+      }
+    },
+    {
+      "package": "url_launcher_android",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "6.3.30"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "6.3.32"
+      }
+    },
+    {
+      "package": "vector_math",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "2.2.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "2.4.0"
+      }
+    },
+    {
+      "package": "webview_flutter_android",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "4.12.0"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "4.13.0"
+      }
+    },
+    {
+      "package": "webview_flutter_wkwebview",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "3.25.1"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "3.26.0"
+      }
+    },
+    {
+      "package": "xml",
+      "kind": "transitive",
+      "isDiscontinued": false,
+      "isCurrentRetracted": false,
+      "isCurrentAffectedByAdvisory": false,
+      "current": {
+        "version": "6.6.1"
+      },
+      "upgradable": null,
+      "resolvable": null,
+      "latest": {
+        "version": "7.0.1"
+      }
+    }
+  ]
+}
