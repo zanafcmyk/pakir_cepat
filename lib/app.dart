@@ -6633,6 +6633,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       title: 'Masuk ke Parkir Cepat',
       subtitle: 'Akses parkir pintar dengan alur cepat, aman, dan premium.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Align(
             alignment: Alignment.centerLeft,
@@ -7243,45 +7244,80 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return AuthScaffold(
       title: 'Buat akun baru',
       subtitle:
           'Daftar sebagai pelanggan atau penyedia parkir. Akun admin dikelola aplikasi, akun penjaga dibuat oleh penyedia.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ===== Section 1: Role selection (top) =====
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Daftar sebagai',
+              style: textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          RoleSelectionCards(
+            value: _mode,
+            allowedModes: const [AccountMode.customer, AccountMode.provider],
+            onChanged: (value) => setState(() => _mode = value),
+          ),
+          const SizedBox(height: 22),
+
+          // ===== Section 2: Data akun (umum) =====
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Data akun',
+              style: textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _nameController,
+            textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
               labelText: 'Nama lengkap',
               prefixIcon: Icon(Icons.person_outline_rounded),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
               labelText: 'Email',
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _phoneController,
+            keyboardType: TextInputType.phone,
             decoration: const InputDecoration(
               labelText: 'Nomor HP',
               prefixIcon: Icon(Icons.phone_iphone_rounded),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _passwordController,
             obscureText: true,
             decoration: const InputDecoration(
               labelText: 'Password',
               prefixIcon: Icon(Icons.lock_outline_rounded),
+              helperText: 'Minimal 6 karakter',
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           TextField(
             controller: _confirmPasswordController,
             obscureText: true,
@@ -7290,42 +7326,52 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               prefixIcon: Icon(Icons.lock_reset_rounded),
             ),
           ),
-          const SizedBox(height: 18),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Daftar sebagai',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          const SizedBox(height: 14),
-          RoleSelectionCards(
-            value: _mode,
-            allowedModes: const [AccountMode.customer, AccountMode.provider],
-            onChanged: (value) => setState(() => _mode = value),
-          ),
+
+          // ===== Section 3: Data lahan (khusus penyedia) =====
           if (_mode == AccountMode.provider) ...[
-            const SizedBox(height: 22),
+            const SizedBox(height: 26),
             PremiumCard(
               accent: AppTheme.emeraldSoft,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Data verifikasi penyedia',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Akun penyedia akan masuk status pending verification sampai admin meninjau data lahan dan identitas.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.slate,
-                      height: 1.45,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppTheme.emerald.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.local_parking_rounded,
+                          color: AppTheme.emerald,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Data lahan parkir',
+                              style: textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Lengkapi informasi lahan yang akan Anda kelola.',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: AppTheme.slate,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -7335,7 +7381,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       prefixIcon: Icon(Icons.local_parking_rounded),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _parkingAddressController,
                     decoration: const InputDecoration(
@@ -7343,46 +7389,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       prefixIcon: Icon(Icons.place_outlined),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _parkingPhotoController,
-                    readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Upload foto lahan',
-                      prefixIcon: Icon(Icons.add_photo_alternate_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _pickParkingLotPhoto,
-                    icon: const Icon(Icons.add_photo_alternate_rounded),
-                    label: Text(
-                      _parkingPhotoBytes == null
-                          ? 'Pilih foto lahan'
-                          : 'Ganti foto lahan',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  MapEmbedView(
-                    title: _providerMapLocationQuery.isEmpty
-                        ? 'Preview lokasi lahan'
-                        : _providerMapLocationQuery,
-                    embedUrl: _providerMapEmbedUrl,
-                    latitude: _AddParkingLotScreenState._defaultMapLatitude,
-                    longitude: _AddParkingLotScreenState._defaultMapLongitude,
-                    height: 260,
-                    locationQuery: _providerMapLocationQuery,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _providerMapLocationQuery.isEmpty
-                        ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
-                        : 'Map diarahkan ke: $_providerMapLocationQuery',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   TextFormField(
                     initialValue: _providerCapacity.toInt().toString(),
                     keyboardType: TextInputType.number,
@@ -7394,46 +7401,122 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     onChanged: (value) =>
                         _providerCapacity = double.tryParse(value) ?? 0,
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _identityController,
-                    readOnly: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Upload KTP / verifikasi identitas',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
+                  const SizedBox(height: 16),
+                  _UploadRow(
+                    icon: Icons.add_photo_alternate_rounded,
+                    emptyLabel: 'Belum ada foto lahan',
+                    fileLabel: _parkingPhotoController.text,
+                    hasFile: _parkingPhotoBytes != null,
+                    onPressed: _pickParkingLotPhoto,
                   ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
+                  const SizedBox(height: 12),
+                  _UploadRow(
+                    icon: Icons.badge_outlined,
+                    emptyLabel: 'Belum ada dokumen identitas',
+                    fileLabel: _identityController.text,
+                    hasFile: _identityDocumentBytes != null,
                     onPressed: _pickIdentityDocument,
-                    icon: const Icon(Icons.upload_file_rounded),
-                    label: Text(
-                      _identityDocumentBytes == null
-                          ? 'Pilih dokumen identitas'
-                          : 'Ganti dokumen identitas',
-                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  MapEmbedView(
+                    title: _providerMapLocationQuery.isEmpty
+                        ? 'Preview lokasi lahan'
+                        : _providerMapLocationQuery,
+                    embedUrl: _providerMapEmbedUrl,
+                    latitude: _AddParkingLotScreenState._defaultMapLatitude,
+                    longitude: _AddParkingLotScreenState._defaultMapLongitude,
+                    height: 220,
+                    locationQuery: _providerMapLocationQuery,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _providerMapLocationQuery.isEmpty
+                        ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
+                        : 'Map diarahkan ke: $_providerMapLocationQuery',
+                    style: textTheme.bodySmall?.copyWith(color: AppTheme.slate),
                   ),
                   const SizedBox(height: 14),
                   const InlineNotice(
                     icon: Icons.hourglass_top_rounded,
                     accent: Color(0xFFD97706),
-                    message: 'Akun penyedia sedang menunggu verifikasi admin.',
+                    message:
+                        'Akun penyedia akan aktif setelah disetujui admin.',
                   ),
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 20),
+
+          // ===== Section 4: Submit =====
+          const SizedBox(height: 24),
           PrimaryButton(
             label: _isLoading ? 'Mendaftarkan...' : 'Daftar',
             icon: Icons.person_add_alt_1_rounded,
             onPressed: _isLoading ? null : _submitRegister,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _isLoading ? null : () => context.go('/login'),
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('Sudah punya akun? Masuk'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UploadRow extends StatelessWidget {
+  const _UploadRow({
+    required this.icon,
+    required this.emptyLabel,
+    required this.fileLabel,
+    required this.hasFile,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String emptyLabel;
+  final String fileLabel;
+  final bool hasFile;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.slate.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppTheme.emerald.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppTheme.emerald),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              hasFile ? fileLabel : emptyLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: textTheme.bodyMedium?.copyWith(color: AppTheme.slate),
+            ),
+          ),
           TextButton.icon(
-            onPressed: _isLoading ? null : () => context.go('/login'),
-            icon: const Icon(Icons.login_rounded),
-            label: const Text('Sudah punya akun? Masuk'),
+            onPressed: onPressed,
+            icon: const Icon(Icons.upload_rounded, size: 18),
+            label: Text(hasFile ? 'Ganti' : 'Upload'),
           ),
         ],
       ),
