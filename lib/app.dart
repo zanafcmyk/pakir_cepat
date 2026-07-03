@@ -20506,40 +20506,54 @@ class AiRecommendationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = (MediaQuery.sizeOf(context).width - 52) / 2;
-    return Container(
-      width: math.max(150, width),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: accent,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: AppTheme.ink),
-          const SizedBox(height: 18),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: AppTheme.slate,
-              fontWeight: FontWeight.w700,
-            ),
+        child: Ink(
+          width: math.max(150, width),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: AppTheme.ink),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppTheme.slate,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                detail,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            detail,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
-          ),
-        ],
+        ),
       ),
     );
   }
