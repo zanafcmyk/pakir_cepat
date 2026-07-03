@@ -1,4 +1,4 @@
 {
     "deno.enable": true,
-    "CodeGPT.apiKey": "Docker"
+    "CodeGPT.apiKey": "OpenAI"
 }
