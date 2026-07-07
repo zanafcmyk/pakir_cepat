@@ -11,15 +11,9 @@ import 'app.dart';
 class AppEnv {
   const AppEnv._();
 
-  static const _url = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://wdtjrzynjygkmpmhiffw.supabase.co',
-  );
+  static const _url = String.fromEnvironment('SUPABASE_URL');
 
-  static const _key = String.fromEnvironment(
-    'SUPABASE_PUBLISHABLE_KEY',
-    defaultValue: 'sb_publishable_onxQFKPMNnA6SssvB4nG1g_n3fOs74R',
-  );
+  static const _key = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
 
   static String get supabaseUrl => _url;
   static String get supabasePublishableKey => _key;
