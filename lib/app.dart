@@ -20686,13 +20686,14 @@ class ParkingMapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeLot = selected ?? (lots.isNotEmpty ? lots.first : null);
-    final positions = <Offset>[
-      const Offset(0.22, 0.28),
-      const Offset(0.68, 0.42),
-      const Offset(0.42, 0.74),
-      const Offset(0.8, 0.2),
-    ];
+    final lotsWithCoordinates = lots
+        .where((lot) => _hasValidCoordinates(lot.latitude, lot.longitude))
+        .toList();
+    final activeLot =
+        selected != null &&
+            _hasValidCoordinates(selected!.latitude, selected!.longitude)
+        ? selected
+        : (lotsWithCoordinates.isNotEmpty ? lotsWithCoordinates.first : null);
     return PremiumCard(
       accent: AppTheme.slateSoft,
       padding: const EdgeInsets.all(16),
@@ -20709,48 +20710,21 @@ class ParkingMapCard extends StatelessWidget {
                       latitude: activeLot.latitude,
                       longitude: activeLot.longitude,
                       height: 320,
+                      markers: lotsWithCoordinates
+                          .map(
+                            (lot) => MapEmbedMarker(
+                              id: lot.id,
+                              title: lot.name,
+                              latitude: lot.latitude,
+                              longitude: lot.longitude,
+                              color: lot.accent,
+                              isSelected: lot.id == activeLot.id,
+                              onTap: () => onSelect(lot),
+                            ),
+                          )
+                          .toList(),
                     ),
             ),
-            for (var index = 0; index < lots.length; index++)
-              Positioned.fill(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final lot = lots[index];
-                    final point = positions[index % positions.length];
-                    final isSelected = selected?.id == lot.id;
-                    return Stack(
-                      children: [
-                        Positioned(
-                          left: constraints.maxWidth * point.dx - 30,
-                          top: constraints.maxHeight * point.dy - 30,
-                          child: GestureDetector(
-                            onTap: () => onSelect(lot),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              width: isSelected ? 78 : 64,
-                              height: isSelected ? 78 : 64,
-                              decoration: BoxDecoration(
-                                color: isSelected ? lot.accent : Colors.white,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  softShadow(
-                                    lot.accent.withValues(alpha: 0.24),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                Icons.local_parking_rounded,
-                                color: isSelected ? Colors.white : lot.accent,
-                                size: isSelected ? 34 : 28,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
             Positioned(
               right: 12,
               bottom: 12,
@@ -20777,6 +20751,14 @@ class ParkingMapCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  bool _hasValidCoordinates(double latitude, double longitude) {
+    return latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180 &&
+        !(latitude == 0 && longitude == 0);
   }
 }
 

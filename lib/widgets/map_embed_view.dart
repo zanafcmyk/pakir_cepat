@@ -11,6 +11,7 @@ class MapEmbedView extends StatelessWidget {
     required this.longitude,
     this.height = 240,
     this.locationQuery,
+    this.markers = const [],
   });
 
   final String title;
@@ -19,10 +20,22 @@ class MapEmbedView extends StatelessWidget {
   final double longitude;
   final double height;
   final String? locationQuery;
+  final List<MapEmbedMarker> markers;
 
   @override
   Widget build(BuildContext context) {
     final center = LatLng(latitude, longitude);
+    final mapMarkers = markers.isEmpty
+        ? [
+            MapEmbedMarker(
+              id: 'active',
+              title: title,
+              latitude: latitude,
+              longitude: longitude,
+              isSelected: true,
+            ),
+          ]
+        : markers;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: SizedBox(
@@ -48,14 +61,23 @@ class MapEmbedView extends StatelessWidget {
                   retinaMode: RetinaMode.isHighDensity(context),
                 ),
                 MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: center,
-                      width: 56,
-                      height: 56,
-                      child: const _MapPin(),
-                    ),
-                  ],
+                  markers: mapMarkers
+                      .map(
+                        (marker) => Marker(
+                          point: LatLng(marker.latitude, marker.longitude),
+                          width: marker.isSelected ? 68 : 56,
+                          height: marker.isSelected ? 68 : 56,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: marker.onTap,
+                            child: _MapPin(
+                              color: marker.color,
+                              isSelected: marker.isSelected,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
                 ),
               ],
             ),
@@ -143,28 +165,53 @@ class MapEmbedView extends StatelessWidget {
   }
 }
 
+class MapEmbedMarker {
+  const MapEmbedMarker({
+    required this.id,
+    required this.title,
+    required this.latitude,
+    required this.longitude,
+    this.color = const Color(0xFF10B981),
+    this.isSelected = false,
+    this.onTap,
+  });
+
+  final String id;
+  final String title;
+  final double latitude;
+  final double longitude;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback? onTap;
+}
+
 class _MapPin extends StatelessWidget {
-  const _MapPin();
+  const _MapPin({required this.color, required this.isSelected});
+
+  final Color color;
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isSelected ? color : Colors.white,
         shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: isSelected ? 3 : 2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F172A).withValues(alpha: 0.2),
+            color: color.withValues(alpha: isSelected ? 0.36 : 0.22),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: const Center(
+      child: Center(
         child: Icon(
           Icons.location_on_rounded,
-          color: Color(0xFF10B981),
-          size: 34,
+          color: isSelected ? Colors.white : color,
+          size: isSelected ? 38 : 34,
         ),
       ),
     );
