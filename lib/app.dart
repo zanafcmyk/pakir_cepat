@@ -306,6 +306,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const GuardVehiclesScreen(),
       ),
       GoRoute(
+        path: '/guard/salary-report',
+        builder: (context, state) => const GuardSalaryReportScreen(),
+      ),
+      GoRoute(
         path: '/guard/chat',
         builder: (context, state) => const GuardChatListScreen(),
       ),
@@ -1407,6 +1411,74 @@ List<ParkingLot> visibleLotsFor(AppState state) {
   };
 }
 
+String parkingLotCoordinateText(ParkingLot lot) {
+  return '${lot.latitude.toStringAsFixed(6)}, ${lot.longitude.toStringAsFixed(6)}';
+}
+
+SupabaseGuardSalaryReport guardSalaryReportFromState(AppState state) {
+  final guard = activeGuard(state);
+  final assignedLots = visibleLotsFor(state);
+  final assignedLotIds = assignedLots.map((lot) => lot.id).toSet();
+  final assignedLotNames = assignedLots.map((lot) => lot.name).toSet();
+  final guardCountByLot = <String, int>{};
+  for (final otherGuard in state.parkingGuards) {
+    for (final lotId in otherGuard.assignedLotIds) {
+      guardCountByLot[lotId] = (guardCountByLot[lotId] ?? 0) + 1;
+    }
+  }
+
+  final now = DateTime.now();
+  final todayStart = DateTime(now.year, now.month, now.day);
+  final monthStart = DateTime(now.year, now.month);
+  final transactions = <TransactionRecord>[];
+  var dailyRevenueShare = 0;
+  var monthlyRevenueShare = 0;
+
+  for (final booking in state.guardBookings) {
+    if (!booking.isPaid) {
+      continue;
+    }
+    final lotId = booking.parkingLotId;
+    final matchesAssignedLot =
+        (lotId != null && assignedLotIds.contains(lotId)) ||
+        assignedLotNames.contains(booking.locationName);
+    if (!matchesAssignedLot) {
+      continue;
+    }
+
+    final guardCount = lotId == null ? 1 : guardCountByLot[lotId] ?? 1;
+    final sharedAmount = (booking.estimatedCost / guardCount).round();
+    final entryTime = booking.entryTime;
+    if (!entryTime.isBefore(monthStart)) {
+      monthlyRevenueShare += sharedAmount;
+      transactions.add(
+        TransactionRecord(
+          id: booking.ticketNumber,
+          locationName: booking.locationName,
+          plateNumber: booking.plateNumber,
+          status: _guardBookingStatusLabel(booking.status),
+          total: sharedAmount,
+          timeLabel: formatDateTime(entryTime),
+        ),
+      );
+    }
+    if (!entryTime.isBefore(todayStart)) {
+      dailyRevenueShare += sharedAmount;
+    }
+  }
+
+  return SupabaseGuardSalaryReport(
+    guardId: guard?.id ?? '',
+    guardName: guard?.name ?? 'Penjaga',
+    assignedLotNames: assignedLots.map((lot) => lot.name).toList(),
+    transactions: transactions,
+    dailyRevenue: dailyRevenueShare,
+    monthlyRevenue: monthlyRevenueShare,
+    dailySalary: (dailyRevenueShare * 0.15).round(),
+    monthlySalary: (monthlyRevenueShare * 0.15).round(),
+  );
+}
+
 class AppController extends StateNotifier<AppState> {
   AppController() : super(AppState.initial()) {
     _loadOnboardingPreference();
@@ -2390,6 +2462,10 @@ class AppController extends StateNotifier<AppState> {
   Future<SupabaseProviderFinancialReport>
   fetchProviderFinancialReportFromSupabase() {
     return _parkingService.fetchCurrentProviderFinancialReport();
+  }
+
+  Future<SupabaseGuardSalaryReport> fetchGuardSalaryReportFromSupabase() {
+    return _parkingService.fetchCurrentGuardSalaryReport();
   }
 
   Future<ParkingCoordinates> geocodeParkingAddress(String address) async {
@@ -9543,6 +9619,14 @@ class _CustomerMapLotCard extends StatelessWidget {
                       height: 1.4,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Koordinat: ${parkingLotCoordinateText(lot)}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: AppTheme.emerald,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -12120,7 +12204,7 @@ class _RoleChatListScreenState extends ConsumerState<RoleChatListScreen> {
       AccountMode.provider => AdminShell(currentIndex: 3, child: child),
       AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
       AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
-      AccountMode.parkingGuard => GuardShell(currentIndex: 3, child: child),
+      AccountMode.parkingGuard => GuardShell(currentIndex: 4, child: child),
     };
   }
 }
@@ -12354,7 +12438,7 @@ class _RoleChatRoomScreenState extends ConsumerState<RoleChatRoomScreen> {
       AccountMode.provider => AdminShell(currentIndex: 3, child: child),
       AccountMode.superAdmin => SuperAdminShell(currentIndex: 4, child: child),
       AccountMode.customer => CustomerShell(currentIndex: 3, child: child),
-      AccountMode.parkingGuard => GuardShell(currentIndex: 3, child: child),
+      AccountMode.parkingGuard => GuardShell(currentIndex: 4, child: child),
     };
   }
 }
@@ -13733,7 +13817,7 @@ class _RoleAccountSettingsScreenState
           );
 
     return isGuard
-        ? GuardShell(currentIndex: 4, child: content)
+        ? GuardShell(currentIndex: 5, child: content)
         : AdminShell(currentIndex: 4, child: content);
   }
 }
@@ -14232,7 +14316,7 @@ class AdminMapScreen extends ConsumerWidget {
                 iconColor: lot.accent,
                 title: lot.name,
                 subtitle:
-                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}',
+                    '${lot.availableSlots}/${lot.totalSlots} slot tersedia • ${lot.address}\nKoordinat: ${parkingLotCoordinateText(lot)}',
                 onTap: () {
                   ref.read(appControllerProvider.notifier).selectLot(lot);
                   context.push('/provider/manage-slots');
@@ -17714,7 +17798,7 @@ class _RoleEditProfileScreenState extends ConsumerState<RoleEditProfileScreen> {
     );
 
     return switch (widget.mode) {
-      AccountMode.parkingGuard => GuardShell(currentIndex: 4, child: form),
+      AccountMode.parkingGuard => GuardShell(currentIndex: 5, child: form),
       AccountMode.superAdmin => SuperAdminShell(currentIndex: 5, child: form),
       _ => AdminShell(currentIndex: 4, child: form),
     };
@@ -17846,9 +17930,25 @@ class _ParkingGuardDashboardScreenState
                 icon: Icons.payments_rounded,
                 onTap: () => context.push('/guard/check-payment'),
               ),
+              StatCard(
+                label: 'Laporan gaji',
+                value: '15% revenue',
+                accent: AppTheme.emerald,
+                icon: Icons.account_balance_wallet_rounded,
+                onTap: () => context.push('/guard/salary-report'),
+              ),
             ],
           ),
           const SizedBox(height: 20),
+          MiniInfoTile(
+            icon: Icons.account_balance_wallet_rounded,
+            iconColor: AppTheme.emerald,
+            title: 'Laporan penghasilan',
+            subtitle:
+                'Lihat estimasi gaji harian, bulanan, dan transaksi pembentuk gaji.',
+            onTap: () => context.push('/guard/salary-report'),
+          ),
+          const SizedBox(height: 12),
           MiniInfoTile(
             icon: Icons.chat_bubble_rounded,
             iconColor: AppTheme.blue,
@@ -18725,6 +18825,213 @@ String _guardBookingStatusLabel(BookingStatus status) => switch (status) {
   BookingStatus.cancelled => 'Dibatalkan',
 };
 
+class GuardSalaryReportScreen extends ConsumerStatefulWidget {
+  const GuardSalaryReportScreen({super.key});
+
+  @override
+  ConsumerState<GuardSalaryReportScreen> createState() =>
+      _GuardSalaryReportScreenState();
+}
+
+class _GuardSalaryReportScreenState
+    extends ConsumerState<GuardSalaryReportScreen> {
+  late Future<SupabaseGuardSalaryReport> _reportFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _reportFuture = ref
+        .read(appControllerProvider.notifier)
+        .fetchGuardSalaryReportFromSupabase();
+  }
+
+  void _refresh() {
+    setState(() {
+      _reportFuture = ref
+          .read(appControllerProvider.notifier)
+          .fetchGuardSalaryReportFromSupabase();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(appControllerProvider);
+    return GuardShell(
+      currentIndex: 3,
+      child: FutureBuilder<SupabaseGuardSalaryReport>(
+        future: _reportFuture,
+        builder: (context, snapshot) {
+          final fallbackReport = guardSalaryReportFromState(state);
+          final report = snapshot.data ?? fallbackReport;
+          final isFallback =
+              snapshot.hasError ||
+              state.isUsingDemoData ||
+              snapshot.data == null;
+          final recentTransactions = report.transactions.take(8).toList();
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+            children: [
+              HeaderSection(
+                title: 'Laporan gaji',
+                subtitle:
+                    'Ringkasan estimasi penghasilan ${report.guardName} dari lokasi tugas.',
+              ),
+              const SizedBox(height: 18),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 18),
+                  child: LinearProgressIndicator(),
+                ),
+              if (isFallback) ...[
+                InlineNotice(
+                  icon: snapshot.hasError
+                      ? Icons.wifi_off_rounded
+                      : Icons.science_rounded,
+                  accent: snapshot.hasError
+                      ? const Color(0xFFD97706)
+                      : AppTheme.blue,
+                  message: snapshot.hasError
+                      ? 'Laporan Supabase belum bisa dimuat. Menampilkan estimasi dari data lokal.'
+                      : 'Menampilkan estimasi lokal sampai data laporan Supabase tersedia.',
+                ),
+                const SizedBox(height: 18),
+              ],
+              PremiumCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: AppTheme.emerald.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Icon(
+                            Icons.account_balance_wallet_rounded,
+                            color: AppTheme.emerald,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                formatCurrency(report.monthlySalary),
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                      color: AppTheme.emerald,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Estimasi gaji bulan ini',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppTheme.slate),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Muat ulang laporan',
+                          onPressed: _refresh,
+                          icon: const Icon(Icons.refresh_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const InlineNotice(
+                      icon: Icons.percent_rounded,
+                      accent: AppTheme.emerald,
+                      message:
+                          'Gaji dihitung 15% dari pendapatan lahan yang ditugaskan. Jika satu lahan punya beberapa penjaga, pendapatan lahan dibagi rata dulu.',
+                    ),
+                    const SizedBox(height: 16),
+                    SummaryRow(
+                      label: 'Gaji hari ini',
+                      value: formatCurrency(report.dailySalary),
+                      valueColor: AppTheme.emerald,
+                    ),
+                    SummaryRow(
+                      label: 'Gaji bulan ini',
+                      value: formatCurrency(report.monthlySalary),
+                      valueColor: AppTheme.emerald,
+                    ),
+                    SummaryRow(
+                      label: 'Revenue bagian hari ini',
+                      value: formatCurrency(report.dailyRevenue),
+                    ),
+                    SummaryRow(
+                      label: 'Revenue bagian bulan ini',
+                      value: formatCurrency(report.monthlyRevenue),
+                    ),
+                    SummaryRow(
+                      label: 'Lokasi tugas',
+                      value: report.assignedLotNames.isEmpty
+                          ? 'Belum ada assignment'
+                          : report.assignedLotNames.join(', '),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SectionTitle(title: 'Transaksi pembentuk gaji'),
+              const SizedBox(height: 12),
+              if (recentTransactions.isEmpty)
+                EmptyStateCard(
+                  title: 'Belum ada transaksi gaji',
+                  body:
+                      'Transaksi dari lokasi tugas akan muncul setelah pembayaran customer masuk.',
+                  actionLabel: 'Muat ulang',
+                  onPressed: _refresh,
+                )
+              else
+                ...recentTransactions.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: PremiumCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.locationName,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 8),
+                          SummaryRow(label: 'Tiket', value: item.id),
+                          SummaryRow(
+                            label: 'Plat nomor',
+                            value: item.plateNumber,
+                          ),
+                          SummaryRow(label: 'Waktu', value: item.timeLabel),
+                          SummaryRow(
+                            label: 'Revenue bagian',
+                            value: formatCurrency(item.total),
+                          ),
+                          SummaryRow(
+                            label: 'Gaji 15%',
+                            value: formatCurrency((item.total * 0.15).round()),
+                            valueColor: AppTheme.emerald,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 class GuardChatListScreen extends ConsumerStatefulWidget {
   const GuardChatListScreen({super.key});
 
@@ -18776,7 +19083,7 @@ class _GuardChatListScreenState extends ConsumerState<GuardChatListScreen> {
       ..removeWhere((room) => _isDemoChatRoomId(room.id))
       ..sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
     return GuardShell(
-      currentIndex: 3,
+      currentIndex: 4,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -18982,7 +19289,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
     }
     if (room == null) {
       return GuardShell(
-        currentIndex: 3,
+        currentIndex: 4,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
           children: [
@@ -19004,7 +19311,7 @@ class _GuardChatRoomScreenState extends ConsumerState<GuardChatRoomScreen> {
           ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
     return GuardShell(
-      currentIndex: 3,
+      currentIndex: 4,
       child: Column(
         children: [
           Padding(
@@ -19185,7 +19492,7 @@ class _GuardComplaintScreenState extends ConsumerState<GuardComplaintScreen> {
   @override
   Widget build(BuildContext context) {
     return GuardShell(
-      currentIndex: 3,
+      currentIndex: 4,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -19514,7 +19821,7 @@ class GuardProfileScreen extends ConsumerWidget {
     final state = ref.watch(appControllerProvider);
     final guard = activeGuard(state);
     return GuardShell(
-      currentIndex: 4,
+      currentIndex: 5,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
         children: [
@@ -19799,6 +20106,11 @@ class GuardShell extends ConsumerWidget {
           label: 'Kendaraan',
           icon: Icons.directions_car_rounded,
           route: '/guard/vehicles',
+        ),
+        const ShellDestination(
+          label: 'Gaji',
+          icon: Icons.account_balance_wallet_rounded,
+          route: '/guard/salary-report',
         ),
         ShellDestination(
           label: 'Chat',

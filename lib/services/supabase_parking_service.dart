@@ -132,6 +132,28 @@ class SupabaseProviderFinancialReport {
   int get estimatedNetIncome => totalRevenue - estimatedExpense;
 }
 
+class SupabaseGuardSalaryReport {
+  const SupabaseGuardSalaryReport({
+    required this.guardId,
+    required this.guardName,
+    required this.assignedLotNames,
+    required this.transactions,
+    required this.dailyRevenue,
+    required this.monthlyRevenue,
+    required this.dailySalary,
+    required this.monthlySalary,
+  });
+
+  final String guardId;
+  final String guardName;
+  final List<String> assignedLotNames;
+  final List<TransactionRecord> transactions;
+  final int dailyRevenue;
+  final int monthlyRevenue;
+  final int dailySalary;
+  final int monthlySalary;
+}
+
 class _GuardAssignmentSummary {
   const _GuardAssignmentSummary({
     required this.guardId,
@@ -573,6 +595,126 @@ class SupabaseParkingService {
           ),
       ],
       guardSalaryShares: guardSalaryShares,
+    );
+  }
+
+  Future<SupabaseGuardSalaryReport> fetchCurrentGuardSalaryReport() async {
+    final guardRows = await _client.rpc('current_guard_account');
+    if (guardRows is! List || guardRows.isEmpty) {
+      return const SupabaseGuardSalaryReport(
+        guardId: '',
+        guardName: 'Penjaga',
+        assignedLotNames: [],
+        transactions: [],
+        dailyRevenue: 0,
+        monthlyRevenue: 0,
+        dailySalary: 0,
+        monthlySalary: 0,
+      );
+    }
+
+    final guard = Map<String, dynamic>.from(guardRows.first as Map);
+    final guardId = guard['id'] as String? ?? '';
+    final guardName = guard['name'] as String? ?? 'Penjaga';
+    final assignedLotIds = [
+      for (final id in (guard['assigned_lot_ids'] as List? ?? const []))
+        id.toString(),
+    ];
+
+    if (guardId.isEmpty || assignedLotIds.isEmpty) {
+      return SupabaseGuardSalaryReport(
+        guardId: guardId,
+        guardName: guardName,
+        assignedLotNames: const [],
+        transactions: const [],
+        dailyRevenue: 0,
+        monthlyRevenue: 0,
+        dailySalary: 0,
+        monthlySalary: 0,
+      );
+    }
+
+    final lotRows = await _client
+        .from('parking_lots')
+        .select('id, name')
+        .inFilter('id', assignedLotIds);
+    final lotNamesById = {
+      for (final item in lotRows)
+        if (item['id'] != null)
+          item['id'] as String: item['name'] as String? ?? 'Lahan parkir',
+    };
+
+    final guardCountRows = await _client
+        .from('guard_lot_assignments')
+        .select('parking_lot_id, guard_id')
+        .inFilter('parking_lot_id', assignedLotIds);
+    final guardCountByLot = <String, int>{};
+    for (final item in guardCountRows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final lotId = row['parking_lot_id'] as String?;
+      if (lotId != null) {
+        guardCountByLot[lotId] = (guardCountByLot[lotId] ?? 0) + 1;
+      }
+    }
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final monthStart = DateTime(now.year, now.month);
+    final rows = await _client
+        .from('bookings')
+        .select(
+          'ticket_number, parking_lot_id, entry_time, estimated_cost, final_cost, status, '
+          'created_at, parking_lots(name), vehicles(plate_number), '
+          'payments(method, status, amount, paid_at)',
+        )
+        .inFilter('parking_lot_id', assignedLotIds)
+        .gte('created_at', monthStart.toIso8601String())
+        .inFilter('status', ['paid', 'active', 'completed'])
+        .order('created_at', ascending: false);
+
+    final transactions = <TransactionRecord>[];
+    var dailyRevenueShare = 0;
+    var monthlyRevenueShare = 0;
+
+    for (final item in rows) {
+      final row = Map<String, dynamic>.from(item as Map);
+      final lotId = row['parking_lot_id'] as String?;
+      final createdAt = DateTime.tryParse(
+        row['created_at'] as String? ?? '',
+      )?.toLocal();
+      final amount = _bookingRevenueAmount(row);
+      final guardCount = lotId == null ? 1 : guardCountByLot[lotId] ?? 1;
+      final sharedAmount = (amount / guardCount).round();
+
+      monthlyRevenueShare += sharedAmount;
+      if (createdAt != null && !createdAt.isBefore(todayStart)) {
+        dailyRevenueShare += sharedAmount;
+      }
+
+      transactions.add(
+        TransactionRecord(
+          id: row['ticket_number'] as String? ?? '-',
+          locationName: _nestedText(row['parking_lots'], 'name'),
+          plateNumber: _nestedText(row['vehicles'], 'plate_number'),
+          status: _bookingStatusLabel(row['status'] as String?),
+          total: sharedAmount,
+          timeLabel: _dateTimeLabel(row['entry_time'] as String?),
+        ),
+      );
+    }
+
+    return SupabaseGuardSalaryReport(
+      guardId: guardId,
+      guardName: guardName,
+      assignedLotNames: [
+        for (final lotId in assignedLotIds)
+          if (lotNamesById[lotId] != null) lotNamesById[lotId]!,
+      ],
+      transactions: transactions,
+      dailyRevenue: dailyRevenueShare,
+      monthlyRevenue: monthlyRevenueShare,
+      dailySalary: (dailyRevenueShare * 0.15).round(),
+      monthlySalary: (monthlyRevenueShare * 0.15).round(),
     );
   }
 

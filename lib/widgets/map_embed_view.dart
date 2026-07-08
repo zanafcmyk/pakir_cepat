@@ -124,13 +124,36 @@ class MapEmbedView extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _locationText,
+                        _primaryLocationText,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF64748B),
                           height: 1.35,
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.my_location_rounded,
+                            color: Color(0xFF10B981),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _coordinateText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(
+                                    color: const Color(0xFF0F766E),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -143,11 +166,15 @@ class MapEmbedView extends StatelessWidget {
     );
   }
 
-  String get _locationText {
+  String get _primaryLocationText {
     final query = _mapSearchQuery;
     if (query != null && query.isNotEmpty) {
       return query;
     }
+    return 'Koordinat titik parkir';
+  }
+
+  String get _coordinateText {
     return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
   }
 
