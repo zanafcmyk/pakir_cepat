@@ -117,21 +117,23 @@ class SupabaseBookingService {
         .from('bookings')
         .select(
           'id, ticket_number, qr_payload, entry_time, duration_hours, estimated_cost, status, '
-          'parking_lot_id, parking_slot_id, parking_slots(label), '
+          'created_at, parking_lot_id, parking_slot_id, parking_slots(label), '
           'parking_lots(name), vehicles(plate_number, kind), '
           'payments(method, status, amount, created_at)',
         )
         .eq('customer_id', customerId)
         .inFilter('status', ['pending_payment', 'paid', 'active'])
         .order('created_at', ascending: false)
-        .limit(1);
+        .limit(5);
 
-    if (rows.isEmpty) {
-      return null;
+    for (final value in rows) {
+      final row = Map<String, dynamic>.from(value as Map);
+      if (!_isExpiredPendingPayment(row)) {
+        return _activeBookingFromRow(row);
+      }
     }
 
-    final row = Map<String, dynamic>.from(rows.first as Map);
-    return _activeBookingFromRow(row);
+    return null;
   }
 
   Future<SupabaseActiveBooking?> fetchBookingByTicketNumber(
@@ -434,6 +436,18 @@ class SupabaseBookingService {
     }
     final due = estimatedCost - paidTotal;
     return due > 0 ? due : 0;
+  }
+
+  bool _isExpiredPendingPayment(Map<String, dynamic> row) {
+    if (row['status'] != 'pending_payment') {
+      return false;
+    }
+    final createdAt = DateTime.tryParse(row['created_at'] as String? ?? '');
+    if (createdAt == null) {
+      return false;
+    }
+    final expiresAt = createdAt.toLocal().add(const Duration(minutes: 30));
+    return DateTime.now().isAfter(expiresAt);
   }
 
   String _normalizePlate(String value) =>

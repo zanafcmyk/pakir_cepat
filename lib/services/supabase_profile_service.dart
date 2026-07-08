@@ -32,7 +32,9 @@ class SupabaseProfileService {
   Future<void> updateCurrentUserPassword(String password) async {
     final user = _client.auth.currentUser;
     if (user == null) {
-      return;
+      throw const AuthException(
+        'Sesi reset password tidak ditemukan. Buka ulang link reset dari email.',
+      );
     }
 
     await _client.auth.updateUser(UserAttributes(password: password));
