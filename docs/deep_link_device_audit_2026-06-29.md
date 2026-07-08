@@ -2,9 +2,33 @@
 
 ## Status
 
-Belum bisa ditutup sebagai lulus perangkat asli karena tidak ada HP Android/iOS yang terdeteksi di mesin audit.
+Belum bisa ditutup sebagai lulus production penuh. Audit Android device sudah
+lulus di level intent filter dan cold start ADB, tetapi alur reset password dari
+email Supabase dan payment finish dari Midtrans masih perlu diuji dengan
+konfigurasi production/sandbox yang valid.
 
-Hasil cek perangkat:
+Update 8 Juli 2026:
+
+- Android device terdeteksi: Vivo V2333 (`10DE6N00N600074`), Android 16 API 36.
+- Debug APK berhasil terpasang sebagai `com.ti23a4.parkircepat`.
+- Android package manager membaca intent filter custom scheme `parkircepat://` untuk:
+  - `parkircepat://reset-password`
+  - `parkircepat://payment-finish`
+  - `parkircepat://auth/callback`
+- Uji ADB cold start untuk ketiga link tersebut menghasilkan `Status: ok` dan membuka `com.ti23a4.parkircepat/.MainActivity`.
+- Tidak ditemukan `FATAL EXCEPTION` pada logcat pendek setelah uji link.
+- Catatan: build audit ini dipasang dengan Supabase key placeholder, sehingga audit alur production asli belum ditutup. Masih perlu uji reset password dari email Supabase dan payment finish dari Midtrans dengan `SUPABASE_URL` serta `SUPABASE_PUBLISHABLE_KEY` production/sandbox yang valid.
+
+Update ulang 8 Juli 2026 dengan Supabase publishable key valid:
+
+- Debug APK di-build ulang dengan `SUPABASE_URL=https://wdtjrzynjygkmpmhiffw.supabase.co` dan Supabase publishable key valid, lalu berhasil di-install ulang ke Vivo V2333.
+- Uji ADB cold start ulang untuk `parkircepat://reset-password`, `parkircepat://payment-finish`, dan `parkircepat://auth/callback` semuanya menghasilkan `Status: ok`.
+- Ketiga link membuka `com.ti23a4.parkircepat/.MainActivity` sebagai foreground app.
+- Status window saat audit: `mShowingDream=false` dan `mDreamingLockscreen=false`.
+- Logcat pendek setelah audit tidak menunjukkan `FATAL EXCEPTION` atau `Invalid API key` dari aplikasi.
+- Audit Android via ADB lulus. Penutupan production penuh masih menunggu uji alur asli dari email reset password Supabase dan callback selesai pembayaran Midtrans.
+
+Hasil cek perangkat 29 Juni 2026:
 
 - `flutter devices`: hanya mendeteksi Windows, Chrome, dan Edge.
 - `C:\Users\hp\AppData\Local\Android\sdk\platform-tools\adb.exe devices`: tidak ada device terhubung.
