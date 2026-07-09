@@ -2,13 +2,13 @@
 
 Dokumen ini dipakai sebagai acuan kerja tim Parkir Cepat. Tujuannya supaya fitur yang sudah berjalan tidak dikerjakan ulang, fitur demo terlihat jelas, dan fitur yang belum production bisa dicicil dengan aman.
 
-Terakhir diperbarui: 29 Juni 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, runbook SQL/Midtrans/expiry/scan, konfirmasi redeploy Edge Function Midtrans, serta sinkronisasi checklist terbuka.
+Terakhir diperbarui: 9 Juli 2026 berdasarkan audit kode, Supabase live, Edge Function, analyzer, test, patch kendaraan, GPS/ETA, payment UI, laporan gaji penjaga, audit tasklist, runbook SQL/Midtrans/expiry/scan, konfirmasi redeploy Edge Function Midtrans, audit deep link perangkat asli, reset password email, Midtrans return, serta audit alur customer/penyedia/penjaga.
 
 ### Ringkasan Tasklist 29 Juni 2026 (Update)
 
 - Total item terhitung: 272.
-- Selesai: 271 (99.6%) - review final kode, dokumen, analyzer, dan test sudah selesai; blocker tersisa hanya audit deep link di perangkat asli.
-- Belum selesai: 1 (0.4%).
+- Selesai: 272 (100%).
+- Belum selesai: 0 (0%).
 
 ## Cara Pakai
 
@@ -24,8 +24,8 @@ Terakhir diperbarui: 29 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 ### Ringkasan Tasklist 29 Juni 2026
 
 - Total item terhitung: 272.
-- Selesai: 271 (99.6%).
-- Belum selesai: 1 (0.4%).
+- Selesai: 272 (100%).
+- Belum selesai: 0 (0%).
 - Item push notification, audit Midtrans, audit deep link, audit RLS, dan realtime production yang sebelumnya muncul berulang sudah dikonsolidasikan ke item utama masing-masing.
 
 ### Audit Terbaru 21 Juni 2026
@@ -255,9 +255,9 @@ Terakhir diperbarui: 29 Juni 2026 berdasarkan audit kode, Supabase live, Edge Fu
 - [x] User management super admin untuk hapus akun Auth sungguhan lewat Edge Function.
 - [x] Role guard dasar dan redirect auth sudah tersedia.
 - [x] Audit role guard dan middleware auth dasar untuk deep link role.
-- [ ] Audit deep link production di perangkat asli sebelum release. Audit konfigurasi dan langkah uji sudah dicatat di `docs/deep_link_device_audit_2026-06-29.md`; belum bisa ditutup karena belum ada HP Android/iOS terdeteksi di mesin audit.
+- [x] Audit deep link production di perangkat asli sebelum release. Android Vivo V2333 sudah lulus reset password email, payment finish Midtrans, dan cold start custom scheme; detail dicatat di `docs/deep_link_device_audit_2026-06-29.md`. iOS tetap perlu audit macOS/Xcode bila target release mencakup iPhone.
 - [x] Item push notification production dikonsolidasikan ke item audit push notification utama di bagian "Sudah Ada Tapi Masih Demo/Lokal/Belum Production".
-- [x] Review final sebelum merge ke `development` atau `master` sudah dilakukan: `flutter analyze --no-pub` bersih dan `flutter test --no-pub` lulus 31 test. Catatan rilis tersisa: audit deep link perangkat asli belum bisa ditutup karena belum ada HP Android/iOS terdeteksi.
+- [x] Review final sebelum merge ke `development` atau `master` sudah dilakukan: analyzer/test sebelumnya bersih, dan audit perangkat Android nyata sudah menutup blocker deep link. Catatan rilis tersisa hanya audit iOS bila target release mencakup iPhone.
 
 ### maulana-bintang - Penyedia Parkir
 

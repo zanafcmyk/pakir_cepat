@@ -2,10 +2,10 @@
 
 ## Status
 
-Belum bisa ditutup sebagai lulus production penuh. Audit Android device sudah
-lulus di level intent filter dan cold start ADB, tetapi alur reset password dari
-email Supabase dan payment finish dari Midtrans masih perlu diuji dengan
-konfigurasi production/sandbox yang valid.
+Lulus audit Android perangkat asli untuk deep link production utama. Reset
+password dari email Supabase sudah membuka halaman buat password baru, dan alur
+selesai pembayaran Midtrans sudah kembali ke aplikasi lalu menampilkan tiket
+saat status booking menjadi paid.
 
 Update 8 Juli 2026:
 
@@ -26,7 +26,16 @@ Update ulang 8 Juli 2026 dengan Supabase publishable key valid:
 - Ketiga link membuka `com.ti23a4.parkircepat/.MainActivity` sebagai foreground app.
 - Status window saat audit: `mShowingDream=false` dan `mDreamingLockscreen=false`.
 - Logcat pendek setelah audit tidak menunjukkan `FATAL EXCEPTION` atau `Invalid API key` dari aplikasi.
-- Audit Android via ADB lulus. Penutupan production penuh masih menunggu uji alur asli dari email reset password Supabase dan callback selesai pembayaran Midtrans.
+- Audit Android via ADB lulus. Pada audit awal ini penutupan production penuh masih menunggu uji alur asli dari email reset password Supabase dan callback selesai pembayaran Midtrans.
+
+Update 9 Juli 2026:
+
+- APK debug dengan Supabase publishable key valid berhasil dipasang ulang ke Vivo V2333.
+- Reset password dari email Supabase berhasil membuka halaman **Buat password baru** dan password baru berhasil disimpan.
+- Native Android fallback untuk custom scheme ditambahkan agar cold start `parkircepat://reset-password` dan `parkircepat://payment-finish` tidak tertimpa navigasi splash/login.
+- Alur pembayaran Midtrans berhasil kembali ke aplikasi setelah pembayaran sukses.
+- Halaman WebView Midtrans sekarang melakukan polling status booking sehingga aplikasi tetap pindah ke tiket begitu webhook menandai booking `paid`, walaupun callback finish dari Midtrans terlambat atau tidak otomatis membuka custom scheme.
+- Audit alur customer, penjaga, dan penyedia di perangkat asli sudah dikonfirmasi owner lulus.
 
 Hasil cek perangkat 29 Juni 2026:
 
@@ -109,4 +118,7 @@ Ekspektasi sama:
 
 ## Kesimpulan
 
-Konfigurasi kode dan manifest/plist sudah siap untuk audit production deep link. Item checklist belum boleh ditandai selesai sampai minimal satu perangkat Android asli berhasil menjalankan skenario reset password dan payment finish, serta iOS diuji dari mesin macOS/Xcode bila target release mencakup iPhone.
+Konfigurasi kode, manifest/plist, dan fallback native Android sudah siap untuk
+audit production deep link. Android perangkat asli sudah lulus untuk reset
+password, payment finish, dan alur utama customer/penyedia/penjaga. iOS tetap
+perlu diuji dari macOS/Xcode bila target release mencakup iPhone.
