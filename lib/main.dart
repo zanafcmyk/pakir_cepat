@@ -1,5 +1,5 @@
 // Konfigurasi runtime Supabase. Baca dari --dart-define:
-//   flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...
+// flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...
 // Fallback ke nilai bawaan agar build lama tidak break.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
