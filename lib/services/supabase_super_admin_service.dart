@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/app_models.dart';
 import 'supabase_parking_service.dart';
 
+// Service ini mengumpulkan data lintas role untuk dashboard super admin:
+// verifikasi penyedia, user management, komplain, dan laporan global.
 class SupabaseSuperAdminOverview {
   const SupabaseSuperAdminOverview({
     required this.customerCount,

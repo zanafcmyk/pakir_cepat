@@ -79,7 +79,7 @@ class AppPreferenceText {
       appLanguage: 'Bahasa aplikasi',
       accountSecurityMode: 'Mode keamanan akun',
       accountSecuritySubtitle:
-          'Saat aktif, sesi tersimpan hanya dipulihkan jika Ingat saya juga aktif.',
+          'Sesi login tetap aktif sampai Anda logout dari aplikasi.',
       saveSettings: 'Simpan Pengaturan',
       saving: 'Menyimpan...',
       saved: 'Pengaturan akun berhasil disimpan.',
@@ -110,7 +110,7 @@ class AppPreferenceText {
       appLanguage: 'App language',
       accountSecurityMode: 'Account security mode',
       accountSecuritySubtitle:
-          'When enabled, saved sessions are restored only when Remember me is also enabled.',
+          'Login sessions stay active until you sign out of the app.',
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       saved: 'Account settings saved.',

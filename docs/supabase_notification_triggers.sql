@@ -118,3 +118,69 @@ drop trigger if exists notify_super_admin_on_complaint on public.complaints;
 create trigger notify_super_admin_on_complaint
 after insert on public.complaints
 for each row execute function public.notify_super_admin_on_complaint();
+
+create or replace function public.notify_super_admin_on_provider_application()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_full_name text;
+begin
+  select profile.full_name
+  into v_full_name
+  from public.profiles profile
+  where profile.id = new.profile_id;
+
+  insert into public.notifications (profile_id, title, message, type, data)
+  select
+    profile.id,
+    'Pengajuan penyedia baru',
+    coalesce(v_full_name, 'Penyedia Parkir') || ' mendaftarkan ' ||
+      coalesce(new.parking_name, 'lahan parkir baru') || '.',
+    'verification',
+    jsonb_build_object(
+      'provider_application_id', new.id,
+      'provider_id', new.provider_id,
+      'profile_id', new.profile_id
+    )
+  from public.profiles profile
+  where profile.role = 'super_admin'
+    and profile.access_status = 'active';
+
+  return new;
+end;
+$$;
+
+drop trigger if exists notify_super_admin_on_provider_application on public.provider_applications;
+create trigger notify_super_admin_on_provider_application
+after insert on public.provider_applications
+for each row execute function public.notify_super_admin_on_provider_application();
+
+insert into public.notifications (profile_id, title, message, type, data)
+select
+  admin_profile.id,
+  'Pengajuan penyedia baru',
+  coalesce(provider_profile.full_name, 'Penyedia Parkir') ||
+    ' mendaftarkan ' ||
+    coalesce(application.parking_name, 'lahan parkir baru') || '.',
+  'verification',
+  jsonb_build_object(
+    'provider_application_id', application.id,
+    'provider_id', application.provider_id,
+    'profile_id', application.profile_id
+  )
+from public.provider_applications application
+join public.profiles provider_profile on provider_profile.id = application.profile_id
+join public.profiles admin_profile
+  on admin_profile.role = 'super_admin'
+  and admin_profile.access_status = 'active'
+where application.status = 'pending'
+  and not exists (
+    select 1
+    from public.notifications notification
+    where notification.profile_id = admin_profile.id
+      and notification.type = 'verification'
+      and notification.data ->> 'provider_application_id' = application.id::text
+  );

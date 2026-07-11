@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_models.dart';
 
+// Service ini menjadi pintu utama data parkir dari Supabase: lokasi, slot,
+// ringkasan dashboard penyedia, statistik pendapatan, dan laporan gaji penjaga.
 class SupabaseParkingData {
   const SupabaseParkingData({required this.lots, required this.slots});
 
@@ -118,6 +120,8 @@ class SupabaseProviderFinancialReport {
   final List<SupabaseRevenuePoint> chartPoints;
   final List<SupabaseGuardSalaryShare> guardSalaryShares;
 
+  // Nilai turunan ini dipakai pada layar laporan penyedia agar UI tidak perlu
+  // menghitung ulang total revenue, estimasi gaji, dan laba bersih.
   int get totalRevenue =>
       transactions.fold(0, (total, item) => total + item.total);
 

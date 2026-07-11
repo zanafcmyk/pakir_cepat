@@ -6816,6 +6816,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   double _providerCapacity = 80;
   bool _isLoading = false;
 
+  // Geocoding real-time
+  static const double _defaultMapLatitude = -6.2087145;
+  static const double _defaultMapLongitude = 106.8224854;
+  double _providerMapLatitude = _defaultMapLatitude;
+  double _providerMapLongitude = _defaultMapLongitude;
+  bool _isProviderGeocoding = false;
+  Timer? _providerGeocodeDebounce;
+
   @override
   void initState() {
     super.initState();
@@ -6844,12 +6852,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     );
     _parkingNameController.addListener(_refreshProviderMapPreview);
     _parkingAddressController.addListener(_refreshProviderMapPreview);
+    _parkingNameController.addListener(_scheduleProviderMapGeocode);
+    _parkingAddressController.addListener(_scheduleProviderMapGeocode);
   }
 
   @override
   void dispose() {
+    _providerGeocodeDebounce?.cancel();
     _parkingNameController.removeListener(_refreshProviderMapPreview);
     _parkingAddressController.removeListener(_refreshProviderMapPreview);
+    _parkingNameController.removeListener(_scheduleProviderMapGeocode);
+    _parkingAddressController.removeListener(_scheduleProviderMapGeocode);
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
@@ -6866,6 +6879,30 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _scheduleProviderMapGeocode() {
+    _providerGeocodeDebounce?.cancel();
+    final query = _providerMapLocationQuery.trim();
+    if (query.isEmpty) return;
+    _providerGeocodeDebounce = Timer(const Duration(milliseconds: 800), () async {
+      if (!mounted) return;
+      setState(() => _isProviderGeocoding = true);
+      try {
+        final coords = await _parkingService.geocodeAddress(query);
+        if (!mounted) return;
+        if (coords != null) {
+          setState(() {
+            _providerMapLatitude = coords.latitude;
+            _providerMapLongitude = coords.longitude;
+          });
+        }
+      } catch (_) {
+        // geocode gagal; map tetap di posisi sebelumnya
+      } finally {
+        if (mounted) setState(() => _isProviderGeocoding = false);
+      }
+    });
   }
 
   String get _providerMapLocationQuery {
@@ -7505,18 +7542,36 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         ? 'Preview lokasi lahan'
                         : _providerMapLocationQuery,
                     embedUrl: _providerMapEmbedUrl,
-                    latitude: _AddParkingLotScreenState._defaultMapLatitude,
-                    longitude: _AddParkingLotScreenState._defaultMapLongitude,
+                    latitude: _providerMapLatitude,
+                    longitude: _providerMapLongitude,
                     height: 220,
                     locationQuery: _providerMapLocationQuery,
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    _providerMapLocationQuery.isEmpty
-                        ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
-                        : 'Map diarahkan ke: $_providerMapLocationQuery',
-                    style: textTheme.bodySmall?.copyWith(color: AppTheme.slate),
-                  ),
+                  if (_isProviderGeocoding)
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Mencari koordinat alamat...',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: AppTheme.slate,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      _providerMapLocationQuery.isEmpty
+                          ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
+                          : 'Map diarahkan ke: $_providerMapLocationQuery',
+                      style: textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                    ),
                   const SizedBox(height: 14),
                   const InlineNotice(
                     icon: Icons.hourglass_top_rounded,
@@ -14799,6 +14854,13 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
   bool _isSaving = false;
   bool _editDataLoaded = false;
 
+  // Geocoding real-time
+  double _mapLatitude = _defaultMapLatitude;
+  double _mapLongitude = _defaultMapLongitude;
+  bool _isGeocoding = false;
+  Timer? _geocodeDebounce;
+  final SupabaseParkingService _geocodeService = SupabaseParkingService();
+
   bool get _isEditing => widget.editingLotId != null;
 
   @override
@@ -14817,6 +14879,8 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _truckRateController = TextEditingController(text: '20000');
     _nameController.addListener(_refreshMapPreview);
     _addressController.addListener(_refreshMapPreview);
+    _nameController.addListener(_scheduleMapGeocode);
+    _addressController.addListener(_scheduleMapGeocode);
   }
 
   @override
@@ -14844,12 +14908,17 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     _carRateController.text = (lot.carRate ?? lot.pricePerHour).toString();
     _truckRateController.text = (lot.truckRate ?? lot.pricePerHour).toString();
     _photoLabel = lot.photoLabel;
+    _mapLatitude = lot.latitude;
+    _mapLongitude = lot.longitude;
   }
 
   @override
   void dispose() {
+    _geocodeDebounce?.cancel();
     _nameController.removeListener(_refreshMapPreview);
     _addressController.removeListener(_refreshMapPreview);
+    _nameController.removeListener(_scheduleMapGeocode);
+    _addressController.removeListener(_scheduleMapGeocode);
     _nameController.dispose();
     _addressController.dispose();
     _capacityController.dispose();
@@ -14904,6 +14973,30 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _scheduleMapGeocode() {
+    _geocodeDebounce?.cancel();
+    final query = _mapLocationQuery.trim();
+    if (query.isEmpty) return;
+    _geocodeDebounce = Timer(const Duration(milliseconds: 800), () async {
+      if (!mounted) return;
+      setState(() => _isGeocoding = true);
+      try {
+        final coords = await _geocodeService.geocodeAddress(query);
+        if (!mounted) return;
+        if (coords != null) {
+          setState(() {
+            _mapLatitude = coords.latitude;
+            _mapLongitude = coords.longitude;
+          });
+        }
+      } catch (_) {
+        // geocode gagal; map tetap di posisi sebelumnya
+      } finally {
+        if (mounted) setState(() => _isGeocoding = false);
+      }
+    });
   }
 
   String get _mapLocationQuery {
@@ -15037,20 +15130,38 @@ class _AddParkingLotScreenState extends ConsumerState<AddParkingLotScreen> {
                       ? 'Preview lokasi lahan'
                       : _mapLocationQuery,
                   embedUrl: _mapEmbedUrl,
-                  latitude: _defaultMapLatitude,
-                  longitude: _defaultMapLongitude,
+                  latitude: _mapLatitude,
+                  longitude: _mapLongitude,
                   height: 320,
                   locationQuery: _mapLocationQuery,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  _mapLocationQuery.isEmpty
-                      ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
-                      : 'Map diarahkan ke: $_mapLocationQuery. Koordinat dicari dari alamat saat lahan disimpan.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
-                ),
+                if (_isGeocoding)
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Mencari koordinat alamat...',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.slate,
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(
+                    _mapLocationQuery.isEmpty
+                        ? 'Isi alamat untuk mengarahkan map ke lokasi lahan.'
+                        : 'Map diarahkan ke: $_mapLocationQuery.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppTheme.slate),
+                  ),
                 const SizedBox(height: 18),
                 _numberField(
                   controller: _capacityController,

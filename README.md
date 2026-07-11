@@ -182,6 +182,7 @@ Panduan terkait:
 ## Dokumen
 
 - PRD: `docs/PRD.md`
+- Panduan demo laptop: `docs/DEMO_PRESENTATION_GUIDE.md`
 - Checklist deploy eksternal: `docs/production_external_deploy_checklist.md`
 - Setup payment dan push notification: `docs/payment_push_production_setup.md`
 - Audit deep link: `docs/deep_link_device_audit_2026-06-29.md`

@@ -209,6 +209,7 @@ from (values
   ('bookings', 'notify_provider_on_booking_created'),
   ('bookings', 'notify_customer_on_booking_status'),
   ('complaints', 'notify_super_admin_on_complaint'),
+  ('provider_applications', 'notify_super_admin_on_provider_application'),
   ('profile_settings', 'set_profile_settings_updated_at')
 ) as required(table_name, trigger_name);
 

@@ -2,6 +2,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/app_models.dart';
 
+// Service ini menangani lifecycle booking di Supabase, mulai dari pembuatan
+// tiket customer sampai data operasional yang dibaca penjaga.
 class SupabaseBookingResult {
   const SupabaseBookingResult({
     required this.ticketNumber,

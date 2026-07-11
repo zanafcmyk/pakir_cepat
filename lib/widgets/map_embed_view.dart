@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-class MapEmbedView extends StatelessWidget {
+
+class MapEmbedView extends StatefulWidget {
   const MapEmbedView({
     super.key,
     required this.title,
@@ -23,27 +25,59 @@ class MapEmbedView extends StatelessWidget {
   final List<MapEmbedMarker> markers;
 
   @override
+  State<MapEmbedView> createState() => _MapEmbedViewState();
+}
+
+class _MapEmbedViewState extends State<MapEmbedView> {
+  final MapController _mapController = MapController();
+
+  @override
+  void didUpdateWidget(MapEmbedView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final latChanged = oldWidget.latitude != widget.latitude;
+    final lngChanged = oldWidget.longitude != widget.longitude;
+    if (latChanged || lngChanged) {
+      // Jadwalkan setelah frame selesai agar MapController sudah terpasang
+      // ke FlutterMap sebelum perintah move() dikirim.
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _mapController.move(
+          LatLng(widget.latitude, widget.longitude),
+          15,
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final center = LatLng(latitude, longitude);
-    final mapMarkers = markers.isEmpty
+    final center = LatLng(widget.latitude, widget.longitude);
+    final mapMarkers = widget.markers.isEmpty
         ? [
             MapEmbedMarker(
               id: 'active',
-              title: title,
-              latitude: latitude,
-              longitude: longitude,
+              title: widget.title,
+              latitude: widget.latitude,
+              longitude: widget.longitude,
               isSelected: true,
             ),
           ]
-        : markers;
+        : widget.markers;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: SizedBox(
-        height: height,
+        height: widget.height,
         width: double.infinity,
         child: Stack(
           children: [
             FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 15,
@@ -113,7 +147,7 @@ class MapEmbedView extends StatelessWidget {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              title,
+                              widget.title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.titleSmall
@@ -175,15 +209,15 @@ class MapEmbedView extends StatelessWidget {
   }
 
   String get _coordinateText {
-    return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
+    return '${widget.latitude.toStringAsFixed(6)}, ${widget.longitude.toStringAsFixed(6)}';
   }
 
   String? get _mapSearchQuery {
-    final explicitQuery = locationQuery?.trim();
+    final explicitQuery = widget.locationQuery?.trim();
     if (explicitQuery != null && explicitQuery.isNotEmpty) {
       return explicitQuery;
     }
-    final uri = Uri.tryParse(embedUrl);
+    final uri = Uri.tryParse(widget.embedUrl);
     final embeddedQuery = uri?.queryParameters['q']?.trim();
     if (embeddedQuery != null && embeddedQuery.isNotEmpty) {
       return embeddedQuery;
