@@ -53,3 +53,6 @@ keystore.properties
 
 # Supabase CLI local state
 supabase/.temp/
+
+# VS Code launch config contains secrets (dart-define credentials)
+.vscode/launch.json
